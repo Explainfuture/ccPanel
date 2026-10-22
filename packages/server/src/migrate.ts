@@ -36,6 +36,9 @@ export async function migrate() {
       CREATE TABLE IF NOT EXISTS dlq_records(id text PRIMARY KEY,tenant_id uuid,project_id uuid,reason text NOT NULL,payload jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
       CREATE TABLE IF NOT EXISTS reports(id uuid PRIMARY KEY,tenant_id uuid NOT NULL,project_id uuid NOT NULL,name text NOT NULL,spec jsonb NOT NULL,updated_at timestamptz NOT NULL DEFAULT now(),FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
       CREATE TABLE IF NOT EXISTS dashboards(id uuid PRIMARY KEY,tenant_id uuid NOT NULL,project_id uuid NOT NULL,name text NOT NULL,report_ids uuid[] NOT NULL DEFAULT '{}',updated_at timestamptz NOT NULL DEFAULT now(),FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
+      ALTER TABLE reports ADD COLUMN IF NOT EXISTS timezone text;
+      ALTER TABLE reports ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 1 CHECK(version>0);
+      ALTER TABLE dashboards ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 1 CHECK(version>0);
       CREATE TABLE IF NOT EXISTS query_jobs(id uuid PRIMARY KEY,tenant_id uuid NOT NULL,project_id uuid NOT NULL,user_id uuid NOT NULL REFERENCES users(id),spec jsonb NOT NULL,status text NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','succeeded','failed','cancelled')),result jsonb,error text,created_at timestamptz NOT NULL DEFAULT now(),started_at timestamptz,finished_at timestamptz,expires_at timestamptz NOT NULL DEFAULT now()+interval '24 hours',FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
       CREATE INDEX IF NOT EXISTS query_jobs_queue ON query_jobs(created_at) WHERE status IN ('queued','running');
       CREATE TABLE IF NOT EXISTS deletion_jobs(id uuid PRIMARY KEY,tenant_id uuid NOT NULL,project_id uuid NOT NULL,user_id uuid NOT NULL REFERENCES users(id),scope text NOT NULL CHECK(scope IN ('user','project')),subject_hash text,status text NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','completed','failed')),requested_at timestamptz NOT NULL DEFAULT clock_timestamp(),blocked_before timestamptz NOT NULL DEFAULT clock_timestamp()+interval '5 minutes',stream_expires_at timestamptz NOT NULL DEFAULT clock_timestamp()+interval '45 days',removed_events bigint NOT NULL DEFAULT 0,error text,finished_at timestamptz,FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
@@ -93,6 +96,7 @@ export async function migrate() {
       INSERT INTO schema_migrations(version) VALUES(11) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(12) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(13) ON CONFLICT DO NOTHING;
+      INSERT INTO schema_migrations(version) VALUES(14) ON CONFLICT DO NOTHING;
     `);
     const now = new Date();
     for (let i = -2; i <= 2; i++) {

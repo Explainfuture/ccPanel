@@ -18,6 +18,7 @@ export async function behaviorQuery(
   spec: ReturnType<typeof parseBehavior>,
   run: typeof query = query,
   asyncMode = false,
+  timezoneOverride?: string,
 ) {
   const now = Date.now(),
     from =
@@ -75,7 +76,7 @@ export async function behaviorQuery(
     spec.kind === "funnel"
       ? funnel(events, spec, now)
       : spec.kind === "retention"
-        ? retention(events, spec, projectRow.rows[0].timezone, now)
+        ? retention(events, spec, timezoneOverride??projectRow.rows[0].timezone, now)
         : cohort(events, spec);
   return {
     ...result,

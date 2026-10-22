@@ -3,17 +3,13 @@ import type { Hono } from "hono";
 import type { PoolClient, QueryResultRow } from "pg";
 import type { Env } from "../../../apps/api/src/app";
 import { pool, query } from "./db";
-import { parseTrend, InvalidQuery } from "./query-spec";
-import { parseBehavior } from "./behavior";
+import { InvalidQuery } from "./query-spec";
 import { trends } from "./trends";
 import { behaviorQuery, QueryBudgetExceeded } from "./behavior-routes";
 import { projectQueryFlights } from "./query-budget";
+import {parseQuerySpec} from './analysis-spec';
+export {parseQuerySpec} from './analysis-spec';
 
-export function parseQuerySpec(input: unknown) {
-  return (input as { kind?: unknown })?.kind === "trend"
-    ? parseTrend(input)
-    : parseBehavior(input);
-}
 const validId = (id: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 export function registerQueryJobs(app: Hono<Env>) {
