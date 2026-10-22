@@ -6,3 +6,8 @@ dist/
 coverage/
 *.log
 .DS_Store
+.local/
+artifacts/
+playwright-report/
+test-results/
+*.tsbuildinfo
