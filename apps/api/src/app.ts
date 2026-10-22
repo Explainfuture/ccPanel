@@ -398,7 +398,7 @@ export function createApp(deps: AppDeps) {
   });
   const prefix = "/api/tenants/:tenant/projects/:project";
   app.get(prefix + "/trends", async (c) => {
-    const project = c.req.param("project")!;
+    const project = c.req.param("project")!.toLowerCase();
     if (queryFlights.has(project)) return c.json({ error: "query_busy" }, 429);
     const to = c.req.query("to") ? Date.parse(c.req.query("to")!) : Date.now();
     const from = c.req.query("from")

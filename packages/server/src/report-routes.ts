@@ -8,7 +8,7 @@ import { projectQueryFlights as flights } from './query-budget';
 export function registerReportRoutes(app:Hono<Env>){
   const prefix='/api/tenants/:tenant/projects/:project';
   app.post(prefix+'/query',async c=>{
-    const project=c.req.param('project')!;
+    const project=c.req.param('project')!.toLowerCase();
     if(flights.has(project))return c.json({error:'query_busy'},429);
     let spec;
     try{spec=parseTrend(await c.req.json());}catch(e){return c.json({error:e instanceof InvalidQuery?e.message:'invalid_query'},400);}

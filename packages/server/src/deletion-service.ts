@@ -123,7 +123,7 @@ export function registerDeletions(app: Hono<Env>) {
       } else {
         await db.query(
           `INSERT INTO deletion_barriers(tenant_id,project_id,identity_hash,deletion_job_id,requested_at,blocked_before)
-          SELECT $1,$2,encode(sha256(convert_to($1::text||':'||$2::text||':'||identity,'UTF8')),'hex'),$3,$4,$5 FROM (
+          SELECT $1::uuid,$2::uuid,encode(sha256(convert_to(($1::uuid)::text||':'||($2::uuid)::text||':'||identity,'UTF8')),'hex'),$3::uuid,$4::timestamptz,$5::timestamptz FROM (
             SELECT $6::text AS identity UNION SELECT $7::text
             UNION SELECT anonymous_id FROM identity_links WHERE tenant_id=$1 AND project_id=$2 AND user_id=$6
             UNION SELECT anonymous_id FROM events WHERE tenant_id=$1 AND project_id=$2 AND distinct_id=$6 AND anonymous_id IS NOT NULL

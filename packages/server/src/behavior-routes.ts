@@ -96,7 +96,7 @@ export function registerBehaviorRoutes(app: Hono<Env>) {
         400,
       );
     }
-    const project = c.req.param("project")!;
+    const project = c.req.param("project")!.toLowerCase();
     if (flights.has(project)) return c.json({ error: "query_busy" }, 429);
     flights.add(project);
     try {

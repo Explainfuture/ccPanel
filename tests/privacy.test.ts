@@ -2,6 +2,7 @@ import { expect, it, vi } from "vitest";
 import type { PoolClient } from "pg";
 import {
   identityHash,
+  lockProjectPrivacy,
   suppressedByDeletion,
 } from "../packages/server/src/privacy";
 import type { StoredEnvelope } from "../packages/schema/src/index";
@@ -28,6 +29,15 @@ it("namespaces identity lookup hashes by company and project", () => {
   expect(a).not.toBe(
     identityHash(record.tenant_id, crypto.randomUUID(), "same-user"),
   );
+  expect(a).toBe(identityHash(record.tenant_id.toUpperCase(),record.project_id.toUpperCase(),'same-user'));
+  expect(a).not.toBe(identityHash(record.tenant_id,record.project_id,'SAME-USER'));
+});
+it('uses the same lock key for UUID case aliases and both lock modes',async()=>{
+  const query=vi.fn().mockResolvedValue({rows:[]});
+  const db={query} as unknown as PoolClient;
+  await lockProjectPrivacy(db,record.project_id.toUpperCase(),true);
+  await lockProjectPrivacy(db,record.project_id,false);
+  expect(query.mock.calls[0]![1]).toEqual(query.mock.calls[1]![1]);
 });
 it("checks current canonical identity and original event/acceptance times", async () => {
   const query = vi

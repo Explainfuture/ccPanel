@@ -7,7 +7,7 @@ export const identityHash = (
   tenant: string,
   project: string,
   identity: string,
-) => digest(tenant + ":" + project + ":" + identity);
+) => digest(tenant.toLowerCase() + ":" + project.toLowerCase() + ":" + identity);
 export const identityHashSql = (alias: string, column = "distinct_id") =>
   `encode(sha256(convert_to(${alias}.tenant_id::text||':'||${alias}.project_id::text||':'||${alias}.${column},'UTF8')),'hex')`;
 export const eventBarrierPredicate = (event = "e", link = "l", barrier = "b") =>
@@ -19,7 +19,7 @@ export async function lockProjectPrivacy(
 ) {
   await db.query(
     `SELECT ${exclusive ? "pg_advisory_xact_lock" : "pg_advisory_xact_lock_shared"}(hashtextextended($1,0))`,
-    ["ccpanel:privacy:" + project],
+    ["ccpanel:privacy:" + project.toLowerCase()],
   );
 }
 

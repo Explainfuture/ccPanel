@@ -38,7 +38,8 @@ try{
   try{
     await guard.query('SELECT pg_advisory_lock(169202614),pg_advisory_lock(169202612)');
     const pending=await api(a,'/query-jobs',spec);assert.equal(pending.status,202);const pendingJob=(await pending.json()).id;
-    const r=await api(a,'/deletions',request);assert.equal(r.status,202);deletionId=(await r.json()).id;
+    const upper={...a,root:a.root.replace(a.tenant,a.tenant.toUpperCase()).replace(a.project,a.project.toUpperCase())};
+    const r=await api(upper,'/deletions',request);assert.equal(r.status,202);deletionId=(await r.json()).id;
     assert.equal(Number((await pool.query('SELECT count(*) FROM events WHERE tenant_id=$1',[a.tenant])).rows[0].count),5,'raw cleanup intentionally held');
     const visible=await(await api(a,'/events',undefined,'GET')).json();assert.equal(visible.events.length,2,'barrier hides linked history before raw deletion');
     for(const id of [oldJob,pendingJob])assert.equal((await api(a,'/query-jobs/'+id,undefined,'GET')).status,404,'old query snapshots invalidated');
