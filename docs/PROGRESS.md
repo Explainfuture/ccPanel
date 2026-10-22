@@ -654,3 +654,5 @@ schema17增加逻辑30天事件视图、全局过期索引及可显式启用的W
 新增GitHub独立postgres服务任务，固定同服务器PostgreSQL17.7-bookworm。在CI专属localhost/ccpanel_ci/postgres服务上，为公司创建、报表、导出、保留和分区五套控制器分别新建独立空库，构建当前源码，迁移，导出该新库自己的fresh-source清单再离线apply，然后运行真实SQL检查。只在本次CREATE成功后允许DROP，命名和目录均受限；不读取用户DATABASE_URL，不接触VPS，不启动Kafka，不以直接UPDATE绕过恢复门禁。子进程2分钟/9MiB输出预算，失败保留GitHub日志，退出清理自身临时构建。
 
 本地Node语法检查通过；真实PG执行结果待本分支CI，暂不记通过。服务器容量仍在运行且未改配置。
+
+步骤96实测结果补充：GitHub Actions 39873070266（a49ad98）verify/postgres均success。5套独立PostgreSQL17.7控制器全部passed:true，包含步骤93/95的101条过期批量、30天逻辑可见性、45天dedup、锁超时回滚、活动重放保护/结束释放、DLQ无归属清理及步骤94未来分区创建/迁移互斥/写入NOWAIT/空旧分区释放/非空和未知分区保留。此前“待真实PG”状态在CI环境已完成；VPS尚未迁移schema17。日志中的预期CHECK失败和锁超时由控制器assert.rejects验收，不是未处理错误。运行链接：https://github.com/Explainfuture/ccPanel/actions/runs/39873070266 。
