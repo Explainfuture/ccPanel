@@ -1,7 +1,10 @@
 import { Kafka, logLevel } from 'kafkajs';
+import { kafkaNamespace } from './kafka-namespace';
 export const kafka = new Kafka({ clientId: 'ccpanel', brokers: (process.env.KAFKA_BROKERS || '127.0.0.1:9092').split(','), logLevel: logLevel.ERROR, requestTimeout: 8000, retry: { retries: 3 } });
-export const eventsTopic = 'ccpanel.events';
-export const dlqTopic = 'ccpanel.events.dlq';
+const namespace=kafkaNamespace(process.env);
+export const eventsTopic = namespace.events;
+export const dlqTopic = namespace.dlq;
+export const consumerGroup = namespace.group;
 export async function ensureTopics() {
   const admin = kafka.admin(); await admin.connect();
   try {

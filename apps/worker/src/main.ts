@@ -1,4 +1,4 @@
-import { kafka, ensureTopics, eventsTopic, dlqTopic } from '../../../packages/server/src/kafka';
+import { kafka, ensureTopics, eventsTopic, dlqTopic,consumerGroup } from '../../../packages/server/src/kafka';
 import { persist, EventConflict } from '../../../packages/server/src/consume';
 import { validateEvent, type StoredEnvelope } from '../../../packages/schema/src/index';
 import { query, pool } from '../../../packages/server/src/db';
@@ -7,7 +7,7 @@ import { discardDeletedDeadLetter,identityHash } from '../../../packages/server/
 import { holdRecoveryLease } from '../../../packages/server/src/recovery-gate';
 const releaseRecoveryLease=await holdRecoveryLease();
 await ensureTopics();
-const consumer = kafka.consumer({ groupId: 'ccpanel-writer-v1', sessionTimeout: 30000 });
+const consumer = kafka.consumer({ groupId: consumerGroup, sessionTimeout: 30000 });
 const producer = kafka.producer({ idempotent: true, maxInFlightRequests: 1 });
 consumer.on(consumer.events.CRASH, ({ payload }) => {
   if (!payload.restart) { console.error(JSON.stringify({code:'consumer_halted'})); process.exit(1); }
