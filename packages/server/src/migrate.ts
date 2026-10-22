@@ -41,6 +41,9 @@ export async function migrate() {
       INSERT INTO recovery_gate(id) VALUES(true) ON CONFLICT DO NOTHING;
       CREATE TABLE IF NOT EXISTS ingest_integrity_gate(id boolean PRIMARY KEY DEFAULT true CHECK(id),blocked boolean NOT NULL DEFAULT false,reason text,detected_at timestamptz,details jsonb NOT NULL DEFAULT '{}',CHECK((NOT blocked AND reason IS NULL) OR (blocked AND reason IS NOT NULL AND reason IN ('retained_offset_gap','consumer_offset_unknown'))));
       INSERT INTO ingest_integrity_gate(id,blocked,reason,detected_at) VALUES(true,${integrityExists?'true':'false'},${integrityExists?"'consumer_offset_unknown'":'NULL'},${integrityExists?'clock_timestamp()':'NULL'}) ON CONFLICT DO NOTHING;
+      CREATE TABLE IF NOT EXISTS consumer_streams(topic text NOT NULL,group_id text NOT NULL,partition_count integer NOT NULL CHECK(partition_count BETWEEN 1 AND 1024),initialized_at timestamptz NOT NULL DEFAULT clock_timestamp(),PRIMARY KEY(topic,group_id));
+      CREATE TABLE IF NOT EXISTS consumer_progress(topic text NOT NULL,group_id text NOT NULL,partition_id integer NOT NULL CHECK(partition_id>=0),next_offset bigint NOT NULL CHECK(next_offset>=0),updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),PRIMARY KEY(topic,group_id,partition_id),FOREIGN KEY(topic,group_id) REFERENCES consumer_streams(topic,group_id));
+      CREATE TABLE IF NOT EXISTS consumer_progress_audit(id bigserial PRIMARY KEY,topic text NOT NULL,group_id text NOT NULL,action text NOT NULL,reason text NOT NULL,details jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT clock_timestamp());
       CREATE TABLE IF NOT EXISTS recovery_import_scopes(ledger_hash text NOT NULL,tenant_id uuid NOT NULL,project_id uuid NOT NULL,PRIMARY KEY(ledger_hash,tenant_id,project_id),FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
       ALTER TABLE events ADD COLUMN IF NOT EXISTS registered boolean NOT NULL DEFAULT false;
       ALTER TABLE events ADD COLUMN IF NOT EXISTS project_schema_version integer NOT NULL DEFAULT 0;
@@ -69,6 +72,7 @@ export async function migrate() {
       INSERT INTO schema_migrations(version) VALUES(7) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(8) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(9) ON CONFLICT DO NOTHING;
+      INSERT INTO schema_migrations(version) VALUES(10) ON CONFLICT DO NOTHING;
     `);
     const now = new Date();
     for (let i = -2; i <= 2; i++) {

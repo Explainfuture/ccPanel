@@ -1,0 +1,57 @@
+// Real PG, injected source positions; no real consumer offsets are changed.
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { pool } from '../packages/server/src/db';
+import { persist } from '../packages/server/src/consume';
+import { indexDeadLetter } from '../packages/server/src/dead-letter';
+import { digest } from '../packages/server/src/security';
+import { recoveryLock } from '../packages/server/src/recovery-gate';
+import { ensureConsumerProgress,withConsumerProgress,ConsumerProgressError } from '../packages/server/src/consumer-progress';
+import type { StoredEnvelope } from '../packages/schema/src/index';
+const stream={topic:'progress-fixture',group:'progress-fixture-writer'};
+try{
+  const database=(await pool.query('SELECT current_database() AS name')).rows[0].name;
+  assert.match(database,/^ccpanel_restore_[0-9]{14}_[a-f0-9]{8}$/);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM tenants')).rows[0].n,0);
+  const tenant=randomUUID(),project=randomUUID();
+  await pool.query('INSERT INTO tenants VALUES($1,$2)',[tenant,'CONSUMER PROGRESS TEMP']);
+  await pool.query('INSERT INTO projects(id,tenant_id,name) VALUES($1,$2,$3)',[project,tenant,'CONSUMER PROGRESS TEMP']);
+  await ensureConsumerProgress(stream,[{partition:0,low:'0',high:'3',committed:null}]);
+  const next=async()=>(await pool.query('SELECT next_offset::text FROM consumer_progress WHERE topic=$1 AND group_id=$2',[stream.topic,stream.group])).rows[0].next_offset;
+  const count=async(table:string)=>(await pool.query(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n;
+  const record:StoredEnvelope={tenant_id:tenant,project_id:project,received_at:new Date().toISOString(),event:{event_id:randomUUID(),event_name:'progress_fixture',distinct_id:'synthetic',event_time:new Date().toISOString(),properties:{test:true},context:{},schema_version:1}};
+  assert.equal(await withConsumerProgress(stream,0,'0',async()=>false),false);assert.equal(await next(),'0');
+  await pool.query("ALTER TABLE events ADD CONSTRAINT progress_raw_failure CHECK(event_name<>'progress_fixture')");
+  await assert.rejects(()=>withConsumerProgress(stream,0,'0',async()=>{await persist(record);return true;}),/invalid_storage_value/);
+  assert.equal(await next(),'0');assert.equal(await count('events'),0);
+  await pool.query('ALTER TABLE events DROP CONSTRAINT progress_raw_failure');
+  await withConsumerProgress(stream,0,'0',async()=>{assert.equal(await persist(record),'inserted');return true;});
+  assert.equal(await next(),'1');
+  const second={...record,event:{...record.event,event_id:randomUUID()}};
+  await pool.query('ALTER TABLE consumer_progress ADD CONSTRAINT progress_checkpoint_failure CHECK(next_offset<=1)');
+  await assert.rejects(()=>withConsumerProgress(stream,0,'1',async()=>{await persist(second);return true;}),(e:unknown)=>(e as {code?:string}).code==='23514');
+  assert.equal(await next(),'1');assert.equal(await count('events'),2);assert.equal(await count('aggregation_jobs'),2);
+  await pool.query('ALTER TABLE consumer_progress DROP CONSTRAINT progress_checkpoint_failure');
+  await withConsumerProgress(stream,0,'1',async()=>{assert.equal(await persist(second),'duplicate');return true;});
+  assert.equal(await next(),'2');
+  await Promise.all([0,1].map(()=>withConsumerProgress(stream,0,'1',async()=>{assert.equal(await persist(second),'duplicate');return true;})));
+  assert.equal(await next(),'2');assert.equal(await count('events'),2);assert.equal(await count('aggregation_jobs'),2);
+  const dead={id:digest('progress-fixture:0:2'),reason:'invalid_json',source:{topic:stream.topic,partition:0,offset:'2'},tenant_id:tenant,project_id:project,identity_hashes:[],raw_base64:Buffer.from('invalid synthetic message').toString('base64'),processor_version:2 as const};
+  await withConsumerProgress(stream,0,'2',async()=>{await indexDeadLetter(dead,undefined);return true;});
+  assert.equal(await next(),'3');assert.equal(await count('dlq_records'),1);
+  let processed=false;
+  await assert.rejects(()=>withConsumerProgress(stream,0,'4',async()=>{processed=true;return true;}),e=>e instanceof ConsumerProgressError&&e.kind==='consumer_progress_jump');
+  assert.equal(processed,false);assert.equal(await next(),'3');
+  const paused=(await pool.query('SELECT blocked,details FROM ingest_integrity_gate WHERE id=true')).rows[0];assert.equal(paused.blocked,true);assert.equal(paused.details.expected,'3');
+  await assert.rejects(()=>ensureConsumerProgress(stream,[{partition:0,low:'4',high:'5',committed:'5'}]),e=>e instanceof ConsumerProgressError&&e.reason==='retained_offset_gap');
+  assert.equal((await pool.query("SELECT count(*)::int AS n FROM consumer_progress_audit WHERE action='paused'")).rows[0].n,1,'repeated failure does not rewrite/spam the incident');
+  const legacy={topic:'legacy-fixture',group:'legacy-fixture-writer'},positions=[{partition:0,low:'0',high:'10',committed:'10'}];
+  const service=await pool.connect();try{
+    await service.query('SELECT pg_advisory_lock_shared($1)',[recoveryLock]);
+    await assert.rejects(()=>ensureConsumerProgress(legacy,positions,'Trusted temporary legacy baseline'),/services_still_online/);
+  }finally{await service.query('SELECT pg_advisory_unlock_shared($1)',[recoveryLock]);service.release();}
+  await ensureConsumerProgress(legacy,positions,'Trusted temporary legacy baseline');
+  assert.equal((await pool.query('SELECT next_offset::text FROM consumer_progress WHERE topic=$1',[legacy.topic])).rows[0].next_offset,'10');
+  assert.equal((await pool.query('SELECT blocked FROM ingest_integrity_gate WHERE id=true')).rows[0].blocked,true,'bootstrap is not an incident acknowledgement');
+  console.log(JSON.stringify({passed:true,raw_before_checkpoint:true,checkpoint_failure_replays_once:true,concurrent_replay_once:true,dlq_index_before_progress:true,gap_stops_callback:true,incident_persisted_once:true,online_baseline_rejected:true,raw_events:2,aggregation_jobs:2,dlq_records:1,next_offset:'3'}));
+}finally{await pool.end();}
