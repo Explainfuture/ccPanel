@@ -325,7 +325,8 @@ export default function App() {
   const [me, setMe] = useState<Me | null>(null),
     [checking, setChecking] = useState(true),
     [tenantId, setTenantId] = useState(""),
-    [projects, setProjects] = useState<Project[]>([]),
+    [projectRows, setProjects] = useState<Project[]>([]),
+    [projectScope,setProjectScope] = useState(""),
     [projectId, setProjectId] = useState("");
   const [tab, setTab] = useState("overview"),
     [error, setError] = useState(""),
@@ -345,10 +346,11 @@ export default function App() {
       { id: string; label: string; revoked_at: string | null }[]
     >([]),
     [copied, setCopied] = useState(false);
-  const [members, setMembers] = useState<
+  const [memberRows, setMembers] = useState<
       { id: string; email: string; role: string }[]
     >([]),
-    [notice, setNotice] = useState("");
+    [notice, setNotice] = useState(""),
+    [memberScope,setMemberScope] = useState("");
   const analytics = useRef<Analytics | null>(null);
   useEffect(() => {
     if (!showCreate && !detail && !timelineUser) return;
@@ -387,12 +389,21 @@ export default function App() {
   }, []);
   useEffect(() => {
     if (me && !me.tenants.some((t) => t.id === tenantId))
-      setTenantId(me.tenants[0]?.id || "");
+      changeCompany(me.tenants[0]?.id || "");
   }, [me, tenantId]);
-  const tenant = me?.tenants.find((t) => t.id === tenantId),
-    project = projects.find((p) => p.id === projectId);
+  const tenant = me?.tenants.find((t) => t.id === tenantId);
+  const workspaceScope=tenant?JSON.stringify([me!.user.email,tenant.id]):"";
+  const scopeRef=useRef(workspaceScope);scopeRef.current=workspaceScope;
+  const projects=workspaceScope&&projectScope===workspaceScope?projectRows:[];
+  const project=projects.find(p=>p.id===projectId);
+  const members=workspaceScope&&memberScope===workspaceScope?memberRows:[];
+  function changeCompany(id:string){
+    setTenantId(id);setProjects([]);setProjectScope("");setProjectId("");
+    setMembers([]);setMemberScope("");setTrends(null);setEvents([]);
+    setDetail(null);setTimelineUser(null);setShowCreate(false);setWriteKey("");setKeys([]);setNotice("");setError("");
+  }
   useEffect(() => {
-    if (!me || !tenantId) return;
+    if (!tenant) return;
     let active = true;
     setError("");
     setProjects([]);
@@ -404,6 +415,7 @@ export default function App() {
       .then((v) => {
         if (active) {
           setProjects(v.projects);
+          setProjectScope(workspaceScope);
           setProjectId(v.projects[0]?.id || "");
         }
       })
@@ -414,7 +426,8 @@ export default function App() {
       active = false;
     };
   }, [tenantId,me?.user.email]);
-  const prefix = `/api/tenants/${tenantId}/projects/${projectId}`;
+  const prefix = project ? `/api/tenants/${tenantId}/projects/${project.id}` : "";
+  const viewRef=useRef(prefix);viewRef.current=prefix;
   useEffect(() => {
     analytics.current?.destroy();
     analytics.current = null;
@@ -427,7 +440,7 @@ export default function App() {
     setEvents([]);
   }, [tenantId, projectId]);
   useEffect(() => {
-    if (!me || !tenantId || (tab !== 'members' && !projectId)) return;
+    if (!tenant || (tab !== 'members' && !project)) return;
     let active = true;
     setBusy(true);
     setError("");
@@ -462,7 +475,7 @@ export default function App() {
               ? api<{ members: typeof members }>(
                   `/api/tenants/${tenantId}/members`,
                 ).then((v) => {
-                  if (active) setMembers(v.members);
+                  if (active) {setMembers(v.members);setMemberScope(workspaceScope);}
                 })
               : Promise.resolve();
     work
@@ -493,7 +506,7 @@ export default function App() {
     tenant?.role,
   ]);
   const reload = useCallback(() => setRefresh((n) => n + 1), []);
-  const reloadProjects=async()=>{const data=await api<{projects:Project[]}>(`/api/tenants/${tenantId}/projects`);setProjects(data.projects);};
+  const reloadProjects=async()=>{const data=await api<{projects:Project[]}>(`/api/tenants/${tenantId}/projects`);if(scopeRef.current===workspaceScope){setProjects(data.projects);setProjectScope(workspaceScope);}};
   async function createProject(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
@@ -512,7 +525,8 @@ export default function App() {
       const all = await api<{ projects: Project[] }>(
         `/api/tenants/${tenantId}/projects`,
       );
-      setProjects(all.projects);
+      if(scopeRef.current!==workspaceScope)return;
+      setProjects(all.projects);setProjectScope(workspaceScope);
       setProjectId(p.id);
       setShowCreate(false);
       setTab("connect");
@@ -526,6 +540,7 @@ export default function App() {
         method: "POST",
         body: "{}",
       });
+      if(scopeRef.current!==workspaceScope || viewRef.current!==prefix)return;
       setWriteKey(k.write_key);
       analytics.current?.updateWriteKey(k.write_key);
       reload();
@@ -580,7 +595,7 @@ export default function App() {
     );
   if (!me && error) return <main className="loading-screen"><Logo/><p role="alert">暂时无法连接工作区，请稍后重试。</p><Button onClick={() => location.reload()}>重新连接</Button></main>;
   if (!me) return <Login onLogin={value=>{setError('');setMe(value);}} invited={!!invitation} />;
-  if(invitation||joinOpen)return <Suspense fallback={<main className="loading-screen"><p>正在读取邀请页面…</p></main>}><AcceptInvitation secret={invitation} email={me.user.email} onToken={setInvitation} onClose={()=>{setInvitation('');setJoinOpen(false);}} onAccepted={async id=>{const value=await api<Me>('/api/me');if(!value.tenants.some(t=>t.id===id))throw new Error('membership_unavailable');setCsrf(value.csrf_token);setMe(value);setTenantId(id);setProjectId('');setInvitation('');setJoinOpen(false);setTab('members');setRefresh(v=>v+1);}} onSwitchAccount={async()=>{await api('/api/auth/logout',{method:'POST',body:'{}'});analytics.current?.destroy();setCsrf('');setError('');setMe(null);}}/></Suspense>;
+  if(invitation||joinOpen)return <Suspense fallback={<main className="loading-screen"><p>正在读取邀请页面…</p></main>}><AcceptInvitation secret={invitation} email={me.user.email} onToken={setInvitation} onClose={()=>{setInvitation('');setJoinOpen(false);}} onAccepted={async id=>{const value=await api<Me>('/api/me');if(!value.tenants.some(t=>t.id===id))throw new Error('membership_unavailable');setCsrf(value.csrf_token);setMe(value);changeCompany(id);setInvitation('');setJoinOpen(false);setTab('members');setRefresh(v=>v+1);}} onSwitchAccount={async()=>{await api('/api/auth/logout',{method:'POST',body:'{}'});analytics.current?.destroy();setCsrf('');setError('');setMe(null);}}/></Suspense>;
   return (
     <div className="app-shell">
       <aside className="sidebar" inert={showCreate || !!detail || !!timelineUser}>
@@ -591,8 +606,7 @@ export default function App() {
             aria-label="选择公司"
             value={tenantId}
             onChange={(e) => {
-              setTenantId(e.target.value);
-              setNotice("");
+              changeCompany(e.target.value);
             }}
           >
             {me.tenants.map((t) => (
@@ -1344,3 +1358,4 @@ export default function App() {
     </div>
   );
 }
+
