@@ -6,6 +6,13 @@ await ensureTopics();
 const producer=kafka.producer({idempotent:true,maxInFlightRequests:1});
 await producer.connect();
 let connected=true;
+const admin=kafka.admin();await admin.connect();
+let probing=false;
+const probe=setInterval(async()=>{
+  if(probing)return;probing=true;
+  try{await admin.fetchTopicMetadata({topics:[eventsTopic]});connected=true;}catch{connected=false;}finally{probing=false;}
+},5000);
+probe.unref();
 producer.on('producer.disconnect',()=>{connected=false;});
 producer.on('producer.connect',()=>{connected=true;});
 const app=createApp({ready:()=>connected,publish:async records=>{
@@ -13,4 +20,4 @@ const app=createApp({ready:()=>connected,publish:async records=>{
 }});
 const server=serve({fetch:app.fetch,port:Number(process.env.PORT||3000),hostname:process.env.HOST||'127.0.0.1'});
 console.log(JSON.stringify({code:'api_ready'}));
-for(const signal of ['SIGTERM','SIGINT'] as const) process.once(signal,()=>{server.close(async()=>{await producer.disconnect();await pool.end();process.exit(0);});});
+for(const signal of ['SIGTERM','SIGINT'] as const) process.once(signal,()=>{clearInterval(probe);server.close(async()=>{await admin.disconnect();await producer.disconnect();await pool.end();process.exit(0);});});
