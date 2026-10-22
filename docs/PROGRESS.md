@@ -666,3 +666,11 @@ schema17增加逻辑30天事件视图、全局过期索引及可显式启用的W
 130项单测曾完整通过；最终授权代次调整后针对三项授权测试/类型/构建通过。最终构建Browser gzip5882、Node6845字节。Chrome155/Windows真实IndexedDB完整复测passed:true：重复grant不打断合法采集、跨标签页撤回、重开保持撤回、显式grant及其他页不自动恢复、关闭重开保留ID/模拟202清空。传输stub不替代服务端Kafka证据；最终80秒性能对照进行中，结果另记。首次复测因旧页面缓存旧ESM与新页加载新版混合而失败，已使复现函数先完整导航重新加载构建后通过；未将混合版本误当新版验收。
 
 步骤97最终构建性能：Chrome155/Windows/20逻辑处理器/浏览器报告16GiB，80秒三组对照全程可见；20EPS1200条全部queued-persistent，同步p95/p99=0.4/0.6ms，持久完成p95/p99=3.4/6.5ms，长任务0/诊断0/最终队列0，passed:true。Browser gzip5882/Node6845。传输仍内存202，非网络或Kafka吞吐。GitHub Actions39874079796（34aecd3）verify与postgres均success，130项完整单测及5套真实PG控制器全部通过。真实SDK生命周期函数与最终构建复测通过。当前/上一版多浏览器及真实移动设备矩阵尚未完成。
+
+### 步骤 98：schema16活动聚合容量完成、对账与清理
+
+实际生成器原会话退出0，UTC23:20:21.065–23:50:21.076共1800.011秒：1800条唯一事件全部确认、35次额外重复请求、0积压/未可见/错误；接入p95=228.99ms、可见1448ms、趋势642.74ms。上传原JSON并冻结187帧样本，183/183有效帧覆盖完整窗口，SHA/UTC毫秒/固定配置一致，evidenceValid/configurationChecked均true。无容器替换/重启/OOM，CPU空闲77.21%、可用内存最低291.25MiB、磁盘64.28%；Swap换入15.46/换出3.00MiB，117活动区间、连续最长451.41秒。**链路通过，持续Swap使PRD资源门槛仍未通过**，不放宽确认标准或宣称生产高并发。
+
+冻结后真实PG逐ID verify：raw/dedup/聚合任务/已处理任务/可见桶均1800，DLQ0。全局Kafka两分区high=committed=5605/5108，lag0，PG进度check通过。仅清理本次公司/项目/用户/数据及两端夹具凭据；除预期全局消费位点推进外，所有原关系旧字段和数量hash均与步骤89升级前一致。当前游标合计10713（原4398+4476，加前次4条UI及本轮1835条）。HTTPS ready。
+
+证据/opt/ccpanel/shared/capacity-integrity.HMjyru；工作站.local/capacity-schema16-{result,resource-report,baseline,final,final-offsets}.json、samples.jsonl、after-cleanup.jsonl。服务器仍m4-dashboard-001/schema16，步骤92–97新代码尚未部署。本轮不包含schema17维护，未来部署需单独验证，不借用本轮资源结论。UTC23:53:02复核采样器inactive/dead、Result=success、ExecMainStatus=0；原33分钟时长自然结束，未停止/重启。

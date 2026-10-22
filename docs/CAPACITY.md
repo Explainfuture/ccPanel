@@ -159,6 +159,28 @@ UTC21:44:22.648–22:14:23.187，实际窗口1800.539秒，仍为m4-integrity-00
 
 UTC22:17:19实际复核本轮有限采样器为inactive/dead、Result=success、ExecMainStatus=0；它按原33分钟配置自行退出，无人为停止或重启。
 
-## schema16活动聚合基线（进行中）
+## schema16活动聚合基线（已完成，资源未通过）
 
-新独立运行使用m4-dashboard-001/schema16，label=schema16-active-aggregation，固定配置仍为swappiness10与相同容器限额。采样器ccpanel-capacity-20261022231949，证据目录/opt/ccpanel/shared/capacity-integrity.HMjyru；生成器输出.local/capacity-schema16-result.json。夹具初始化容器先退出，再等待两份新宿主机帧后开始1EPS/趋势10秒/30分钟负载；本轮包含实际聚合处理器，结尾将额外核对已处理任务及桶计数。当前只记录启动事实，旧失败结论保持到完整结束对账与资源分析。
+新独立运行使用m4-dashboard-001/schema16，label=schema16-active-aggregation，固定配置仍为swappiness10与相同容器限额。采样器ccpanel-capacity-20261022231949，证据目录/opt/ccpanel/shared/capacity-integrity.HMjyru；生成器输出.local/capacity-schema16-result.json。夹具初始化容器先退出，再等待两份新宿主机帧后开始1EPS/趋势10秒/30分钟负载；本轮包含实际聚合处理器，结尾将额外核对已处理任务及桶计数。以下记录本轮实际完整结束对账及资源分析。
+
+
+UTC2026-10-22 23:20:21.065至23:50:21.076，实际1800.011秒，生成器原会话正常退出0。未经修改的原JSON上传并冻结187帧样本，报告选择183/183有效帧完整覆盖窗口，SHA与结束UTC毫秒一致，evidenceValid/configurationChecked均true；运行期间配置/实例未替换。
+
+| 指标 | 实测 |
+|---|---:|
+| 唯一事件 / 额外重复确认 | 1800 / 35 |
+| raw / dedup / 聚合任务 / 已处理聚合 | 1800 / 1800 / 1800 / 1800 |
+| 可见桶事件总数 / DLQ / 未可见 / 剩余积压 / 错误 | 1800 / 0 / 0 / 0 / 0 |
+| 接入 / 端到端可见 / 趋势查询 p95 | 228.99 / 1448 / 642.74 ms |
+| 最大生成调度延迟 | 17ms |
+| CPU空闲 / 最低可用内存 | 77.21% / 291.25MiB |
+| API / Worker / Kafka / PG观察内存峰值 | 57.01 / 31.55 / 248.59 / 90.43MiB |
+| 最低磁盘可用比例 | 64.28% |
+| 容器替换 / 重启 / OOM | 0 / 0 / 0 |
+| Swap换入 / 换出 | 15.46 / 3.00MiB |
+| Swap活动增量区间 / 最长连续活动 | 117 / 451.41秒 |
+| Swap换入 / 换出最高速率 | 507.31 / 282.02KiB/s |
+
+链路、重试去重、唯一ID及活动聚合对账通过；持续Swap仍存在，**PRD资源门槛未通过**，conservativeResourcePass=false。不得以较低换入总量忽略更长连续活动，也不将单机实验外推为生产高可用或高并发承诺。本轮没有schema17保留/分区维护，后续版本不能直接沿用其资源结论。
+
+原始证据在服务器/opt/ccpanel/shared/capacity-integrity.HMjyru，以及工作站.local/capacity-schema16-{result,resource-report,baseline,final}.json和capacity-schema16-samples.jsonl。结束快照冻结后才运行verify/cleanup；1800个稳定event_id全部匹配，活动聚合任务与可见桶1800、0DLQ。仅删除本次合成公司/项目/账号及两端凭据，所有原关系旧字段/数量指纹与升级前一致，唯一预期变化为全局consumer_progress（包括前次4条UI夹具及本轮1835条Kafka记录）；当前next_offset合计10713，实际进度完整性检查通过、HTTPS就绪。UTC23:53:02实际复核原有限采样器inactive/dead、Result=success、ExecMainStatus=0，按原33分钟配置自然结束，未人为停止或重启。
