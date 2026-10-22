@@ -470,3 +470,11 @@ Worker启动和每5秒检查独立PG进度，每条事件在原始数据或DLQ�
 新增受环境保护的一次性apply/check/rollback脚本，先保存原unit和swappiness到root受限JSON，再停用fwupd刷新timer、停止并屏蔽fwupd和multipathd/socket，swappiness60改10并持久化。保留APT系统更新timer、SSH、fail2ban和遥测；没有更改Kafka/PG/API限额或重启平台，没有清空swap、drop_caches、改WAL/fsync或确认规则。脚本校验磁盘用途和初始状态，拒绝覆盖原记录；回退可处理部分应用状态，按原unit启用/运行状态及内核值恢复，但尚未在现行机执行回退演练。
 
 现行机apply完成，四个目标unit状态符合预期，swappiness10；APT两timer仍active/enabled，SSH/fail2ban/遥测active。原始业务指纹、消费进度与HTTPS均通过。快照可用内存约350MiB、swap已用273MiB，仅为调整后观察，资源门槛仍未通过，下一轮必须固定该配置重新测量；不提高流量。当前运行继续schema10，聚合/邀请仍待部署。远程bash语法与git差异检查通过。
+
+### 步骤 70：启动调整后同条件容量复测并核验配置不变
+
+新增可复用容量启动脚本，只接受预期运行版本、没有活跃容量服务且无残留合成公司；生成独立目录、容器生命周期基线和有限33分钟采样，再创建本次测试公司。工作站继续原1800秒/1EPS、每10秒趋势查询与稳定ID重试负载，未提高速率。实际启动服务ccpanel-capacity-20261022214411，首两帧有效、active/running，HTTPS正常；生成器为新会话，旧测试没有重启或覆盖。
+
+新增边界配置证明：仅保存非敏感内核值、服务状态、容器资源限额和API/Worker/Compose文件hash。结束导出再次获取相同字段，报告将内容缺失/变化列为无效证据；保留旧格式运行的兼容读取，但新轮configurationChecked必须为true。排序比较忽略JSON键顺序，CLI回归实际验证配置变化会拒绝通过。109项测试、类型检查、Python/远程bash语法与差异检查通过。
+
+证据路径及当前待验证状态见CAPACITY。本轮只启动及确认运行，未宣称内存优化有效或资源门槛通过；运行平台继续schema10，聚合、邀请等本地新功能不在服务器部署。当前不执行额外PG测试或修改服务器配置。

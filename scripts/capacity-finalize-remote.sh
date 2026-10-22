@@ -30,6 +30,8 @@ for name in ['api','worker','kafka','postgres']:
     values=subprocess.check_output(['docker','inspect','--format',fmt,'ccpanel-'+name+'-1'],text=True).strip().split('|')
     states[name]={'id':json.loads(values[0]),'restartCount':int(values[1]),'oomKilled':json.loads(values[2]),'startedAt':json.loads(values[3]),'running':json.loads(values[4])}
 final={'loadFinishedAt':finish,'capturedAt':int(time.time()*1000),'releaseStart':(root/'release.txt').read_text().strip(),'release':str(pathlib.Path('/opt/ccpanel/current').resolve()),'containers':states,'samplesSha256':hashlib.sha256(raw).hexdigest()}
+if (root/'configuration.json').exists():
+    final['configuration']=json.loads(subprocess.check_output(['/usr/bin/python3','/opt/ccpanel/shared/capacity-host-state.py'],text=True))
 def publish(name,data):
     temporary=root/(name+'.tmp')
     with temporary.open('wb') as file:file.write(data);file.flush();os.fsync(file.fileno())

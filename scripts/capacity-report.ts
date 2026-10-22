@@ -5,6 +5,7 @@ export type ContainerState={id:string;restartCount:number;oomKilled:boolean;star
 export interface CapacityEvidence {
   startedAt:number;finishedAt:number;releaseStart:string;releaseEnd:string;
   frames:CapacityFrame[];baseline:Record<string,ContainerState>;final:Record<string,ContainerState>;
+  configurationStart?:unknown;configurationEnd?:unknown;
 }
 const names=['api','worker','kafka','postgres'] as const;
 const integer=(value:unknown):value is number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0;
@@ -12,6 +13,13 @@ const round=(value:number)=>Math.round(value*100)/100;
 export function capacityReport(input:CapacityEvidence){
   if(!integer(input.startedAt)||!integer(input.finishedAt)||input.finishedAt<=input.startedAt)throw new Error('invalid_capacity_window');
   const reasons=new Set<string>();
+  const configurationChecked=input.configurationStart!==undefined||input.configurationEnd!==undefined;
+  const canonical=(value:unknown):string=>value&&typeof value==='object'&&!Array.isArray(value)?'{'+Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>JSON.stringify(k)+':'+canonical(v)).join(',')+'}':JSON.stringify(value);
+  if(configurationChecked){
+    const object=(value:unknown)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length>0;
+    if(!object(input.configurationStart)||!object(input.configurationEnd))reasons.add('configuration_missing');
+    else if(canonical(input.configurationStart)!==canonical(input.configurationEnd))reasons.add('configuration_changed');
+  }
   if(input.frames.some((f,i)=>i>0&&f.capturedAt<=input.frames[i-1]!.capturedAt))reasons.add('invalid_capture_order');
   if(!input.releaseStart||input.releaseStart!==input.releaseEnd)reasons.add('release_changed');
   const sorted=[...input.frames].sort((a,b)=>a.capturedAt-b.capturedAt);
@@ -76,7 +84,7 @@ export function capacityReport(input:CapacityEvidence){
   if(!valid.length||valid[0]!.host.sampledAt>input.startedAt||valid.at(-1)!.host.sampledAt<input.finishedAt)reasons.add('host_window_not_covered');
   if(valid.length!==frames.length||valid.length<2||totalTicks===0n)reasons.add('insufficient_valid_samples');
   const evidenceValid=reasons.size===0,oomKills=Object.values(oomDeltas).reduce((a,b)=>a+b,0),oomCount=Object.values(oomEvents).reduce((a,b)=>a+b,0);
-  return {evidenceValid,reasons:[...reasons].sort(),durationSeconds:(input.finishedAt-input.startedAt)/1000,captureFrames:frames.length,validFrames:valid.length,
+  return {evidenceValid,reasons:[...reasons].sort(),configurationChecked,durationSeconds:(input.finishedAt-input.startedAt)/1000,captureFrames:frames.length,validFrames:valid.length,
     cpuIdlePercent:totalTicks?round(Number(idleTicks*10000n/totalTicks)/100):null,memoryAvailableMinBytes:availableMin?.toString()??null,containerMemoryPeakBytes:peaks,
     swapInBytes:swapIn.toString(),swapOutBytes:swapOut.toString(),swapActiveIntervals:activeIntervals,longestSwapActivitySeconds:round(longestRun),swapInMaxKiBPerSecond:round(maxIn),swapOutMaxKiBPerSecond:round(maxOut),diskAvailableMinPercent:valid.length?round(diskFreeMin):null,restarts,oomObserved:oom||oomKills>0||oomCount>0,oomKillDeltas:oomDeltas,oomEventDeltas:oomEvents,
     // Zero swap is a sufficient conservative pass. Any activity still needs

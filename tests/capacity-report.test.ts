@@ -45,10 +45,12 @@ it('CLI binds exact UTC milliseconds and checksum to the exported source bytes',
   const dir=mkdtempSync(join(tmpdir(),'ccpanel-capacity-cli-')),data=fixture();
   try{
     const raw=data.frames.map(f=>JSON.stringify(f)).join('\n')+'\n';
-    const final={containers:data.final,release:data.releaseEnd,releaseStart:data.releaseStart,loadFinishedAt:data.finishedAt,samplesSha256:createHash('sha256').update(raw).digest('hex')};
-    writeFileSync(join(dir,'samples'),raw);writeFileSync(join(dir,'load'),JSON.stringify({started_at:new Date(data.startedAt).toISOString(),completed_at:new Date(data.finishedAt).toISOString()}));writeFileSync(join(dir,'baseline'),JSON.stringify(data.baseline));writeFileSync(join(dir,'final'),JSON.stringify(final));
+    const configuration={swappiness:10,limits:{api:'128m',worker:'96m'}};
+    const final={containers:data.final,release:data.releaseEnd,releaseStart:data.releaseStart,loadFinishedAt:data.finishedAt,samplesSha256:createHash('sha256').update(raw).digest('hex'),configuration};
+    writeFileSync(join(dir,'samples'),raw);writeFileSync(join(dir,'load'),JSON.stringify({started_at:new Date(data.startedAt).toISOString(),completed_at:new Date(data.finishedAt).toISOString()}));writeFileSync(join(dir,'baseline'),JSON.stringify({containers:data.baseline,release:data.releaseStart,configuration}));writeFileSync(join(dir,'final'),JSON.stringify(final));
     const run=(name:string)=>execFileSync(process.execPath,['--import','tsx','scripts/capacity-report-cli.ts',...['samples','load','baseline','final',name].map(p=>join(dir,p))],{stdio:'pipe'});
-    run('valid');expect(JSON.parse(readFileSync(join(dir,'valid'),'utf8')).evidenceValid).toBe(true);
+    run('valid');const valid=JSON.parse(readFileSync(join(dir,'valid'),'utf8'));expect(valid.evidenceValid).toBe(true);expect(valid.configurationChecked).toBe(true);
+    writeFileSync(join(dir,'final'),JSON.stringify({...final,configuration:{...configuration,swappiness:60}}));expect(()=>run('changed-config')).toThrow();expect(JSON.parse(readFileSync(join(dir,'changed-config'),'utf8')).reasons).toContain('configuration_changed');
     for(const drift of [38,8*3600000]){writeFileSync(join(dir,'final'),JSON.stringify({...final,loadFinishedAt:data.finishedAt+drift}));expect(()=>run('invalid-window')).toThrow();}
     writeFileSync(join(dir,'final'),JSON.stringify(final));writeFileSync(join(dir,'samples'),raw.replace('300000000','299999999'));expect(()=>run('invalid-hash')).toThrow();
     writeFileSync(join(dir,'samples'),raw.slice(0,-1));expect(()=>run('incomplete')).toThrow();
@@ -56,4 +58,10 @@ it('CLI binds exact UTC milliseconds and checksum to the exported source bytes',
     if(dirname(resolve(dir))!==resolve(tmpdir())||!dir.startsWith(join(tmpdir(),'ccpanel-capacity-cli-')))throw new Error('unexpected_temporary_directory');
     rmSync(dir,{recursive:true});
   }
+});
+it('invalidates changed or missing configuration while ignoring JSON object key order',()=>{
+  const data=fixture();data.configurationStart={swappiness:10,limits:{worker:'96m',api:'128m'}};data.configurationEnd={limits:{api:'128m',worker:'96m'},swappiness:10};
+  expect(capacityReport(data).evidenceValid).toBe(true);expect(capacityReport(data).configurationChecked).toBe(true);
+  data.configurationEnd={swappiness:60,limits:{worker:'96m',api:'128m'}};expect(capacityReport(data).reasons).toContain('configuration_changed');
+  data.configurationEnd=undefined;expect(capacityReport(data).reasons).toContain('configuration_missing');
 });

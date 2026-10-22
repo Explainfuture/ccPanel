@@ -11,6 +11,6 @@ const frames=bytes.toString('utf8').trim().split('\n').map(line=>JSON.parse(line
 if(final.loadFinishedAt!==Date.parse(load.completed_at))throw new Error('capacity_window_mismatch');
 // Original sampler stores baseline containers and release.txt separately. The
 // final metadata export may join release.txt as releaseStart without guessing.
-const report=capacityReport({startedAt:Date.parse(load.started_at),finishedAt:Date.parse(load.completed_at),frames,baseline:baseline.containers??baseline,final:final.containers,releaseStart:baseline.release??final.releaseStart,releaseEnd:final.release});
+const report=capacityReport({startedAt:Date.parse(load.started_at),finishedAt:Date.parse(load.completed_at),frames,baseline:baseline.containers??baseline,final:final.containers,releaseStart:baseline.release??final.releaseStart,releaseEnd:final.release,configurationStart:baseline.configuration,configurationEnd:final.configuration});
 writeFileSync(output,JSON.stringify(report,null,2),{mode:0o600,flag:'wx'});console.log(JSON.stringify(report));
 if(!report.evidenceValid)process.exitCode=1;

@@ -126,3 +126,11 @@ UTC 2026-10-22 21:02:08.030–21:32:08.038，1800秒，固定m4-integrity-001/sc
 首轮PowerShell时间转换丢失UTC偏移和毫秒，导出时间偏差8小时38ms，被CLI的窗口一致性校验拒绝，没有产生错误通过报告。保留初始错误导出，改为直接读取负载JSON中的UTC completed_at；确认初始183帧本来就覆盖真实UTC窗口，再正确导出并核对摘要。工作站证据为`.local/capacity-integrity-result.json`、`capacity-integrity-resource-report.json`与相应快照/状态文件，服务器保留同目录证据。端上与服务器测试凭据已移除。
 
 窗口结束后的只读进程快照显示Kafka Java进程及fwupd有较多换出页，swappiness=60；这只是后续定位线索，不足以归因全部持续换页。后续需评估系统服务用途、JVM与内核内存策略，调整后重新测量；不通过关闭WAL/fsync、跳过确认或改写验收标准换取表面通过。
+
+## swappiness10 专用KVM配置复测（运行中）
+
+完成PROGRESS步骤69的环境核实与可回退配置后，固定同一m4-integrity-001/schema10，以同一工作站生成器启动新1800秒/1EPS复测。服务为ccpanel-capacity-20261022214411，证据目录`/opt/ccpanel/shared/capacity-integrity.Hivo2c`；工作站结果目标`.local/capacity-tuned-result.json`。开始时实际服务active/running、首两帧有效，生成器已启动；尚无最终资源结论。
+
+本轮起始基线额外保存swappiness、页大小/总内存、相关unit状态、四个容器memory.max/memory.swap.max/cpu.max，以及API/Worker/Compose文件摘要。结束快照重新独立采集，报告按排序后的JSON内容比较；缺失或变化使资源证据无效，不因键顺序不同误报。配置读取不包含环境、进程参数、数据库URL或完整Docker配置。启动脚本拒绝已有运行中的容量服务或残留测试公司，生成新目录，不重用上次数据。
+
+109项测试与类型检查通过，包括配置变化/缺失及CLI实际接线；Python与远程bash语法检查通过。结束时必须使用新版capacity-report-cli（本地已构建为`.local/capacity-tuned-report.mjs`），避免旧产物缺少配置核验。本轮不变更部署、限额或内核配置，不启动额外数据库测试；原未通过结论保持到实际完成和重新对账。
