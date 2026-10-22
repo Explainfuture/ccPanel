@@ -41,6 +41,7 @@ export type PressureReason = 'pressure_probe_invalid' | 'pressure_probe_stale' |
   'disk_probe_stale' | 'disk_space_low' | 'disk_inodes_low' |
   'consumer_offset_unknown' | 'retained_offset_gap' | 'consumer_lag_high' | 'consumer_lag_old';
 export interface PressureDecision {
+  integrityReason:'retained_offset_gap'|'consumer_offset_unknown'|null;
   allowed: boolean;
   reason: PressureReason | null;
   retryAfterSeconds: number;
@@ -83,8 +84,9 @@ const validTime = (time: unknown, now: number): time is number =>
   typeof time === 'number' && Number.isFinite(time) && time >= 0 && time <= now + 1000;
 export function evaluatePressure(input: unknown, policy = defaultPressurePolicy, now = Date.now()): PressureDecision {
   let maxLag: bigint | null = null, totalLag: bigint | null = null, headroom = 0;
+  let integrityReason:PressureDecision['integrityReason']=null;
   const stop = (reason: PressureReason): PressureDecision => ({
-    allowed: false, reason, retryAfterSeconds: reason.startsWith('disk_') ? 30 : 5,
+    allowed: false, reason, integrityReason, retryAfterSeconds: reason.startsWith('disk_') ? 30 : 5,
     maxLagMessages: maxLag?.toString() ?? null,
     totalLagMessages: totalLag?.toString() ?? null, remainingMessages: 0,
   });
@@ -115,6 +117,7 @@ export function evaluatePressure(input: unknown, policy = defaultPressurePolicy,
       totalLag += lag;
       if (lag > 0n && committed < boundary) old = true;
     }
+    integrityReason=unknown?'consumer_offset_unknown':gap?'retained_offset_gap':null;
     const kinds = new Set<string>();
     for (const disk of snapshot.disks) {
       if (!disk || !['kafka', 'postgres'].includes(disk.kind) || kinds.has(disk.kind) || !validTime(disk.sampledAt, now))
@@ -133,6 +136,6 @@ export function evaluatePressure(input: unknown, policy = defaultPressurePolicy,
     if (maxLag >= BigInt(policy.maxLagMessages)) return stop('consumer_lag_high');
     if (old) return stop('consumer_lag_old');
     headroom = policy.maxLagMessages - Number(maxLag);
-    return {allowed: true, reason: null, retryAfterSeconds: 0, maxLagMessages: maxLag.toString(), totalLagMessages: totalLag.toString(), remainingMessages: headroom};
+    return {allowed: true, reason: null, integrityReason, retryAfterSeconds: 0, maxLagMessages: maxLag.toString(), totalLagMessages: totalLag.toString(), remainingMessages: headroom};
   } catch { return stop('pressure_probe_invalid'); }
 }
