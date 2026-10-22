@@ -32,6 +32,10 @@ export async function migrate() {
       ALTER TABLE query_jobs ADD COLUMN IF NOT EXISTS privacy_epoch integer NOT NULL DEFAULT 0;
       ALTER TABLE deletion_jobs ALTER COLUMN user_id DROP NOT NULL;
       ALTER TABLE event_dedup ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'stored' CHECK(status IN ('stored','failed'));
+      CREATE TABLE IF NOT EXISTS replay_jobs(id uuid NOT NULL,tenant_id uuid NOT NULL,project_id uuid NOT NULL,user_id uuid NOT NULL REFERENCES users(id),request_hash text NOT NULL,reason text NOT NULL,status text NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','completed','failed')),error text,created_at timestamptz NOT NULL DEFAULT clock_timestamp(),checked_at timestamptz NOT NULL DEFAULT clock_timestamp(),next_attempt_at timestamptz NOT NULL DEFAULT clock_timestamp(),finished_at timestamptz,PRIMARY KEY(project_id,id),FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
+      CREATE TABLE IF NOT EXISTS replay_items(tenant_id uuid NOT NULL,project_id uuid NOT NULL,job_id uuid NOT NULL,record_id text NOT NULL,event_id uuid NOT NULL,payload_hash text NOT NULL,status text NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','published','stored','duplicate','suppressed','rejected','failed')),attempts integer NOT NULL DEFAULT 0,error text,topic text,partition integer,message_offset text,outcome_dlq_id text,updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),PRIMARY KEY(project_id,job_id,record_id),FOREIGN KEY(project_id,job_id) REFERENCES replay_jobs(project_id,id),FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
+      CREATE INDEX IF NOT EXISTS replay_jobs_queue ON replay_jobs(next_attempt_at,checked_at) WHERE status IN ('queued','running');
+      CREATE INDEX IF NOT EXISTS replay_items_source ON replay_items(project_id,record_id,updated_at DESC);
       CREATE TABLE IF NOT EXISTS recovery_gate(id boolean PRIMARY KEY DEFAULT true CHECK(id),blocked boolean NOT NULL DEFAULT true,ledger_exported_at timestamptz,updated_at timestamptz NOT NULL DEFAULT clock_timestamp());
       INSERT INTO recovery_gate(id) VALUES(true) ON CONFLICT DO NOTHING;
       CREATE TABLE IF NOT EXISTS recovery_import_scopes(ledger_hash text NOT NULL,tenant_id uuid NOT NULL,project_id uuid NOT NULL,PRIMARY KEY(ledger_hash,tenant_id,project_id),FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
@@ -60,6 +64,7 @@ export async function migrate() {
       INSERT INTO schema_migrations(version) VALUES(5) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(6) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(7) ON CONFLICT DO NOTHING;
+      INSERT INTO schema_migrations(version) VALUES(8) ON CONFLICT DO NOTHING;
     `);
     const now = new Date();
     for (let i = -2; i <= 2; i++) {

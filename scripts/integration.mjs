@@ -112,7 +112,7 @@ try {
 } finally {
   await pool.query('DELETE FROM tenant_memberships WHERE user_id=ANY($1::uuid[])',[fixtures.map(f=>f.user)]);
   for(const f of fixtures) {
-    for(const table of ['query_jobs','dashboards','reports','dlq_records','aggregation_jobs','ingest_metrics','events','event_dedup','identity_links','event_schemas','write_keys','audit_logs','projects','tenant_memberships']) await pool.query(`DELETE FROM ${table} WHERE tenant_id=$1`,[f.tenant]);
+    for(const table of ['replay_items','replay_jobs','query_jobs','dashboards','reports','dlq_records','aggregation_jobs','ingest_metrics','events','event_dedup','identity_links','event_schemas','write_keys','audit_logs','projects','tenant_memberships']) await pool.query(`DELETE FROM ${table} WHERE tenant_id=$1`,[f.tenant]);
     await pool.query('DELETE FROM sessions WHERE user_id=$1',[f.user]);await pool.query('DELETE FROM users WHERE id=$1',[f.user]);await pool.query('DELETE FROM tenants WHERE id=$1',[f.tenant]);
   }
   await pool.end();

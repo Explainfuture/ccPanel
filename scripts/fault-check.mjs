@@ -38,7 +38,7 @@ try{
       const end=Date.now()+25000;while(true){if((await pool.query("SELECT 1 FROM dlq_records WHERE tenant_id=$1 AND reason='invalid_event_id'",[state.tenant])).rowCount){console.log('PASS: poison event isolated in DLQ');break;}if(Date.now()>end)throw new Error('Missing poison DLQ record');await new Promise(r=>setTimeout(r,500));}
     }else if(mode==='cleanup'){
       assert.equal((await pool.query("SELECT 1 FROM tenants t JOIN projects p ON p.tenant_id=t.id WHERE t.id=$1 AND p.id=$2 AND t.name='FAULT TEST TEMP' AND p.name='FAULT TEST TEMP'",[state.tenant,state.project])).rowCount,1,'only the synthetic fault fixture can be cleaned');
-      for(const table of ['dlq_records','aggregation_jobs','ingest_metrics','events','event_dedup','write_keys','projects'])await pool.query(`DELETE FROM ${table} WHERE tenant_id=$1`,[state.tenant]);await pool.query('DELETE FROM tenants WHERE id=$1',[state.tenant]);await unlink(file);console.log('Fault fixture cleaned');
+      for(const table of ['replay_items','replay_jobs','dlq_records','aggregation_jobs','ingest_metrics','events','event_dedup','write_keys','projects'])await pool.query(`DELETE FROM ${table} WHERE tenant_id=$1`,[state.tenant]);await pool.query('DELETE FROM tenants WHERE id=$1',[state.tenant]);await unlink(file);console.log('Fault fixture cleaned');
     }else throw new Error('Unknown fault mode');
   }
 }finally{await pool.end();}

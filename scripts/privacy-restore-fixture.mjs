@@ -89,8 +89,8 @@ try{
       const members=(await pool.query('SELECT user_id FROM tenant_memberships WHERE tenant_id=$1',[f.tenant])).rows.map(r=>r.user_id);
       const safe=await pool.query("SELECT id FROM users WHERE id=ANY($1::uuid[]) AND email LIKE 'privacy-restore-%@integration.invalid'",[members]);assert.equal(safe.rowCount,members.length,'only temporary fixture accounts');
       assert.equal((await pool.query('SELECT 1 FROM tenant_memberships WHERE user_id=ANY($1::uuid[]) AND tenant_id<>$2',[members,f.tenant])).rowCount,0,'no shared real accounts');
-      for(const table of ['recovery_import_scopes','deletion_barriers','deletion_jobs','query_jobs','dashboards','reports','dlq_records','aggregation_jobs','ingest_metrics','events','event_dedup','identity_links','event_schemas','write_keys','audit_logs','tenant_memberships','projects']){
-        if(table==='recovery_import_scopes'&&!(await pool.query("SELECT to_regclass('public.recovery_import_scopes') AS relation")).rows[0].relation)continue;
+      for(const table of ['replay_items','replay_jobs','recovery_import_scopes','deletion_barriers','deletion_jobs','query_jobs','dashboards','reports','dlq_records','aggregation_jobs','ingest_metrics','events','event_dedup','identity_links','event_schemas','write_keys','audit_logs','tenant_memberships','projects']){
+        if(['replay_items','replay_jobs','recovery_import_scopes'].includes(table)&&!(await pool.query('SELECT to_regclass($1) AS relation',['public.'+table])).rows[0].relation)continue;
         await pool.query(`DELETE FROM ${table} WHERE tenant_id=$1`,[f.tenant]);
       }
       await pool.query('DELETE FROM sessions WHERE user_id=ANY($1::uuid[])',[members]);await pool.query('DELETE FROM users WHERE id=ANY($1::uuid[])',[members]);await pool.query('DELETE FROM tenants WHERE id=$1',[f.tenant]);console.log('Privacy restore fixture cleaned');

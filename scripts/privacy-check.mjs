@@ -77,7 +77,7 @@ try{
 }finally{
   await producer.disconnect();
   for(const f of fixtures){
-    for(const table of ['deletion_barriers','deletion_jobs','query_jobs','dashboards','reports','dlq_records','aggregation_jobs','ingest_metrics','events','event_dedup','identity_links','event_schemas','write_keys','audit_logs','tenant_memberships','projects'])await pool.query(`DELETE FROM ${table} WHERE tenant_id=$1`,[f.tenant]);
+    for(const table of ['replay_items','replay_jobs','deletion_barriers','deletion_jobs','query_jobs','dashboards','reports','dlq_records','aggregation_jobs','ingest_metrics','events','event_dedup','identity_links','event_schemas','write_keys','audit_logs','tenant_memberships','projects'])await pool.query(`DELETE FROM ${table} WHERE tenant_id=$1`,[f.tenant]);
     await pool.query('DELETE FROM sessions WHERE user_id=$1',[f.user]);await pool.query('DELETE FROM users WHERE id=$1',[f.user]);await pool.query('DELETE FROM tenants WHERE id=$1',[f.tenant]);
   }
   await pool.end();

@@ -7,6 +7,7 @@ import { registerSchemaRoutes } from '../../../packages/server/src/schema-routes
 import { registerUserRoutes } from '../../../packages/server/src/user-routes';
 import { registerQueryJobs } from '../../../packages/server/src/query-jobs';
 import { registerDeletions } from '../../../packages/server/src/deletion-service';
+import { registerReplayRoutes } from '../../../packages/server/src/dlq-replay';
 import { lockProjectPrivacy } from '../../../packages/server/src/privacy';
 import { checkRequired } from '../../../packages/server/src/project-schema';
 import { projectQueryFlights as queryFlights } from '../../../packages/server/src/query-budget';
@@ -532,5 +533,6 @@ export function createApp(deps: AppDeps) {
   registerUserRoutes(app);
   registerQueryJobs(app);
   registerDeletions(app);
+  registerReplayRoutes(app);
   return app;
 }

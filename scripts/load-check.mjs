@@ -209,6 +209,8 @@ try {
   if (!result.passed) process.exitCode = 1;
 } finally {
   for (const table of [
+    "replay_items",
+    "replay_jobs",
     "dlq_records",
     "aggregation_jobs",
     "ingest_metrics",

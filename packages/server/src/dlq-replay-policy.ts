@@ -17,7 +17,8 @@ export interface ReplayRegistration {payload_hash:string;created_at:Date|string}
 // This policy does not grant authorization or bypass deletion barriers. The
 // caller must scope the DLQ row and registration and hold the project privacy
 // lock while checking current barriers and enqueueing the task.
-export function replayCandidate(input:{payload:unknown;reason:string;tenant:string;project:string;registration:ReplayRegistration|null},now=Date.now()){
+export interface ReplayPayloadInput {payload:unknown;reason:string;tenant:string;project:string}
+export function readReplayPayload(input:ReplayPayloadInput,now=Date.now()){
   if(['payload_conflict','identity_conflict','scope_mismatch'].includes(input.reason))return reject('manual_review_required');
   const p=input.payload as Record<string,unknown>|null;
   if(!p||typeof p!=='object'||p.redacted===true)return reject('payload_unavailable');
@@ -31,6 +32,10 @@ export function replayCandidate(input:{payload:unknown;reason:string;tenant:stri
   if(record.validation!==undefined&&(!record.validation||typeof record.validation!=='object'||typeof record.validation.registered!=='boolean'||!Number.isSafeInteger(record.validation.version)||record.validation.version<0))return reject('invalid_replay_envelope');
   const eventTime=Date.parse(record.event.event_time),received=typeof record.received_at==='string'&&/Z$/.test(record.received_at)?Date.parse(record.received_at):NaN;
   if(!Number.isFinite(received)||received>now+300000||eventTime>now+300000||eventTime<now-30*day||received<now-30*day)return reject('replay_window_expired');
+  return {record,raw};
+}
+export function replayCandidate(input:ReplayPayloadInput&{registration:ReplayRegistration|null},now=Date.now()){
+  const {record,raw}=readReplayPayload(input,now);
   const registration=input.registration;
   if(!registration)return reject('dedup_registration_missing');
   const created=new Date(registration.created_at).getTime();
