@@ -96,7 +96,7 @@ try {
   const types=await fetch(base+root+'/schemas/types',{headers:h});assert.equal(types.status,200);assert.match(await types.text(),/"typed_purchase"/);
   const settings={schema_mode:'strict',timezone:'Asia/Shanghai',origins:[origin]};
   assert.equal((await fetch(base+root+'/settings',{method:'PUT',headers:{...h,'content-type':'application/json'},body:JSON.stringify(settings)})).status,200);
-  const bad=await send(a,{...e,event_id:randomUUID(),event_name:'typed_purchase',properties:{amount:'1',items:[],note:null}});assert.equal(bad.status,400);assert.equal(bad.headers.get('Access-Control-Allow-Origin'),'*','cross-origin caller can inspect permanent validation errors');
+  const bad=await send(a,{...e,event_id:randomUUID(),event_name:'typed_purchase',properties:{amount:'1',items:[],note:null}});assert.equal(bad.status,400);assert.equal(bad.headers.get('Access-Control-Allow-Origin'),origin,'allowed cross-origin caller can inspect permanent validation errors');
   assert.equal((await send(a,{...e,event_id:randomUUID(),event_name:'unregistered',properties:{}})).status,400,'strict registry rejects unknown event');
   const typed={...e,event_id:randomUUID(),event_name:'typed_purchase',properties:{amount:1,items:[],note:null}};assert.equal((await send(a,typed)).status,202);
   await waitFor(async()=>{const r=await pool.query('SELECT registered,project_schema_version FROM events WHERE tenant_id=$1 AND project_id=$2 AND event_id=$3',[a.tenant,a.project,typed.event_id]);return r.rowCount===1&&r.rows[0].registered===true&&r.rows[0].project_schema_version===1;},'accepted schema version persisted');
