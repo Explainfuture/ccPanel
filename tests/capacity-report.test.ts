@@ -3,7 +3,7 @@ import {capacityReport,type CapacityEvidence,type CapacityFrame} from '../script
 const names=['api','worker','kafka','postgres'];
 function fixture():CapacityEvidence{
   const frames:CapacityFrame[]=[0,10000,20000,30000].map((at,i)=>({capturedAt:100000+at,elapsedMs:at,telemetry:{version:1,sampledAt:100000+at,disks:['kafka','postgres'].map(kind=>({kind:kind as 'kafka'|'postgres',sampledAt:100000+at,totalBytes:'1000000000',availableBytes:'700000000',totalInodes:'10000',availableInodes:'9000'})),host:{memoryBytes:{total:'1000000000',available:'300000000',swapTotal:'1000000000',swapFree:'900000000',dirty:'0'},swapInPages:'100',swapOutPages:'20',pageBytes:4096,cpu:{userTicks:String(100+i*20),systemTicks:String(100+i*10),idleTicks:String(100+i*70),ioWaitTicks:'0',stealTicks:'0',totalTicks:String(300+i*100),ticksPerSecond:100},loadAverage:[0.1,0.2,0.3]}},containers:Object.fromEntries(names.map(name=>[name,{memoryBytes:20000000,memoryEvents:{oom:0,oom_kill:0},cpu:{usage_usec:100+i*10000}}]))}));
-  const state=Object.fromEntries(names.map((name,i)=>[name,{id:String(i+1).repeat(64),restartCount:0,oomKilled:false,startedAt:'2026-10-22T00:00:00Z'}]));
+  const state=Object.fromEntries(names.map((name,i)=>[name,{id:String(i+1).repeat(64),restartCount:0,oomKilled:false,startedAt:'2026-10-22T00:00:00Z',running:true}]));
   return{startedAt:100500,finishedAt:129500,releaseStart:'m4-integrity-001',releaseEnd:'m4-integrity-001',frames,baseline:structuredClone(state),final:structuredClone(state)};
 }
 it('reports weighted CPU, actual memory/disk and sufficient quiet-resource evidence',()=>{
@@ -31,4 +31,8 @@ it('invalidates reset counters and distinguishes OOM, restart and replacement',(
 it('reports swap rates and continuous periods without conflating occupied swap with activity',()=>{
   const data=fixture();data.frames[1]!.telemetry!.host.swapInPages='110';data.frames[2]!.telemetry!.host.swapInPages='120';data.frames[3]!.telemetry!.host.swapInPages='120';
   const report=capacityReport(data);expect(report.swapActiveIntervals).toBe(2);expect(report.longestSwapActivitySeconds).toBe(20);expect(report.swapInMaxKiBPerSecond).toBe(4);expect(report.swapReviewRequired).toBe(true);expect(report.conservativeResourcePass).toBe(false);
+});
+it('does not accept stopped containers or missing final running state despite unchanged restart counters',()=>{
+  const stopped=fixture();stopped.final.api!.running=false;const report=capacityReport(stopped);expect(report.evidenceValid).toBe(true);expect(report.notRunning).toEqual(['api']);expect(report.conservativeResourcePass).toBe(false);
+  const unknown=fixture();delete unknown.final.api!.running;expect(capacityReport(unknown).reasons).toContain('container_state_missing');
 });

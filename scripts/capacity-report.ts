@@ -1,7 +1,7 @@
 import {parseHostTelemetry,type HostTelemetry} from '../packages/server/src/host-telemetry';
 type Container={memoryBytes:number;memoryEvents:Record<string,number>;cpu:Record<string,number>};
 export type CapacityFrame={capturedAt:number;elapsedMs:number;error?:string;telemetry?:HostTelemetry;containers?:Record<string,Container>};
-export type ContainerState={id:string;restartCount:number;oomKilled:boolean;startedAt:string};
+export type ContainerState={id:string;restartCount:number;oomKilled:boolean;startedAt:string;running?:boolean};
 export interface CapacityEvidence {
   startedAt:number;finishedAt:number;releaseStart:string;releaseEnd:string;
   frames:CapacityFrame[];baseline:Record<string,ContainerState>;final:Record<string,ContainerState>;
@@ -32,10 +32,11 @@ export function capacityReport(input:CapacityEvidence){
       valid.push({frame,host,containers});
     }catch{reasons.add('invalid_sample');}
   }
-  let restarts=0,oom=false;
+  let restarts=0,oom=false;const notRunning:string[]=[];
   for(const name of names){
     const b=input.baseline[name],f=input.final[name];
-    if(!b||!f||!integer(b.restartCount)||!integer(f.restartCount)||typeof b.oomKilled!=='boolean'||typeof f.oomKilled!=='boolean'||!Number.isFinite(Date.parse(b.startedAt))||!Number.isFinite(Date.parse(f.startedAt))||!/^[a-f0-9]{64}$/.test(b.id)||!/^[a-f0-9]{64}$/.test(f.id)){reasons.add('container_state_missing');continue;}
+    if(!b||!f||!integer(b.restartCount)||!integer(f.restartCount)||typeof b.oomKilled!=='boolean'||typeof f.oomKilled!=='boolean'||typeof f.running!=='boolean'||!Number.isFinite(Date.parse(b.startedAt))||!Number.isFinite(Date.parse(f.startedAt))||!/^[a-f0-9]{64}$/.test(b.id)||!/^[a-f0-9]{64}$/.test(f.id)){reasons.add('container_state_missing');continue;}
+    if(!f.running)notRunning.push(name);
     if(b.id!==f.id||b.startedAt!==f.startedAt||f.restartCount<b.restartCount)reasons.add('container_replaced_or_reset');
     restarts+=Math.max(0,f.restartCount-b.restartCount);oom ||=b.oomKilled||f.oomKilled;
   }
@@ -80,6 +81,7 @@ export function capacityReport(input:CapacityEvidence){
     swapInBytes:swapIn.toString(),swapOutBytes:swapOut.toString(),swapActiveIntervals:activeIntervals,longestSwapActivitySeconds:round(longestRun),swapInMaxKiBPerSecond:round(maxIn),swapOutMaxKiBPerSecond:round(maxOut),diskAvailableMinPercent:valid.length?round(diskFreeMin):null,restarts,oomObserved:oom||oomKills>0||oomCount>0,oomKillDeltas:oomDeltas,oomEventDeltas:oomEvents,
     // Zero swap is a sufficient conservative pass. Any activity still needs
     // explicit assessment against PRD's sustained-activity requirement.
-    conservativeResourcePass:evidenceValid&&restarts===0&&!oom&&oomKills===0&&oomCount===0&&diskFreeMin>=20&&activeIntervals===0,
+    notRunning,
+    conservativeResourcePass:evidenceValid&&notRunning.length===0&&restarts===0&&!oom&&oomKills===0&&oomCount===0&&diskFreeMin>=20&&activeIntervals===0,
     swapReviewRequired:activeIntervals>0};
 }
