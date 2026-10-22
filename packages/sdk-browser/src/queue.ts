@@ -1,9 +1,11 @@
 import { byteLength, type AnalyticsEvent } from '../../schema/src/index';
 export interface QueueRow { event: AnalyticsEvent; bytes: number; created: number; next: number; attempts: number; lease?: string; leaseUntil?: number }
 export interface QueueStats { count: number; bytes: number; oldest: number | null }
+export type RestoredRow=Pick<QueueRow,'created'|'next'|'attempts'>;
 export interface Queue {
   readonly persistent: boolean;
-  add(event: AnalyticsEvent, maxCount: number, maxBytes: number): Promise<boolean>;
+  add(event: AnalyticsEvent, maxCount: number, maxBytes: number,restore?:RestoredRow): Promise<boolean>;
+  recover?():Promise<void>;
   claim(now: number, count: number, maxBytes: number, owner: string): Promise<QueueRow[]>;
   finish(ids: string[], owner: string, retryAt?: number): Promise<void>;
   peek(count: number): Promise<QueueRow[]>;
@@ -14,10 +16,11 @@ export interface Queue {
 export class MemoryQueue implements Queue {
   readonly persistent:boolean=false;
   protected rows=new Map<string,QueueRow>();
-  async add(event:AnalyticsEvent,maxCount:number,maxBytes:number){
+  async add(event:AnalyticsEvent,maxCount:number,maxBytes:number,restore?:RestoredRow){
+    const existing=this.rows.get(event.event_id);if(existing)return JSON.stringify(existing.event)===JSON.stringify(event);
     const bytes=byteLength(event);let currentBytes=0;for(const row of this.rows.values())currentBytes+=row.bytes;
     if(this.rows.size>=maxCount||currentBytes+bytes>maxBytes)return false;
-    this.rows.set(event.event_id,{event,bytes,created:Date.now(),next:0,attempts:0});return true;
+    this.rows.set(event.event_id,{event,bytes,created:restore?.created??Date.now(),next:restore?.next??0,attempts:restore?.attempts??0});return true;
   }
   async claim(now:number,count:number,maxBytes:number,owner:string){
     const result:QueueRow[]=[];let size=0;
@@ -38,19 +41,25 @@ const complete=(tx:IDBTransaction)=>new Promise<void>((resolve,reject)=>{tx.onco
 export class IndexedQueue implements Queue {
   readonly persistent=true;
   private db:Promise<IDBDatabase>;
-  constructor(name:string,factory:IDBFactory=globalThis.indexedDB){
-    this.db=new Promise((resolve,reject)=>{
+  constructor(private name:string,private factory:IDBFactory=globalThis.indexedDB){
+    this.db=this.open();
+  }
+  private open(){
+    const name=this.name,factory=this.factory;
+    return new Promise<IDBDatabase>((resolve,reject)=>{
       const r=factory.open(name,1);
       r.onupgradeneeded=()=>{const s=r.result.createObjectStore('events',{keyPath:'event.event_id'});s.createIndex('ready','next');s.createIndex('created','created');r.result.createObjectStore('meta');};
       r.onsuccess=()=>{r.result.onversionchange=()=>r.result.close();resolve(r.result);};r.onerror=()=>reject(r.error);r.onblocked=()=>reject(new Error('idb_blocked'));
     });
   }
+  async recover(){try{(await this.db).close();}catch{/* A rejected open is retried on the next bounded recovery probe. */}this.db=this.open();await this.db;}
   private async transaction(mode:IDBTransactionMode){const db=await this.db;const tx=db.transaction(['events','meta'],mode);return{tx,done:complete(tx),store:tx.objectStore('events'),meta:tx.objectStore('meta')};}
-  async add(event:AnalyticsEvent,maxCount:number,maxBytes:number){
+  async add(event:AnalyticsEvent,maxCount:number,maxBytes:number,restore?:RestoredRow){
     const {done,store,meta}=await this.transaction('readwrite');
     const stats=(await request(meta.get('stats'))||{count:0,bytes:0}) as {count:number;bytes:number};const bytes=byteLength(event);
+    const existing=await request(store.get(event.event_id)) as QueueRow|undefined;if(existing){await done;return JSON.stringify(existing.event)===JSON.stringify(event);}
     if(stats.count>=maxCount||stats.bytes+bytes>maxBytes){await done;return false;}
-    store.add({event,bytes,created:Date.now(),next:0,attempts:0} satisfies QueueRow);
+    store.add({event,bytes,created:restore?.created??Date.now(),next:restore?.next??0,attempts:restore?.attempts??0} satisfies QueueRow);
     meta.put({count:stats.count+1,bytes:stats.bytes+bytes},'stats');await done;return true;
   }
   async claim(now:number,count:number,maxBytes:number,owner:string){

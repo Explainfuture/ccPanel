@@ -1,7 +1,7 @@
 import { mkdir,open,rename,readFile,unlink } from 'node:fs/promises';
 import { dirname,resolve } from 'node:path';
 import { Analytics,type AnalyticsOptions } from '../../sdk-browser/src/index';
-import { MemoryQueue,type QueueRow } from '../../sdk-browser/src/queue';
+import { MemoryQueue,type QueueRow,type RestoredRow } from '../../sdk-browser/src/queue';
 import { validateEvent,type AnalyticsEvent } from '../../schema/src/index';
 export class FileQueue extends MemoryQueue {
   override readonly persistent=true;
@@ -36,7 +36,7 @@ export class FileQueue extends MemoryQueue {
     const task=this.chain.then(async()=>{await this.ready;const old=structuredClone(this.rows);try{const result=await fn();if(mutate)await this.save();return result;}catch(e){this.rows=old;throw e;}});
     this.chain=task.catch(()=>{});return task;
   }
-  override add(e:AnalyticsEvent,count:number,bytes:number){return this.serial(()=>super.add(e,count,bytes),true);}
+  override add(e:AnalyticsEvent,count:number,bytes:number,restore?:RestoredRow){return this.serial(()=>super.add(e,count,bytes,restore),true);}
   override claim(now:number,count:number,bytes:number,owner:string){return this.serial(()=>super.claim(now,count,bytes,owner),true);}
   override finish(ids:string[],owner:string,retryAt?:number){return this.serial(()=>super.finish(ids,owner,retryAt),true);}
   override peek(count:number){return this.serial(()=>super.peek(count));}

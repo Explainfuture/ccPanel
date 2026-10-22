@@ -4,7 +4,7 @@ export type { AnalyticsEvent,Json } from '../../schema/src/index';
 export interface AnalyticsOptions {
   endpoint:string;projectId:string;writeKey:string;consent:boolean;
   flushInterval?:number;batchSize?:number;queue?:Queue;fetch?:typeof globalThis.fetch;
-  onError?:(code:string)=>void;source?:'browser'|'node';
+  onError?:(code:string,details?:{event_ids:string[]})=>void;source?:'browser'|'node';
 }
 export interface TrackResult{status:'queued-persistent'|'queued-memory'|'rejected';event_id?:string;reason?:string}
 const sensitive=/password|secret|token|authorization|cookie|phone|email/i;
@@ -19,6 +19,8 @@ export class Analytics {
   private hiddenSent=false;private paused=false;private lastError:string|undefined;private epoch=0;
   private owner=crypto.randomUUID();private identityKey:string;
   private batchSize:number;private running=true;private pendingWrites=0;
+  private needsRecovery=false;private nextRecovery=0;
+  private consentChanges:Promise<void>=Promise.resolve();
   private cleanup:(()=>void)[]=[];
   constructor(private options:AnalyticsOptions){
     const url=new URL(options.endpoint);
@@ -42,7 +44,7 @@ export class Analytics {
     }
     void this.flush();
   }
-  private error(code:string){this.lastError=code;try{this.options.onError?.(code);}catch{/* diagnostics must not break business code */}}
+  private error(code:string,details?:{event_ids:string[]}){this.lastError=code;try{this.options.onError?.(code,details);}catch{/* diagnostics must not break business code */}}
   private loadIdentity(){
     try{const s=typeof localStorage!=='undefined'?localStorage.getItem(this.identityKey):null;if(s){const v=JSON.parse(s);if(typeof v.anonymous==='string'){this.anonymous=v.anonymous;this.user=typeof v.user==='string'?v.user:undefined;return;}}}catch{this.error('identity_storage_error');}
     this.anonymous=crypto.randomUUID();this.user=undefined;this.saveIdentity();
@@ -68,7 +70,7 @@ export class Analytics {
     try{
       let stored=false;
       try{stored=await this.queue.add(event,this.queue.persistent?1000:100,this.queue.persistent?5*1024*1024:512*1024);}
-      catch{this.error('storage_error');stored=await this.memory.add(event,100,512*1024);}
+      catch{this.needsRecovery=true;this.error('storage_error');stored=await this.memory.add(event,100,512*1024);}
       if(!this.consent||version!==this.epoch){await this.queue.finish([event.event_id],'');await this.memory.finish([event.event_id],'');return{status:'rejected',reason:'consent_revoked'};}
       if(!stored){this.snapshot=this.snapshot.filter(e=>e.event_id!==event.event_id);this.error('rejected_overflow');return{status:'rejected',reason:'rejected_overflow'};}
       const status=this.queue.persistent&&!(await this.memory.peek(100)).some(r=>r.event.event_id===event.event_id)?'queued-persistent':'queued-memory';
@@ -78,11 +80,19 @@ export class Analytics {
   }
   async identify(userId:string){if(!userId||userId.length>256)throw new Error('invalid_user_id');if(!this.consent)return;this.user=userId;this.saveIdentity();return this.track('$identify');}
   reset(){this.user=undefined;this.anonymous=crypto.randomUUID();if(this.consent)this.saveIdentity();}
-  async setConsent(value:boolean){this.consent=value;this.epoch++;if(value){this.loadIdentity();void this.flush();}else{this.snapshot=[];await this.queue.clear();await this.memory.clear();try{localStorage.removeItem(this.identityKey);}catch{/* optional storage */}this.user=undefined;this.anonymous='';}}
+  setConsent(value:boolean){
+    const version=++this.epoch;this.consent=false;this.snapshot=[];
+    const change=this.consentChanges.catch(()=>{}).then(async()=>{
+      if(!value){if(this.flight)await this.flight;await this.queue.clear();await this.memory.clear();try{localStorage.removeItem(this.identityKey);}catch{/* optional storage */}this.user=undefined;this.anonymous='';}
+      if(version!==this.epoch)return;
+      this.consent=value;if(value){this.loadIdentity();void this.flush();}
+    });
+    this.consentChanges=change;return change;
+  }
   updateWriteKey(key:string){if(!key||key.length>256)throw new Error('invalid_key');this.options.writeKey=key;this.paused=false;void this.flush();}
   private envelope(events:AnalyticsEvent[]){return{write_key:this.options.writeKey,project_id:this.options.projectId,schema_version:1,events};}
   private async stores(){return this.queue===this.memory?[this.queue]:[this.queue,this.memory];}
-  async getQueueStatus(){let count=0,bytes=0,oldest:number|null=null;for(const q of await this.stores()){try{const s=await q.stats();count+=s.count;bytes+=s.bytes;if(s.oldest!==null)oldest=oldest===null?s.oldest:Math.min(oldest,s.oldest);}catch{this.error('storage_error');}}return{count,bytes,oldest,last_error:this.lastError,storage:this.queue.persistent?'persistent-with-memory-fallback':'memory'};}
+  async getQueueStatus(){let count=0,bytes=0,persistent_count=0,memory_count=0,oldest:number|null=null;for(const q of await this.stores()){try{const s=await q.stats();count+=s.count;bytes+=s.bytes;if(q.persistent)persistent_count+=s.count;else memory_count+=s.count;if(s.oldest!==null)oldest=oldest===null?s.oldest:Math.min(oldest,s.oldest);}catch{this.error('storage_error');}}return{count,bytes,persistent_count,memory_count,oldest,last_error:this.lastError,storage:this.needsRecovery?'memory-fallback':this.queue.persistent?'persistent-with-memory-fallback':'memory'};}
   flush():Promise<{confirmed:number;pending:number}>{
     if(this.flight)return this.flight;
     this.flight=this.send().catch(()=>{this.error('send_error');return{confirmed:0,pending:0};}).finally(()=>{this.flight=undefined;});return this.flight;
@@ -90,6 +100,17 @@ export class Analytics {
   private async send(){
     let confirmed=0;
     if(!this.consent||this.paused||!this.running)return{confirmed,pending:(await this.getQueueStatus()).count};
+    if(this.needsRecovery&&!this.pendingWrites&&Date.now()>=this.nextRecovery){
+      this.nextRecovery=Date.now()+30000;
+      try{await this.queue.recover?.();await this.queue.stats();this.needsRecovery=false;this.lastError=undefined;}catch{this.error('storage_error');}
+    }
+    if(this.queue.persistent&&!this.needsRecovery){
+      const expiredMemory=await this.memory.expire(Date.now()-limits.ttl);if(expiredMemory)this.error('expired:'+expiredMemory);
+      for(const row of await this.memory.peek(100)){
+        try{if(await this.queue.add(row.event,1000,5*1024*1024,row))await this.memory.finish([row.event.event_id],'');else break;}
+        catch{this.needsRecovery=true;this.error('storage_error');break;}
+      }
+    }
     for(const q of await this.stores()){
       let rows:QueueRow[]=[];
       try{
@@ -113,7 +134,7 @@ export class Analytics {
         else if(response.status===400){
           const b=await response.json() as {errors?:{index:number;code:string}[]};
           if(!Array.isArray(b.errors)||!b.errors.length||b.errors.some(e=>!Number.isInteger(e.index)||e.index<0||e.index>=ids.length)){this.paused=true;this.error('unlocated_bad_request');await q.finish(ids,this.owner,retryAt);}
-          else{const rejected=[...new Set(b.errors.map(e=>ids[e.index]!))];await q.finish(rejected,this.owner);await q.finish(ids.filter(id=>!rejected.includes(id)),this.owner,Date.now());for(const e of b.errors)this.error('event_rejected:'+e.code);}
+          else{const rejected=[...new Set(b.errors.map(e=>ids[e.index]!))];await q.finish(rejected,this.owner);await q.finish(ids.filter(id=>!rejected.includes(id)),this.owner,Date.now());for(const e of b.errors)this.error('event_rejected:'+e.code,{event_ids:[ids[e.index]!]});}
         }else if(response.status===413){
           if(rows.length===1){await q.finish(ids,this.owner);this.error('event_too_large');}else{this.batchSize=Math.max(1,Math.floor(rows.length/2));await q.finish(ids,this.owner,Date.now());}
         }else{
