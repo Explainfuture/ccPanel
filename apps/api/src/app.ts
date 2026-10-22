@@ -1,6 +1,8 @@
 import { Hono, type Context } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { bodyLimit } from "hono/body-limit";
+import { registerReportRoutes } from '../../../packages/server/src/report-routes';
+import { projectQueryFlights as queryFlights } from '../../../packages/server/src/query-budget';
 import { randomUUID } from "node:crypto";
 import { pool, query } from "../../../packages/server/src/db";
 import {
@@ -17,7 +19,7 @@ import {
 } from "../../../packages/schema/src/index";
 
 type Role = "admin" | "analyst" | "viewer";
-type Env = { Variables: { userId: string; tenantId: string; role: Role } };
+export type Env = { Variables: { userId: string; tenantId: string; role: Role } };
 export interface AppDeps {
   publish: (records: StoredEnvelope[]) => Promise<void>;
   ready: () => boolean;
@@ -386,7 +388,6 @@ export function createApp(deps: AppDeps) {
     await next();
   });
   const prefix = "/api/tenants/:tenant/projects/:project";
-  const queryFlights = new Set<string>();
   app.get(prefix + "/trends", async (c) => {
     const project = c.req.param("project")!;
     if (queryFlights.has(project)) return c.json({ error: "query_busy" }, 429);
@@ -511,5 +512,6 @@ export function createApp(deps: AppDeps) {
       ).rows,
     });
   });
+  registerReportRoutes(app);
   return app;
 }

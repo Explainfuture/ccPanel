@@ -50,12 +50,24 @@ try {
   assert.equal((await send(a,{...e,properties:{button:'changed'}})).status,202);
   await waitFor(async()=>(await pool.query("SELECT 1 FROM dlq_records WHERE tenant_id=$1 AND reason='payload_conflict'",[a.tenant])).rowCount===1,'conflict DLQ');
   const original=await pool.query('SELECT properties FROM events WHERE project_id=$1 AND event_id=$2',[a.project,e.event_id]);assert.equal(original.rows[0].properties.button,'buy');
+  const measured=[{amount:5},{amount:15,tag:null},{amount:'20',tag:'web'},{amount:null,tag:'app'},{}].map(properties=>({...e,event_id:randomUUID(),event_name:'measure',properties}));
+  for(const item of measured)assert.equal((await send(a,item)).status,202);
+  await waitFor(async()=>Number((await pool.query("SELECT count(*) FROM events WHERE project_id=$1 AND event_name='measure'",[a.project])).rows[0].count)===5,'query fixtures');
+  const spec={kind:'trend',from:new Date(Date.now()-86400000).toISOString(),to:new Date(Date.now()+1000).toISOString(),metric:'avg',property:'amount',filters:[],group_by:['tag']};
+  const queried=await fetch(base+root+'/query',{method:'POST',headers:{...h,'content-type':'application/json'},body:JSON.stringify(spec)});assert.equal(queried.status,200);const result=await queried.json();assert.equal(result.summary.value,10);assert.equal(result.summary.excluded,4);assert.equal(result.groups.length,4);
+  const filtered=await fetch(base+root+'/query',{method:'POST',headers:{...h,'content-type':'application/json'},body:JSON.stringify({...spec,metric:'count',group_by:[],filters:[{key:'tag',op:'neq',value:null}]})});assert.equal(filtered.status,200);assert.equal((await filtered.json()).summary.value,2,'missing/null excluded from neq');
+  const saved=await fetch(base+root+'/reports',{method:'POST',headers:{...h,'content-type':'application/json'},body:JSON.stringify({name:'INTEGRATION AVG',spec})});assert.equal(saved.status,201);const reportId=(await saved.json()).id;
+  assert.equal((await fetch(base+root+'/dashboards',{method:'POST',headers:{...h,'content-type':'application/json'},body:JSON.stringify({name:'INTEGRATION BOARD',report_ids:[reportId]})})).status,201);
+  await pool.query("INSERT INTO tenant_memberships VALUES($1,$2,'viewer')",[b.tenant,a.user]);
+  assert.equal((await fetch(base+`/api/tenants/${b.tenant}/projects`,{headers:h})).status,200,'same account can read joined company');
+  assert.equal((await fetch(base+`/api/tenants/${b.tenant}/projects/${b.project}/keys`,{method:'POST',headers:{...h,'content-type':'application/json'},body:'{}'})).status,403,'role scoped to current company');
   await pool.query('DELETE FROM tenant_memberships WHERE tenant_id=$1 AND user_id=$2',[a.tenant,a.user]);
   assert.equal((await fetch(base+root+'/events',{headers:h})).status,404,'revocation immediately enforced');
-  console.log('PASS: real Kafka ack, duplicate dedup, aggregate uniqueness, cross-company isolation, viewer restrictions, payload conflict DLQ, and membership revocation');
+  console.log('PASS: real Kafka ack/dedup/DLQ, company isolation and role switching, numeric aggregation, missing/null filters, saved reports/dashboards, and membership revocation');
 } finally {
+  await pool.query('DELETE FROM tenant_memberships WHERE user_id=ANY($1::uuid[])',[fixtures.map(f=>f.user)]);
   for(const f of fixtures) {
-    for(const table of ['dlq_records','aggregation_jobs','ingest_metrics','events','event_dedup','identity_links','event_schemas','write_keys','audit_logs','projects','tenant_memberships']) await pool.query(`DELETE FROM ${table} WHERE tenant_id=$1`,[f.tenant]);
+    for(const table of ['dashboards','reports','dlq_records','aggregation_jobs','ingest_metrics','events','event_dedup','identity_links','event_schemas','write_keys','audit_logs','projects','tenant_memberships']) await pool.query(`DELETE FROM ${table} WHERE tenant_id=$1`,[f.tenant]);
     await pool.query('DELETE FROM sessions WHERE user_id=$1',[f.user]);await pool.query('DELETE FROM users WHERE id=$1',[f.user]);await pool.query('DELETE FROM tenants WHERE id=$1',[f.tenant]);
   }
   await pool.end();
