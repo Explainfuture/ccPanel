@@ -3,6 +3,7 @@ import { ArrowDown, ChartNoAxesCombined, Plus, Play, X } from "lucide-react";
 import { api, ApiError } from "./api";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
+import { useQueryJob } from "./useQueryJob";
 type FunnelResult = {
   kind: "funnel";
   steps: { name: string; users: number; conversion: number | null }[];
@@ -46,6 +47,14 @@ export default function BehaviorExplorer({ prefix }: { prefix: string }) {
     [result, setResult] = useState<Result | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const background = useQueryJob<Result>(
+    prefix,
+    (value) => {
+      setResult(value);
+      setKind(value.kind);
+    },
+    "funnel,retention,cohort",
+  );
   async function run(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget),
@@ -78,6 +87,14 @@ export default function BehaviorExplorer({ prefix }: { prefix: string }) {
               count_op: f.get("count_op"),
               count: Number(f.get("count")),
             };
+    if (
+      (e.nativeEvent as SubmitEvent).submitter?.getAttribute("value") ===
+      "async"
+    ) {
+      setError("");
+      void background.submit(spec);
+      return;
+    }
     setBusy(true);
     setError("");
     setResult(null);
@@ -265,12 +282,20 @@ export default function BehaviorExplorer({ prefix }: { prefix: string }) {
               <Play />
               {busy ? "正在计算…" : "开始分析"}
             </Button>
+            <Button
+              variant="outline"
+              value="async"
+              disabled={busy || background.busy}
+            >
+              后台计算
+            </Button>
           </div>
           <p className="fine-print">
             试验环境单次最多处理 5000
             条相关事件，并受字节预算限制；所有结果按公司与项目隔离。
           </p>
         </form>
+        {background.panel}
       </section>
       {error ? (
         <div role="alert" className="error banner">

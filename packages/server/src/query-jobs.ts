@@ -65,7 +65,7 @@ export function registerQueryJobs(app: Hono<Env>) {
     c.json({
       jobs: (
         await query(
-          "SELECT id,status,error,created_at,started_at,finished_at,expires_at FROM query_jobs WHERE tenant_id=$1 AND project_id=$2 AND expires_at>now() ORDER BY created_at DESC LIMIT 50",
+          "SELECT id,spec->>'kind' AS kind,status,error,created_at,started_at,finished_at,expires_at FROM query_jobs WHERE tenant_id=$1 AND project_id=$2 AND expires_at>now() ORDER BY created_at DESC LIMIT 50",
           [c.get("tenantId"), c.req.param("project")],
         )
       ).rows,

@@ -11,6 +11,7 @@ import {
 import { api, ApiError } from "./api";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
+import { useQueryJob } from "./useQueryJob";
 import type {
   Filter,
   TrendSpec,
@@ -168,6 +169,7 @@ export default function AnalysisExplorer({
       { name: string; result?: Result; error?: string }[]
     >([]);
   const generation = useRef(0);
+  const background = useQueryJob<Result>(prefix, setResult, "trend");
   const refresh = async () => {
     const [r, d] = await Promise.all([
       api<{ reports: Report[] }>(prefix + "/reports"),
@@ -241,7 +243,7 @@ export default function AnalysisExplorer({
           ...(value !== undefined ? { value } : {}),
         };
       });
-      void execute({
+      const spec: TrendSpec = {
         kind: "trend",
         from: new Date(end.getTime() - days * 86400000).toISOString(),
         to: end.toISOString(),
@@ -253,7 +255,13 @@ export default function AnalysisExplorer({
           String(f.get("group_2") || ""),
         ].filter(Boolean),
         filters: parsed,
-      });
+      };
+      if (
+        (e.nativeEvent as SubmitEvent).submitter?.getAttribute("value") ===
+        "async"
+      )
+        void background.submit(spec);
+      else void execute(spec);
     } catch (e) {
       setError(message(e));
     }
@@ -473,8 +481,16 @@ export default function AnalysisExplorer({
               <Play />
               {busy ? "正在查询…" : "运行查询"}
             </Button>
+            <Button
+              variant="outline"
+              value="async"
+              disabled={busy || background.busy}
+            >
+              后台计算
+            </Button>
           </div>
         </form>
+        {background.panel}
         {result ? <ResultView result={result} /> : null}
         {result && canEdit ? (
           <form className="save-report" onSubmit={save}>
