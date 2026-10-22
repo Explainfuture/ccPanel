@@ -1,0 +1,21 @@
+import { describe,it,expect } from 'vitest';
+import { randomUUID } from 'node:crypto';
+import { canonical } from '../packages/schema/src/index';
+import { digest } from '../packages/server/src/security';
+import { parseReplayRequest,replayCandidate } from '../packages/server/src/dlq-replay-policy';
+const now=Date.parse('2026-10-23T00:00:00Z'),day=86400000;
+function fixture(){
+  const tenant=randomUUID(),project=randomUUID();
+  const record={tenant_id:tenant,project_id:project,received_at:new Date(now-1000).toISOString(),event:{event_id:randomUUID(),event_name:'purchase',distinct_id:'customer',event_time:new Date(now-2000).toISOString(),properties:{amount:5},context:{},schema_version:1 as const}};
+  const raw=Buffer.from(JSON.stringify(record,null,2));
+  return {record,raw,input:{tenant,project,reason:'invalid_storage_value',payload:{processor_version:2,raw_base64:raw.toString('base64')},registration:{created_at:new Date(now-1000),payload_hash:digest(canonical(record.event))}}};
+}
+describe('managed DLQ replay admission',()=>{
+  it('keeps the exact original bytes and stable event id',()=>{const f=fixture(),r=replayCandidate(f.input,now);expect(r.raw.equals(f.raw)).toBe(true);expect(r.record.event.event_id).toBe(f.record.event.event_id);});
+  it('rejects cross-company and cross-project payloads even with valid IDs',()=>{const f=fixture();expect(()=>replayCandidate({...f.input,tenant:randomUUID()},now)).toThrow('replay_scope_mismatch');expect(()=>replayCandidate({...f.input,project:randomUUID()},now)).toThrow('replay_scope_mismatch');expect(replayCandidate({...f.input,project:f.input.project.toUpperCase()},now).record.event.event_id).toBe(f.record.event.event_id);});
+  it('does not turn edited or conflicting payloads into ordinary retries',()=>{const f=fixture();expect(()=>replayCandidate({...f.input,reason:'payload_conflict'},now)).toThrow('manual_review_required');expect(()=>replayCandidate({...f.input,reason:'identity_conflict'},now)).toThrow('manual_review_required');expect(()=>replayCandidate({...f.input,registration:{...f.input.registration,payload_hash:'different'}},now)).toThrow('manual_review_required');});
+  it('requires an unexpired persisted dedup registration',()=>{const f=fixture();expect(()=>replayCandidate({...f.input,registration:null},now)).toThrow('dedup_registration_missing');expect(()=>replayCandidate({...f.input,registration:{...f.input.registration,created_at:new Date(now-45*day-1)}},now)).toThrow('dedup_registration_expired');});
+  it('rejects original timestamps outside the 30-day window without refreshing them',()=>{const f=fixture();f.record.event.event_time=new Date(now-30*day-1).toISOString();f.input.payload.raw_base64=Buffer.from(JSON.stringify(f.record)).toString('base64');expect(()=>replayCandidate(f.input,now)).toThrow('replay_window_expired');});
+  it('refuses redaction, broken UTF8/base64 and currently invalid events',()=>{const f=fixture();expect(()=>replayCandidate({...f.input,payload:{...f.input.payload,redacted:true}},now)).toThrow('payload_unavailable');expect(()=>replayCandidate({...f.input,payload:{...f.input.payload,raw_base64:'!!!!'}},now)).toThrow('unsupported_replay_payload');expect(()=>replayCandidate({...f.input,payload:{...f.input.payload,raw_base64:Buffer.from([0xff]).toString('base64')}},now)).toThrow('invalid_replay_envelope');f.record.event.properties={amount:NaN};f.input.payload.raw_base64=Buffer.from(JSON.stringify({...f.record,event:{...f.record.event,event_id:'bad'}})).toString('base64');expect(()=>replayCandidate(f.input,now)).toThrow('event_still_invalid');});
+  it('bounds and canonicalizes idempotent task requests without accepting payload edits',()=>{const request_id=randomUUID(),a='a'.repeat(64),b='b'.repeat(64);expect(parseReplayRequest({request_id:request_id.toUpperCase(),record_ids:[b,a],reason:'  retry after processor fix  '})).toEqual({request_id,record_ids:[a,b],reason:'retry after processor fix'});for(const body of [{request_id,record_ids:[a,a],reason:'fixed processor'},{request_id,record_ids:Array.from({length:21},(_,i)=>i.toString(16).padStart(64,'0')),reason:'fixed processor'},{request_id,record_ids:[a],reason:'fixed processor',payload:{}},{request_id,record_ids:[a],reason:'bad\u0000reason'}])expect(()=>parseReplayRequest(body)).toThrow('invalid_replay_request');});
+});
