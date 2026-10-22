@@ -47,6 +47,16 @@ describe('persistent and bounded delivery',()=>{
   it('honors Retry-After even if flush is called repeatedly',async()=>{
     const send=vi.fn<typeof fetch>(async()=>new Response('',{status:429,headers:{'retry-after':'60'}}));const c=client(new MemoryQueue(),send);await c.flush();await c.track('click');await c.flush();await c.flush();expect(send).toHaveBeenCalledTimes(1);
   });
+  it('retains the same event through 503 Retry-After and removes it only after exact 202',async()=>{
+    let now=Date.now();vi.spyOn(Date,'now').mockImplementation(()=>now);
+    const batches:string[][]=[],send=vi.fn<typeof fetch>(async(_url,init)=>{
+      const ids=JSON.parse(init!.body as string).events.map((e:AnalyticsEvent)=>e.event_id);batches.push(ids);
+      return batches.length===1?new Response('',{status:503,headers:{'retry-after':'60'}}):Response.json({accepted_event_ids:ids},{status:202});
+    });
+    const c=client(new MemoryQueue(),send);await c.flush();await c.track('click');await c.flush();
+    expect((await c.getQueueStatus()).count).toBe(1);now+=59000;await c.flush();expect(send).toHaveBeenCalledTimes(1);
+    now+=1001;await c.flush();expect(send).toHaveBeenCalledTimes(2);expect(batches[1]).toEqual(batches[0]);expect((await c.getQueueStatus()).count).toBe(0);
+  });
   it('does not collect without consent and clears queues on withdrawal',async()=>{
     const c=client();await c.track('click');await c.setConsent(false);expect((await c.getQueueStatus()).count).toBe(0);expect((await c.track('click')).reason).toBe('consent_required');
   });

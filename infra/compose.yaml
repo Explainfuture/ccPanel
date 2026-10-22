@@ -71,7 +71,7 @@ services:
       HOST: 0.0.0.0
       NODE_OPTIONS: --max-old-space-size=64
     command: [node, dist/api.mjs]
-    volumes: [../:/app:ro]
+    volumes: [../:/app:ro, /opt/ccpanel/shared/telemetry:/telemetry:ro]
     ports: [127.0.0.1:3000:3000]
     depends_on:
       postgres: {condition: service_healthy}

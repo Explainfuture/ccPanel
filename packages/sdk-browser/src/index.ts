@@ -157,7 +157,7 @@ export class Analytics {
         }else if(response.status===413){
           if(rows.length===1){await q.finish(ids,this.owner);this.error('event_too_large');}else{this.batchSize=Math.max(1,Math.floor(rows.length/2));await q.finish(ids,this.owner,Date.now());}
         }else{
-          if(response.status===429){const h=response.headers.get('retry-after');if(h){const wait=/^\d+$/.test(h)?Date.now()+Number(h)*1000:Date.parse(h);if(Number.isFinite(wait))retryAt=Math.max(retryAt,wait);}}
+          if(response.status===429||response.status===503){const h=response.headers.get('retry-after');if(h){const wait=/^\d+$/.test(h)?Date.now()+Number(h)*1000:Date.parse(h);if(Number.isFinite(wait))retryAt=Math.max(retryAt,wait);}}
           await q.finish(ids,this.owner,retryAt);this.error('retry_http_'+response.status);
         }
       }catch{await q.finish(ids,this.owner,retryAt).catch(()=>this.error('storage_error'));this.error('network_or_ack_error');}

@@ -63,3 +63,8 @@ export class IngestAdmission {
     return {settle:(confirmed)=>{if(reservation.settledAt!==null)return;reservation.confirmed=confirmed;reservation.settledAt=this.clock();}};
   }
 }
+export async function publishWithAdmission<T>(gate:IngestAdmission,count:number,publish:()=>Promise<T>):Promise<T>{
+  const reservation=gate.reserve(count);
+  try{const result=await publish();reservation.settle(true);return result;}
+  catch(error){reservation.settle(false);throw error;}
+}

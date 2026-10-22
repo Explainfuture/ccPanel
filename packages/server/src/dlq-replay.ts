@@ -7,6 +7,7 @@ import { pool,query } from './db';
 import { digest } from './security';
 import { identityHash,lockProjectPrivacy } from './privacy';
 import { parseReplayRequest,readReplayPayload,replayCandidate,ReplayRejected } from './dlq-replay-policy';
+import { IngestionPaused } from './ingest-admission';
 
 const prefix='/api/tenants/:tenant/projects/:project/dlq/replays';
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -100,11 +101,16 @@ export async function replayTick(publish:ReplayPublisher){
                 await db.query("UPDATE replay_items SET status='published',attempts=attempts+1,error=NULL,topic=$5,partition=$6,message_offset=$7,updated_at=clock_timestamp() WHERE tenant_id=$1 AND project_id=$2 AND job_id=$3 AND record_id=$4",[...scope,item.record_id,receipt.topic,receipt.partition,receipt.offset]);
                 await audit(db,job,'dlq_replay_published',{record_id:item.record_id,topic:receipt.topic,partition:receipt.partition,offset:receipt.offset});
               }catch(e){
+                if(e instanceof IngestionPaused){
+                  await db.query("UPDATE replay_items SET error='ingestion_paused',updated_at=clock_timestamp() WHERE tenant_id=$1 AND project_id=$2 AND job_id=$3 AND record_id=$4",[...scope,item.record_id]);
+                  await db.query("UPDATE replay_jobs SET next_attempt_at=clock_timestamp()+($4::int*interval '1 second') WHERE tenant_id=$1 AND project_id=$2 AND id=$3",[...scope,e.retryAfterSeconds]);
+                }else{
                 // SQL failures abort the transaction and the outer rollback
                 // preserves the queued item; never fake a successful receipt.
                 if((e as {code?:string}).code&&/^[0-9A-Z]{5}$/.test((e as {code:string}).code))throw e;
                 await db.query("UPDATE replay_items SET attempts=attempts+1,error='publish_unconfirmed',updated_at=clock_timestamp() WHERE tenant_id=$1 AND project_id=$2 AND job_id=$3 AND record_id=$4",[...scope,item.record_id]);
                 await db.query("UPDATE replay_jobs SET next_attempt_at=clock_timestamp()+($4::int*interval '1 second') WHERE tenant_id=$1 AND project_id=$2 AND id=$3",[...scope,Math.min(60,2**Math.min(item.attempts+1,6))]);
+                }
               }
             }
           }

@@ -8,6 +8,7 @@ import { registerUserRoutes } from '../../../packages/server/src/user-routes';
 import { registerQueryJobs } from '../../../packages/server/src/query-jobs';
 import { registerDeletions } from '../../../packages/server/src/deletion-service';
 import { registerReplayRoutes } from '../../../packages/server/src/dlq-replay';
+import { IngestionPaused,type AdmissionStatus } from '../../../packages/server/src/ingest-admission';
 import { lockProjectPrivacy } from '../../../packages/server/src/privacy';
 import { checkRequired } from '../../../packages/server/src/project-schema';
 import { projectQueryFlights as queryFlights } from '../../../packages/server/src/query-budget';
@@ -31,6 +32,7 @@ export type Env = { Variables: { userId: string; tenantId: string; role: Role } 
 export interface AppDeps {
   publish: (records: StoredEnvelope[]) => Promise<void>;
   ready: () => boolean;
+  admissionStatus?:()=>AdmissionStatus;
 }
 const validId = (s: string | undefined) =>
   typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(s);
@@ -52,6 +54,7 @@ export function createApp(deps: AppDeps) {
     return b.count <= max;
   }
   app.onError((e, c) => {
+    if(e instanceof IngestionPaused){c.header('Retry-After',String(e.retryAfterSeconds));return c.json({error:'ingestion_paused',reason:e.reason},503);}
     console.error(JSON.stringify({ code: "request_failed", type: e.name }));
     return c.json({ error: "temporarily_unavailable" }, 503);
   });
@@ -65,9 +68,10 @@ export function createApp(deps: AppDeps) {
   );
   app.get("/ready", async (c) => {
     await query("SELECT 1");
+    const ready=deps.ready()&&!!deps.admissionStatus?.().allowed;
     return c.json(
-      { status: deps.ready() ? "ready" : "unavailable" },
-      deps.ready() ? 200 : 503,
+      { status: ready ? "ready" : "unavailable" },
+      ready ? 200 : 503,
     );
   });
   app.use('/v1/batch',async(c,next)=>{
@@ -153,7 +157,9 @@ export function createApp(deps: AppDeps) {
         c.header("Retry-After", "60");
         return c.json({ error: "rate_limited" }, 429);
       }
-      if (!deps.ready()) return c.json({ error: "kafka_unavailable" }, 503);
+      if (!deps.ready()) {c.header('Retry-After','5');return c.json({ error: "kafka_unavailable" }, 503);}
+      const admission=deps.admissionStatus?.();
+      if(!admission?.allowed)throw new IngestionPaused(admission?.reason??'pressure_probe_unavailable',admission?.retryAfterSeconds||5);
       const received_at = new Date().toISOString();
       await deps.publish(
         body.events.map((event: AnalyticsEvent) => ({
@@ -516,6 +522,10 @@ export function createApp(deps: AppDeps) {
       ).rows,
     }),
   );
+  app.get(prefix+'/ingest-status',c=>{
+    if(!allowed(c,['admin']))return c.json({error:'forbidden'},403);
+    return c.json({scope:'platform_aggregate',computed_at:new Date().toISOString(),admission:deps.admissionStatus?.()??null});
+  });
   app.get(prefix + "/dlq", async (c) => {
     if (!allowed(c, ["admin"])) return c.json({ error: "forbidden" }, 403);
     return c.json({

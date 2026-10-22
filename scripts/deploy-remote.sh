@@ -25,6 +25,7 @@ chgrp www-data /opt/ccpanel /opt/ccpanel/releases
 chmod 750 /opt/ccpanel /opt/ccpanel/releases
 cd "$release/infra"
 docker compose run --rm -T --no-deps api node -e 'const fs=require("node:fs");for(const file of ["dist/api.mjs","dist/worker.mjs","dist/migrate.mjs","dist/deletion-ledger.mjs"])fs.accessSync(file,fs.constants.R_OK);require("pg");'
+docker compose run --rm -T --no-deps api node dist/ingest-preflight.mjs
 docker compose stop api worker
 docker compose run --rm -T --no-deps api node dist/migrate.mjs
 if ! docker compose run --rm -T --no-deps api node dist/deletion-ledger.mjs check >/dev/null 2>&1; then

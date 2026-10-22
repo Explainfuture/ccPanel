@@ -4,6 +4,7 @@ export async function migrate() {
   try {
     await c.query('BEGIN');
     await c.query("SELECT pg_advisory_xact_lock(169202610)");
+    const integrityExists=!!(await c.query("SELECT to_regclass('public.ingest_integrity_gate') AS name")).rows[0].name;
     await c.query(`
       CREATE TABLE IF NOT EXISTS schema_migrations(version integer PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now());
       CREATE TABLE IF NOT EXISTS tenants(id uuid PRIMARY KEY, name text NOT NULL);
@@ -38,6 +39,8 @@ export async function migrate() {
       CREATE INDEX IF NOT EXISTS replay_items_source ON replay_items(project_id,record_id,updated_at DESC);
       CREATE TABLE IF NOT EXISTS recovery_gate(id boolean PRIMARY KEY DEFAULT true CHECK(id),blocked boolean NOT NULL DEFAULT true,ledger_exported_at timestamptz,updated_at timestamptz NOT NULL DEFAULT clock_timestamp());
       INSERT INTO recovery_gate(id) VALUES(true) ON CONFLICT DO NOTHING;
+      CREATE TABLE IF NOT EXISTS ingest_integrity_gate(id boolean PRIMARY KEY DEFAULT true CHECK(id),blocked boolean NOT NULL DEFAULT false,reason text,detected_at timestamptz,details jsonb NOT NULL DEFAULT '{}',CHECK((NOT blocked AND reason IS NULL) OR (blocked AND reason IS NOT NULL AND reason IN ('retained_offset_gap','consumer_offset_unknown'))));
+      INSERT INTO ingest_integrity_gate(id,blocked,reason,detected_at) VALUES(true,${integrityExists?'true':'false'},${integrityExists?"'consumer_offset_unknown'":'NULL'},${integrityExists?'clock_timestamp()':'NULL'}) ON CONFLICT DO NOTHING;
       CREATE TABLE IF NOT EXISTS recovery_import_scopes(ledger_hash text NOT NULL,tenant_id uuid NOT NULL,project_id uuid NOT NULL,PRIMARY KEY(ledger_hash,tenant_id,project_id),FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
       ALTER TABLE events ADD COLUMN IF NOT EXISTS registered boolean NOT NULL DEFAULT false;
       ALTER TABLE events ADD COLUMN IF NOT EXISTS project_schema_version integer NOT NULL DEFAULT 0;
@@ -65,6 +68,7 @@ export async function migrate() {
       INSERT INTO schema_migrations(version) VALUES(6) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(7) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(8) ON CONFLICT DO NOTHING;
+      INSERT INTO schema_migrations(version) VALUES(9) ON CONFLICT DO NOTHING;
     `);
     const now = new Date();
     for (let i = -2; i <= 2; i++) {
