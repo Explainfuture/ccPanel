@@ -28,7 +28,17 @@ try{
       const matched=await pool.query('SELECT count(*)::int AS count FROM event_dedup WHERE tenant_id=$1 AND project_id=$2 AND event_id=ANY($3::uuid[])',[f.tenant,f.project,result.event_ids]);
       for(const name of ['events','dedup','aggregate_jobs'])assert.equal(counts.rows[0][name],result.generated,name);
       assert.equal(counts.rows[0].dlq,0);assert.equal(matched.rows[0].count,result.generated);
-      console.log(JSON.stringify({passed:true,unique_ids_matched:matched.rows[0].count,...counts.rows[0]}));
+      let aggregates;
+      if((await pool.query("SELECT to_regclass('public.event_count_buckets') AS name")).rows[0].name){
+        const deadline=Date.now()+15000;
+        do{
+          aggregates=(await pool.query('SELECT (SELECT count(*)::int FROM aggregation_jobs WHERE tenant_id=$1 AND project_id=$2 AND processed_at IS NOT NULL AND last_error_code IS NULL) AS processed,(SELECT coalesce(sum(event_count),0)::text FROM visible_event_count_buckets WHERE tenant_id=$1 AND project_id=$2) AS bucket_events',[f.tenant,f.project])).rows[0];
+          if(aggregates.processed===result.generated&&Number(aggregates.bucket_events)===result.generated)break;
+          await new Promise(resolve=>setTimeout(resolve,500));
+        }while(Date.now()<deadline);
+        assert.equal(aggregates.processed,result.generated,'active aggregate jobs drained');assert.equal(Number(aggregates.bucket_events),result.generated,'visible bucket count reconciled');
+      }
+      console.log(JSON.stringify({passed:true,unique_ids_matched:matched.rows[0].count,...counts.rows[0],...(aggregates?{aggregates}:{})}));
     }else if(mode==='cleanup'){
       const buckets=(await pool.query("SELECT to_regclass('public.event_count_buckets') AS name")).rows[0].name;
       if(buckets)await pool.query('DELETE FROM event_count_buckets WHERE tenant_id=$1',[f.tenant]);

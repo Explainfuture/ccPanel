@@ -158,3 +158,7 @@ UTC21:44:22.648–22:14:23.187，实际窗口1800.539秒，仍为m4-integrity-00
 证据保留于服务器`/opt/ccpanel/shared/capacity-integrity.Hivo2c`及工作站`.local/capacity-tuned-{result,resource-report,baseline,final}.json`、`capacity-tuned-samples.jsonl`；不可变结束快照185帧，报告选择其中183帧覆盖完整窗口，SHA256及结束时间一致。逐条verify后仅清理本次合成公司/项目/账号，两端夹具凭据已删除，原业务关系指纹与升级前一致，消费进度检查通过，HTTPS就绪。完整窗口导出后才运行新的隔离PG验收；采样器按原有限时配置自行结束，另核对最终状态。
 
 UTC22:17:19实际复核本轮有限采样器为inactive/dead、Result=success、ExecMainStatus=0；它按原33分钟配置自行退出，无人为停止或重启。
+
+## schema16活动聚合基线（进行中）
+
+新独立运行使用m4-dashboard-001/schema16，label=schema16-active-aggregation，固定配置仍为swappiness10与相同容器限额。采样器ccpanel-capacity-20261022231949，证据目录/opt/ccpanel/shared/capacity-integrity.HMjyru；生成器输出.local/capacity-schema16-result.json。夹具初始化容器先退出，再等待两份新宿主机帧后开始1EPS/趋势10秒/30分钟负载；本轮包含实际聚合处理器，结尾将额外核对已处理任务及桶计数。当前只记录启动事实，旧失败结论保持到完整结束对账与资源分析。

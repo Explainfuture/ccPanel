@@ -618,3 +618,9 @@ schema16增加仪表盘单/双列、默认最近1/7/30天或报表自有范围�
 UI创建、排序4卡双列仪表盘，默认plan=paid与临时code字符串20合并；两轮8张卡请求最大同时1，每轮from/to完全一致，金额10/留存100%可对账。真实后台计算金额卡并通过页面下载JSON2,216字节/CSV2,869字节，实际浏览器保存后由工作站读回：金额10、报表v2、Asia/Shanghai、字符串条件、CSV BOM/数值均正确；两响应attachment/no-store。1440双列、390单列/无页面溢出/手机文件按钮截图已查看，保留output/playwright/{dashboard-live-*,query-download-live-mobile,query-viewer-live}.png和仅含合成数据的导出样本。
 
 另用独立浏览器上下文验证匿名下载401、其他公司404；B公司viewer实际提交并完成自己0事件查询，但该已存在结果下载403，页面不显示导出按钮（未以不存在任务替代角色验收）。全部真实API，无请求拦截模拟。PG最终verify事件4/匹配ID4/已聚合4/编辑类型4/仪表盘1/报表完成任务1/导出准备2/DLQ0。关闭浏览器并清理两公司/两账号/全部测试数据、两端凭据及私有执行代码日志；夹具计数0。除明确全局游标各分区+2外，所有原关系旧字段/行数指纹不变；当前4400/4478（升级前4398/4476），进度check与HTTPS就绪通过。资源容量未在本次交互工作量中评估，不替代30分钟基线。
+
+### 步骤 91：schema16活动聚合容量测试启动（进行中）
+
+对m4-dashboard-001/schema16启动独立30分钟1EPS/约1KiB+每10秒趋势查询，内存配置保持步骤69，不改确认语义/容器限额/内核/服务。采样器ccpanel-capacity-20261022231949，证据/opt/ccpanel/shared/capacity-integrity.HMjyru，工作站结果目标.local/capacity-schema16-result.json。正式负载前一次性夹具容器已退出，等待两份其后不同时间的有效宿主机帧，避免把运维建夹具计入测量；实际sampler_first_frame_valid及post_setup_baseline_ready=true、fresh_host_samples=2，生成器已启动。沿用33分钟有限采样和起止固定配置证明，未重用旧运行。
+
+load-fixture verify在支持聚合表的版本额外等待最多15秒、逐项目核对已处理无错误任务和可见桶计数等于全部唯一生成ID；旧schema10仍使用原无聚合检查分支。这是结束后的校验，不在计量窗口运行额外Docker/PG套件。远程bash语法通过，Node脚本语法/本轮create实际通过；最终aggregate verify仍待负载完成，不能将新版本宣称容量已通过。原Swap失败结论保留。

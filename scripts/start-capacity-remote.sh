@@ -14,6 +14,8 @@ dir=$(mktemp -d /opt/ccpanel/shared/capacity-integrity.XXXXXX)
 printf '%s\n' "$dir" >/opt/ccpanel/shared/capacity-integrity.path
 printf '%s\n' "$CCPANEL_CAPACITY_LABEL" >"$dir/label.txt"
 readlink -f /opt/ccpanel/current >"$dir/release.txt"
+docker compose run --rm -T --no-deps api node scripts/load-fixture.mjs create >"$dir/fixture.json"
+fixture_ready=$(date +%s%3N)
 python3 /opt/ccpanel/shared/capacity-host-state.py >"$dir/configuration.json"
 python3 - "$dir" <<'PY'
 import json,pathlib,subprocess,sys
@@ -36,5 +38,18 @@ import json,sys
 row=json.loads(open(sys.argv[1]).readline());assert 'error' not in row
 print(json.dumps({'sampler_first_frame_valid':True,'capturedAt':row['capturedAt']}))
 PY
-docker compose run --rm -T --no-deps api node scripts/load-fixture.mjs create >"$dir/fixture.json"
+# Exclude operator fixture setup from the measured window. Require two
+# distinct fresh host frames after that one-off container has exited.
+python3 - "$dir/samples.jsonl" "$fixture_ready" <<'PY'
+import json,pathlib,sys,time
+path=pathlib.Path(sys.argv[1]);ready=int(sys.argv[2]);deadline=time.monotonic()+40
+while time.monotonic()<deadline:
+    rows=[json.loads(line) for line in path.read_text().splitlines()]
+    valid=[r for r in rows if 'error' not in r and r.get('telemetry',{}).get('sampledAt',0)>=ready and r['capturedAt']>=r['telemetry']['sampledAt']]
+    if len({r['telemetry']['sampledAt'] for r in valid})>=2 and valid[-1]==rows[-1]:
+        print(json.dumps({'post_setup_baseline_ready':True,'fresh_host_samples':len({r['telemetry']['sampledAt'] for r in valid})}));break
+    time.sleep(.25)
+else:raise RuntimeError('post_setup_host_baseline_timeout')
+PY
+systemctl is-active --quiet "$unit.service"
 printf 'CAPACITY_RUN evidence=%s unit=%s label=%s\n' "$dir" "$unit" "$CCPANEL_CAPACITY_LABEL"
