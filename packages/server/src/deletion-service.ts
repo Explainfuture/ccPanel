@@ -253,6 +253,13 @@ export async function deleteBatch(
   job: { id: string; tenant_id: string; project_id: string },
 ) {
   const values = [job.tenant_id, job.project_id, job.id];
+  // Epoch mismatch is immediately invisible; physically erase stale derived
+  // counts in bounded batches before this deletion may report completion.
+  const buckets=await db.query(`DELETE FROM event_count_buckets WHERE tenant_id=$1 AND project_id=$2 AND ctid IN (
+    SELECT b.ctid FROM event_count_buckets b JOIN projects p ON p.tenant_id=b.tenant_id AND p.id=b.project_id
+    WHERE b.tenant_id=$1 AND b.project_id=$2 AND (b.privacy_epoch<>p.privacy_epoch OR EXISTS(SELECT 1 FROM deletion_barriers d WHERE d.tenant_id=b.tenant_id AND d.project_id=b.project_id AND d.identity_hash='*')) LIMIT 500
+  ) RETURNING bucket_start`,values.slice(0,2));
+  if(buckets.rowCount)return false;
   const removed = await db.query(
     `WITH doomed AS MATERIALIZED (
     SELECT e.tableoid AS relation,e.ctid AS row_ref,e.event_id FROM events e

@@ -30,6 +30,8 @@ try{
       assert.equal(counts.rows[0].dlq,0);assert.equal(matched.rows[0].count,result.generated);
       console.log(JSON.stringify({passed:true,unique_ids_matched:matched.rows[0].count,...counts.rows[0]}));
     }else if(mode==='cleanup'){
+      const buckets=(await pool.query("SELECT to_regclass('public.event_count_buckets') AS name")).rows[0].name;
+      if(buckets)await pool.query('DELETE FROM event_count_buckets WHERE tenant_id=$1',[f.tenant]);
       for(const table of ['replay_items','replay_jobs','query_jobs','dashboards','reports','dlq_records','aggregation_jobs','ingest_metrics','events','event_dedup','identity_links','event_schemas','write_keys','audit_logs','tenant_memberships','projects'])await pool.query(`DELETE FROM ${table} WHERE tenant_id=$1`,[f.tenant]);
       await pool.query('DELETE FROM sessions WHERE user_id=$1',[f.user]);await pool.query('DELETE FROM users WHERE id=$1',[f.user]);await pool.query('DELETE FROM tenants WHERE id=$1',[f.tenant]);console.log('Isolated capacity fixture cleaned');
     }else throw new Error('Expected create, verify, or cleanup');

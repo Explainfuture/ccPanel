@@ -18,6 +18,14 @@ export async function migrate() {
       CREATE TABLE IF NOT EXISTS events(tenant_id uuid NOT NULL,project_id uuid NOT NULL,event_id uuid NOT NULL,event_name text NOT NULL,distinct_id text NOT NULL,anonymous_id text,event_time timestamptz NOT NULL,received_at timestamptz NOT NULL,properties jsonb NOT NULL,context jsonb NOT NULL,schema_version integer NOT NULL,PRIMARY KEY(project_id,event_time,event_id),FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id)) PARTITION BY RANGE(event_time);
       CREATE TABLE IF NOT EXISTS identity_links(tenant_id uuid NOT NULL,project_id uuid NOT NULL,anonymous_id text NOT NULL,user_id text NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(project_id,anonymous_id),FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
       CREATE TABLE IF NOT EXISTS aggregation_jobs(tenant_id uuid NOT NULL,project_id uuid NOT NULL,event_id uuid NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(project_id,event_id),FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
+      ALTER TABLE aggregation_jobs ADD COLUMN IF NOT EXISTS processed_at timestamptz;
+      ALTER TABLE aggregation_jobs ADD COLUMN IF NOT EXISTS processed_epoch integer;
+      ALTER TABLE aggregation_jobs ADD COLUMN IF NOT EXISTS available_at timestamptz NOT NULL DEFAULT clock_timestamp();
+      ALTER TABLE aggregation_jobs ADD COLUMN IF NOT EXISTS attempts integer NOT NULL DEFAULT 0 CHECK(attempts>=0);
+      ALTER TABLE aggregation_jobs ADD COLUMN IF NOT EXISTS last_error_code text;
+      CREATE INDEX IF NOT EXISTS aggregation_pending ON aggregation_jobs(available_at,created_at) WHERE processed_at IS NULL;
+      CREATE INDEX IF NOT EXISTS aggregation_epoch ON aggregation_jobs(project_id,processed_epoch,available_at);
+      CREATE TABLE IF NOT EXISTS event_count_buckets(tenant_id uuid NOT NULL,project_id uuid NOT NULL,event_name text NOT NULL,bucket_start timestamptz NOT NULL,event_count bigint NOT NULL CHECK(event_count>=0),privacy_epoch integer NOT NULL,computed_at timestamptz NOT NULL DEFAULT clock_timestamp(),PRIMARY KEY(project_id,event_name,bucket_start),FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id) ON DELETE CASCADE,CHECK(bucket_start=date_trunc('hour',bucket_start AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'));
       CREATE TABLE IF NOT EXISTS audit_logs(id bigserial PRIMARY KEY,tenant_id uuid NOT NULL REFERENCES tenants(id),user_id uuid REFERENCES users(id),action text NOT NULL,details jsonb NOT NULL DEFAULT '{}',created_at timestamptz NOT NULL DEFAULT now());
       CREATE TABLE IF NOT EXISTS ingest_metrics(tenant_id uuid NOT NULL,project_id uuid NOT NULL,metric text NOT NULL,value bigint NOT NULL DEFAULT 0,PRIMARY KEY(project_id,metric),FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
       CREATE TABLE IF NOT EXISTS dlq_records(id text PRIMARY KEY,tenant_id uuid,project_id uuid,reason text NOT NULL,payload jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
@@ -61,8 +69,12 @@ export async function migrate() {
             )
           )
         );
+      CREATE OR REPLACE VIEW visible_event_count_buckets WITH (security_barrier=true) AS
+        SELECT b.* FROM event_count_buckets b JOIN projects p ON p.tenant_id=b.tenant_id AND p.id=b.project_id AND p.privacy_epoch=b.privacy_epoch
+        WHERE NOT EXISTS(SELECT 1 FROM deletion_barriers d WHERE d.tenant_id=b.tenant_id AND d.project_id=b.project_id AND d.identity_hash='*');
       CREATE INDEX IF NOT EXISTS events_scope_time ON events(tenant_id,project_id,event_time DESC);
       CREATE INDEX IF NOT EXISTS events_user_time ON events(tenant_id,project_id,distinct_id,event_time DESC);
+      CREATE INDEX IF NOT EXISTS events_scope_event ON events(tenant_id,project_id,event_id);
       INSERT INTO schema_migrations(version) VALUES(1) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(2) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(3) ON CONFLICT DO NOTHING;
@@ -73,6 +85,7 @@ export async function migrate() {
       INSERT INTO schema_migrations(version) VALUES(8) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(9) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(10) ON CONFLICT DO NOTHING;
+      INSERT INTO schema_migrations(version) VALUES(11) ON CONFLICT DO NOTHING;
     `);
     const now = new Date();
     for (let i = -2; i <= 2; i++) {
