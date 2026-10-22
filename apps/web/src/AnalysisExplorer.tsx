@@ -11,6 +11,7 @@ import {
 import { api, ApiError } from "./api";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
+import ReportEditor from "./ReportEditor";
 import { BehaviorResultView, type BehaviorResult } from "./BehaviorExplorer";
 import type { AnalysisSpec } from "../../../packages/server/src/analysis-spec";
 import { useQueryJob } from "./useQueryJob";
@@ -294,27 +295,6 @@ export default function AnalysisExplorer({
       setError(message(e));
     }
   }
-  async function updateReport(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!editing) return;
-    const form = new FormData(e.currentTarget), current = ++generation.current;
-    setBusy(true); setError("");
-    try {
-      const useCurrent = form.get("replace_query") === "on";
-      await api(prefix + "/reports/" + editing.id, {
-        method: "PATCH", body: JSON.stringify({
-          name: form.get("name"), timezone: form.get("timezone"),
-          spec: useCurrent && result && "summary" in result ? result.spec : editing.spec,
-          expected_version: editing.version,
-        }),
-      });
-      if (current === generation.current) {
-        setEditing(null); setNotice("报表已更新。已排队的任务仍使用提交时的版本。");
-        await refresh();
-      }
-    } catch(e) { if(current === generation.current) setError(message(e)); }
-    finally { if(current === generation.current) setBusy(false); }
-  }
   async function createDashboard(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     try {
@@ -546,18 +526,11 @@ export default function AnalysisExplorer({
             <h2>公司共享报表</h2>
             <BookmarkPlus size={19} />
           </div>
-          {editing ? (
-            <form key={editing.id + ":" + editing.version} className="panel-body query-form" onSubmit={updateReport}>
-              <p className="muted">编辑报表 · 版本 {editing.version}</p>
-              <div className="query-fields">
-                <label>报表名称<Input name="name" defaultValue={editing.name} required maxLength={128} /></label>
-                <label>报表时区<Input name="timezone" defaultValue={editing.timezone || "UTC"} required placeholder="例如 Asia/Shanghai" /></label>
-              </div>
-              {result && "summary" in result ? <label><input type="checkbox" name="replace_query" /> 使用上方最近一次趋势查询条件替换此报表</label> : null}
-              <p className="fine-print">时区决定每日统计和留存日期；保存时会生成新版本。</p>
-              <div className="query-actions"><Button disabled={busy}>保存修改</Button><Button type="button" variant="ghost" disabled={busy} onClick={() => setEditing(null)}>取消</Button></div>
-            </form>
-          ) : null}
+          {editing && canEdit ? <ReportEditor key={editing.id+":"+editing.version} report={editing} prefix={prefix}
+            onCancel={()=>setEditing(null)}
+            onSaved={async()=>{setEditing(null);setNotice("报表已更新。已排队任务仍使用原版本。");try{await refresh();}catch(e){setError(message(e));}}}
+            onReload={async()=>{try{await refresh();setEditing(null);}catch(e){setError(message(e));}}}
+          /> : null}
           {reports.length ? (
             <div className="report-list">
               {reports.map((r) => (

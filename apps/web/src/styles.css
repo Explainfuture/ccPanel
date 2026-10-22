@@ -1113,3 +1113,5 @@ label {
 
 /* Report metadata stays readable while actions wrap within narrow cards. */
 .report-list>div{flex-wrap:wrap}.report-list>div>div{flex:1 0 100%;min-width:0}.report-list strong,.report-list small{overflow-wrap:anywhere}.report-list button{flex-shrink:0}
+
+.report-editor .query-fields{grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))}.report-editor .query-fields>label{min-width:0}.report-editor .query-fields input,.report-editor .query-fields select{min-width:0;max-width:100%}.report-editor .query-actions{flex-wrap:wrap;gap:10px}
