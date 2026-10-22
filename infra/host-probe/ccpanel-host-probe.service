@@ -1,0 +1,24 @@
+[Unit]
+Description=ccPanel host filesystem and resource counters
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/ccpanel/shared/host-telemetry.py --config /opt/ccpanel/shared/host-probe-config.json --output /opt/ccpanel/shared/telemetry/host.json
+User=root
+UMask=0022
+NoNewPrivileges=true
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX
+ReadWritePaths=/opt/ccpanel/shared/telemetry
+MemoryMax=32M
+CPUQuota=10%
+TimeoutStartSec=5s
+StandardOutput=null
+StandardError=journal
+LogRateLimitIntervalSec=60
+LogRateLimitBurst=5

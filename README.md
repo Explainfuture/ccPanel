@@ -21,6 +21,8 @@
 
 Node.js 22.12+，pnpm 12.3.4。
 
+宿主机采样相关测试还需要 Python 3（Linux/macOS 使用 python3，Windows 使用 python）；平台 API、Worker 和 SDK 仍使用 TypeScript。
+
 ```sh
 pnpm install --frozen-lockfile
 pnpm typecheck
