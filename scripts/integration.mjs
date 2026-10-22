@@ -46,6 +46,7 @@ try {
   await waitFor(async()=>Number((await pool.query('SELECT count(*) FROM events WHERE event_id=$1 AND project_id=ANY($2::uuid[])',[e.event_id,[a.project,b.project]])).rows[0].count)===2,'dedup and separate companies');
   assert.equal(Number((await pool.query('SELECT count(*) FROM aggregation_jobs WHERE event_id=$1',[e.event_id])).rows[0].count),2,'one aggregate task per project');
   const list=await fetch(base+root+'/events',{headers:h});assert.equal(list.status,200);assert.equal((await list.json()).events.length,1);
+  const trend=await fetch(base+root+'/trends',{headers:h});assert.equal(trend.status,200);const stats=await trend.json();assert.equal(stats.summary.events,1);assert.equal(stats.summary.users,1);assert.equal(stats.series.reduce((sum,row)=>sum+row.events,0),1);
   assert.equal((await send(a,{...e,properties:{button:'changed'}})).status,202);
   await waitFor(async()=>(await pool.query("SELECT 1 FROM dlq_records WHERE tenant_id=$1 AND reason='payload_conflict'",[a.tenant])).rowCount===1,'conflict DLQ');
   const original=await pool.query('SELECT properties FROM events WHERE project_id=$1 AND event_id=$2',[a.project,e.event_id]);assert.equal(original.rows[0].properties.button,'buy');

@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { pool } from './db';
 import { passwordHash } from './security';
-const email = process.env.ADMIN_EMAIL;
+const email = process.env.ADMIN_EMAIL?.trim();
 const password = process.env.ADMIN_PASSWORD;
-if (!email || !password || password.length < 12) throw new Error('Set ADMIN_EMAIL and ADMIN_PASSWORD (at least 12 characters)');
+if (!email || !password || password.length < 12 || /[\r\n]/.test(password)) throw new Error('Set ADMIN_EMAIL and ADMIN_PASSWORD (at least 12 characters; no line breaks)');
 const c = await pool.connect();
 try {
   await c.query('BEGIN');
