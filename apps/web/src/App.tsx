@@ -32,6 +32,7 @@ import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 const AnalysisExplorer = lazy(() => import('./AnalysisExplorer'));
 const BehaviorExplorer = lazy(() => import('./BehaviorExplorer'));
+const SchemaWorkspace = lazy(() => import('./SchemaWorkspace'));
 import { api, ApiError, setCsrf } from "./api";
 import {
   createAnalytics,
@@ -51,6 +52,8 @@ type Project = {
 };
 type Me = { user: { email: string }; tenants: Tenant[]; csrf_token: string };
 type EventRow = {
+  registered?:boolean;
+  project_schema_version?:number;
   event_id: string;
   event_name: string;
   distinct_id: string;
@@ -474,6 +477,7 @@ export default function App() {
     tenant?.role,
   ]);
   const reload = useCallback(() => setRefresh((n) => n + 1), []);
+  const reloadProjects=async()=>{const data=await api<{projects:Project[]}>(`/api/tenants/${tenantId}/projects`);setProjects(data.projects);};
   async function createProject(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
@@ -588,6 +592,7 @@ export default function App() {
             { id: "events", label: "事件探索", icon: Activity },
             { id: "analysis", label: "分析与报表", icon: BarChart3 },
             { id: "behavior", label: "漏斗与留存", icon: Layers3 },
+            { id: "schemas", label: "事件规范", icon: Settings2 },
             { id: "connect", label: "数据接入", icon: Code2 },
             { id: "members", label: "公司成员", icon: Users },
           ].map((n) => (
@@ -668,6 +673,7 @@ export default function App() {
                     events: "事件探索",
                     analysis: "分析与报表",
                     behavior: "理解用户旅程",
+                    schemas: "事件规范与设置",
                     connect: "连接你的数据",
                     members: "公司成员",
                   }[tab]
@@ -680,6 +686,7 @@ export default function App() {
                     events: "每一条事件，都是理解用户的线索。",
                     analysis: "组合指标与属性，保存公司共享的分析视图。",
                     behavior: "从转化到回访，探索关联用户的真实行为。",
+                    schemas: "统一业务事件口径，让每一次分析都有清晰定义。",
                     connect: "安装 SDK，让业务行为进入你的分析工作台。",
                     members: "同一公司的成员，共享全部项目与分析数据。",
                   }[tab]
@@ -924,6 +931,7 @@ export default function App() {
               ) : null}
               {tab === 'analysis' && project ? <Suspense fallback={<div className="chart-loading">正在打开分析工作台…</div>}><AnalysisExplorer key={prefix} prefix={prefix} canEdit={tenant.role !== 'viewer'} /></Suspense> : null}
               {tab === 'behavior' && project ? <Suspense fallback={<div className="chart-loading">正在打开行为分析…</div>}><BehaviorExplorer key={prefix} prefix={prefix}/></Suspense> : null}
+              {tab === 'schemas' && project ? <Suspense fallback={<div className="chart-loading">正在读取事件规范…</div>}><SchemaWorkspace key={prefix} prefix={prefix} project={project} canEdit={tenant.role==='admin'} onSaved={reloadProjects}/></Suspense> : null}
               {tab === "events" && project ? (
                 <section className="panel">
                   <div className="panel-heading">
