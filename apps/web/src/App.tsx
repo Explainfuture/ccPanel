@@ -4,6 +4,8 @@ import {
   useRef,
   useState,
   type FormEvent,
+  lazy,
+  Suspense,
 } from "react";
 import {
   Activity,
@@ -28,6 +30,7 @@ import {
 } from "lucide-react";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
+const AnalysisExplorer = lazy(() => import('./AnalysisExplorer'));
 import { api, ApiError, setCsrf } from "./api";
 import {
   createAnalytics,
@@ -554,6 +557,7 @@ export default function App() {
         <p>正在连接工作区…</p>
       </main>
     );
+  if (!me && error) return <main className="loading-screen"><Logo/><p role="alert">暂时无法连接工作区，请稍后重试。</p><Button onClick={() => location.reload()}>重新连接</Button></main>;
   if (!me) return <Login onLogin={setMe} />;
   return (
     <div className="app-shell">
@@ -581,6 +585,7 @@ export default function App() {
           {[
             { id: "overview", label: "概览", icon: BarChart3 },
             { id: "events", label: "事件探索", icon: Activity },
+            { id: "analysis", label: "分析与报表", icon: BarChart3 },
             { id: "connect", label: "数据接入", icon: Code2 },
             { id: "members", label: "公司成员", icon: Users },
           ].map((n) => (
@@ -659,6 +664,7 @@ export default function App() {
                   {
                     overview: "数据概览",
                     events: "事件探索",
+                    analysis: "分析与报表",
                     connect: "连接你的数据",
                     members: "公司成员",
                   }[tab]
@@ -669,6 +675,7 @@ export default function App() {
                   {
                     overview: "从真实行为出发，看见产品正在发生的变化。",
                     events: "每一条事件，都是理解用户的线索。",
+                    analysis: "组合指标与属性，保存公司共享的分析视图。",
                     connect: "安装 SDK，让业务行为进入你的分析工作台。",
                     members: "同一公司的成员，共享全部项目与分析数据。",
                   }[tab]
@@ -911,6 +918,7 @@ export default function App() {
                   </section>
                 </>
               ) : null}
+              {tab === 'analysis' && project ? <Suspense fallback={<div className="chart-loading">正在打开分析工作台…</div>}><AnalysisExplorer key={prefix} prefix={prefix} canEdit={tenant.role !== 'viewer'} /></Suspense> : null}
               {tab === "events" && project ? (
                 <section className="panel">
                   <div className="panel-heading">
