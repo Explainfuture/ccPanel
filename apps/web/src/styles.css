@@ -1057,6 +1057,9 @@ label {
 }
 /* Privacy operations retain separate database and stream-retention states. */
 .privacy-workspace { display: grid; gap: 22px; }
+.privacy-workspace .query-form { display: grid; gap: 20px; }
+.privacy-workspace > [role="status"] { padding: 13px 17px; border: 1px solid #d1e6dc; border-radius: 8px; background: #edf7f3; color: #376856; font-size: 13px; line-height: 1.7; }
+.privacy-workspace > [role="alert"] { padding: 13px 17px; border: 1px solid #efcfca; border-radius: 8px; background: #fff4f1; color: #9b3d34; font-size: 13px; line-height: 1.7; }
 .privacy-boundary { padding: 16px 18px; border: 1px solid #e7d8c0; border-radius: 8px; background: #fffaf1; color: #695538; font-size: 13px; line-height: 1.8; }
 .privacy-boundary p + p { margin-top: 8px; }
 .privacy-confirm { display: flex; align-items: flex-start; gap: 9px; color: #51677b; font-size: 13px; }

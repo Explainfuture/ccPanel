@@ -95,7 +95,7 @@ export default function PrivacyWorkspace({
       });
       form.reset();
       setNotice(
-        "删除屏障已建立，任务已排队。数据库清理完成前后均会阻止旧数据重入。任务编号：" +
+        "删除屏障已建立。清理进度见下方任务列表，旧数据重入将被阻止。任务编号：" +
           result.id,
       );
       setRefresh((v) => v + 1);

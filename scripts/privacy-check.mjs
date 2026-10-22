@@ -61,12 +61,17 @@ try{
   await waitFor(async()=>Number((await pool.query('SELECT count(*) FROM events WHERE tenant_id=$1',[a.tenant])).rows[0].count)===1,'late anonymous history removed');
   assert.equal(Number((await pool.query('SELECT count(*) FROM dlq_records WHERE tenant_id=$1',[a.tenant])).rows[0].count),0,'suppressed poison not copied into DLQ');
   await completed(a,deletionId);
+  const now=new Date(),previousMonth=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),0,12)).toISOString();
+  const bulk=Array.from({length:601},(_,n)=>event('privacy_bulk','bulk-victim',{event_time:n%2?previousMonth:old,properties:{test:true,index:n}}));
+  await producer.send({topic:'ccpanel.events',acks:-1,messages:bulk.map(e=>({key:a.project+':bulk-victim',value:JSON.stringify({tenant_id:a.tenant,project_id:a.project,received_at:e.event_time,event:e})}))});
+  await waitFor(async()=>Number((await pool.query('SELECT count(*) FROM events WHERE tenant_id=$1',[a.tenant])).rows[0].count)===602,'multi-partition batch fixtures');
   const projectRequest={scope:'project',confirmation:'PRIVACY INTEGRATION TEMP',reason:'Remove synthetic project'};
   assert.equal((await api(a,'/deletions',{...projectRequest,confirmation:'wrong'})).status,400);
-  const removeProject=await api(a,'/deletions',projectRequest);assert.equal(removeProject.status,202);await completed(a,(await removeProject.json()).id);
+  const removeProject=await api(a,'/deletions',projectRequest);assert.equal(removeProject.status,202);const projectDone=await completed(a,(await removeProject.json()).id);assert.equal(Number(projectDone.removed_events),602,'all rows across batch and month boundaries removed');
   assert.equal((await api(a,'/keys',{})).status,409,'deleted project cannot regain a write key');
   const retry=await fetch(base+'/v1/batch',{method:'POST',headers:{origin,'content-type':'text/plain'},body:JSON.stringify({write_key:a.key,schema_version:1,events:[journey[4]]})});assert.equal(retry.status,401,'project write key revoked');
   assert.equal(Number((await pool.query('SELECT count(*) FROM events WHERE tenant_id=$1',[a.tenant])).rows[0].count),0);
+  assert.equal(Number((await pool.query('SELECT count(*) FROM aggregation_jobs WHERE tenant_id=$1',[a.tenant])).rows[0].count),0,'all project aggregate tasks removed');
   assert.equal(Number((await pool.query('SELECT count(*) FROM events WHERE tenant_id=$1',[b.tenant])).rows[0].count),2);
   console.log('PASS: confirmed scoped deletion, immediate visibility barrier, stale query invalidation, transactional cleanup, stable-ID and late-alias replay suppression, poison suppression, project revocation and tenant isolation');
 }finally{
