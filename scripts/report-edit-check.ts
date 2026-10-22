@@ -5,6 +5,8 @@ import {pool} from '../packages/server/src/db';
 import {persist} from '../packages/server/src/consume';
 import {token,digest} from '../packages/server/src/security';
 import {createApp} from '../apps/api/src/app';
+import {startQueryJobs} from '../packages/server/src/query-jobs';
+let stopJobs:(()=>void)|undefined;
 try{
   assert.match((await pool.query('SELECT current_database() AS name')).rows[0].name,/^ccpanel_restore_[0-9]{14}_[a-f0-9]{8}$/);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM tenants')).rows[0].n,0);
@@ -50,6 +52,24 @@ try{
   const raced=await req(analyst,root+'/reports',{name:'race',spec:trend});const racedId=(await raced.json()).id;
   const race=await Promise.all([req(analyst,root+'/dashboards',{name:'race',report_ids:[racedId]}),req(admin,root+'/reports/'+racedId,undefined,'DELETE')]);
   if(race[0]!.status===201){const id=(await race[0]!.json()).id;assert.deepEqual((await pool.query('SELECT report_ids FROM dashboards WHERE id=$1',[id])).rows[0].report_ids,[]);}else assert.equal(race[0]!.status,404);
+  const enqueue=await req(viewer,root+'/query-jobs',{report_id:behaviorIds[1],expected_version:1});assert.equal(enqueue.status,202);const queued=await enqueue.json();
+  const stored=(await pool.query('SELECT timezone,report_version FROM query_jobs WHERE id=$1',[queued.id])).rows[0];assert.equal(stored.timezone,'UTC');assert.equal(stored.report_version,1);
+  await pool.query("UPDATE projects SET timezone='Pacific/Auckland' WHERE id=$1",[project]);
+  const retention={kind:'retention',...range,start_event:'view',return_event:'return',days:1,filters:[]};
+  assert.equal((await req(analyst,root+'/reports/'+behaviorIds[1],{name:'edited after queue',spec:retention,timezone:'Asia/Shanghai',expected_version:1},'PATCH')).status,200);
+  assert.equal((await req(viewer,root+'/query-jobs',{report_id:behaviorIds[1],expected_version:1})).status,409);
+  assert.equal((await req(viewer,root+'/query-jobs',{report_id:otherId,expected_version:1})).status,404);
+  const raw=await req(viewer,root+'/query-jobs',trend);assert.equal(raw.status,202);const rawJob=await raw.json();
+  const revoked=await req(analyst,root+'/query-jobs',{report_id:behaviorIds[1],expected_version:2});assert.equal(revoked.status,202);const revokedJob=await revoked.json();
+  const cancelled=await req(viewer,root+'/query-jobs',trend);assert.equal(cancelled.status,202);const cancelledJob=await cancelled.json();assert.equal((await req(viewer,root+'/query-jobs/'+cancelledJob.id,undefined,'DELETE')).status,200);
   await pool.query('DELETE FROM tenant_memberships WHERE tenant_id=$1 AND user_id=$2',[a,analyst]);assert.equal((await req(analyst,root+'/reports')).status,404);
-  console.log(JSON.stringify({passed:true,concurrent_edit_conflict:true,saved_timezone_pinned:true,retention_timezone_pinned:true,all_analysis_kinds_saved:true,legacy_timezone_not_guessed:true,viewer_read_only:true,cross_company_not_found:true,delete_repairs_dashboard:true,dashboard_revision_conflict:true,create_delete_reference_race_safe:true,removed_member_denied:true}));
-}finally{await pool.end();}
+  stopJobs=startQueryJobs();
+  const deadline=Date.now()+30000;let done=false;
+  while(Date.now()<deadline){const rows=(await pool.query('SELECT id,status FROM query_jobs')).rows;if(rows.every(r=>!['queued','running'].includes(r.status))){done=true;break;}await new Promise(r=>setTimeout(r,100));}assert.ok(done,'query jobs completed');
+  const output=await req(viewer,root+'/query-jobs/'+queued.id);assert.equal(output.status,200);const finished=await output.json();assert.equal(finished.status,'succeeded');assert.equal(finished.result.saved_report.version,1);assert.equal(finished.result.saved_report.timezone,'UTC');assert.equal(finished.result.timezone,'UTC');assert.equal(finished.result.cohorts[0].retention[1].users,1);
+  const anonymous=(await pool.query('SELECT status,result,timezone,report_id FROM query_jobs WHERE id=$1',[rawJob.id])).rows[0];assert.equal(anonymous.status,'succeeded');assert.equal(anonymous.report_id,null);assert.equal(anonymous.timezone,null);assert.equal(anonymous.result.saved_report,undefined);
+  const rejected=(await pool.query('SELECT status,error,result FROM query_jobs WHERE id=$1',[revokedJob.id])).rows[0];assert.equal(rejected.status,'failed');assert.equal(rejected.error,'membership_revoked');assert.equal(rejected.result,null);
+  assert.equal((await req(analyst,root+'/query-jobs/'+revokedJob.id)).status,404);
+  assert.equal((await pool.query('SELECT status,result FROM query_jobs WHERE id=$1',[cancelledJob.id])).rows[0].status,'cancelled');
+  console.log(JSON.stringify({passed:true,concurrent_edit_conflict:true,saved_timezone_pinned:true,retention_timezone_pinned:true,all_analysis_kinds_saved:true,legacy_timezone_not_guessed:true,viewer_read_only:true,cross_company_not_found:true,delete_repairs_dashboard:true,dashboard_revision_conflict:true,create_delete_reference_race_safe:true,removed_member_denied:true,queued_report_snapshot_pinned:true,queued_revision_conflict:true,anonymous_query_compatible:true,revoked_job_failed:true,cancelled_job_not_executed:true}));
+}finally{stopJobs?.();await pool.end();}

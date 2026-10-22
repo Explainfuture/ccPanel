@@ -33,9 +33,9 @@ export async function removeReport(tenant:string,project:string,actor:string,id:
     await db.query("INSERT INTO audit_logs(tenant_id,user_id,action,details) VALUES($1,$2,'report_deleted',$3)",[tenant,actor,JSON.stringify({project_id:project,report_id:id})]);return{ok:true};
   });
 }
-export async function savedReportRun(tenant:string,project:string,id:string,input:unknown){
+export async function savedReportRun(tenant:string,project:string,id:string,input:unknown,run:typeof query=query,lock=false){
   if(!reportId(id))throw new ReportError(404,'not_found');
-  const row=(await query('SELECT id,name,spec,version,timezone FROM reports WHERE tenant_id=$1 AND project_id=$2 AND id=$3',[tenant,project,id])).rows[0];
+  const row=(await run('SELECT id,name,spec,version,timezone FROM reports WHERE tenant_id=$1 AND project_id=$2 AND id=$3'+(lock?' FOR SHARE':''),[tenant,project,id])).rows[0];
   if(!row)throw new ReportError(404,'not_found');if(!row.timezone)throw new ReportError(409,'report_timezone_unrecorded');
   const parsed=reportRun(row.spec,input);if(parsed.expected_version!==undefined&&parsed.expected_version!==row.version)throw new ReportError(409,'report_conflict');
   return{spec:parsed.spec,timezone:row.timezone as string,report:{id:row.id,name:row.name,version:row.version,timezone:row.timezone}};

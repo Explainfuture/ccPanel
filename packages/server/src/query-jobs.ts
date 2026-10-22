@@ -8,6 +8,9 @@ import { trends } from "./trends";
 import { behaviorQuery, QueryBudgetExceeded } from "./behavior-routes";
 import { projectQueryFlights } from "./query-budget";
 import {parseQuerySpec} from './analysis-spec';
+import type {AnalysisSpec} from './analysis-spec';
+import {ReportError,reportReference} from './report-spec';
+import {savedReportRun} from './reports';
 export {parseQuerySpec} from './analysis-spec';
 
 const validId = (id: string) =>
@@ -15,10 +18,13 @@ const validId = (id: string) =>
 export function registerQueryJobs(app: Hono<Env>) {
   const prefix = "/api/tenants/:tenant/projects/:project/query-jobs";
   app.post(prefix, async (c) => {
-    let spec;
+    let spec:AnalysisSpec|undefined,reference:ReturnType<typeof reportReference>|undefined;
     try {
-      spec = parseQuerySpec(await c.req.json());
+      const input=await c.req.json();
+      if(input&&typeof input==='object'&&Object.hasOwn(input,'report_id'))reference=reportReference(input);
+      else spec = parseQuerySpec(input);
     } catch (e) {
+      if(e instanceof ReportError)return c.json({error:e.message},e.status);
       return c.json(
         { error: e instanceof InvalidQuery ? e.message : "invalid_query" },
         400,
@@ -27,6 +33,7 @@ export function registerQueryJobs(app: Hono<Env>) {
     const db = await pool.connect();
     try {
       await db.query("BEGIN");
+      if(!(await db.query('SELECT 1 FROM tenant_memberships WHERE tenant_id=$1 AND user_id=$2 FOR SHARE',[c.get('tenantId'),c.get('userId')])).rowCount){await db.query('ROLLBACK');return c.json({error:'not_found'},404);}
       // Serialize enqueue limits across API instances; the queue is deliberately small.
       await db.query("SELECT pg_advisory_xact_lock(169202611)");
       const counts = await db.query(
@@ -37,17 +44,25 @@ export function registerQueryJobs(app: Hono<Env>) {
         await db.query("ROLLBACK");
         return c.json({ error: "query_queue_full" }, 429);
       }
+      let timezone:string|null=null,report:string|null=null,version:number|null=null;
+      if(reference){
+        const run=((sql:string,values:unknown[]=[])=>db.query(sql,values)) as typeof query;
+        const snapshot=await savedReportRun(c.get('tenantId'),c.req.param('project')!,reference.report_id,{...reference.overrides,expected_version:reference.expected_version},run,true);
+        spec=snapshot.spec;timezone=snapshot.timezone;report=snapshot.report.id;version=snapshot.report.version;
+      }
       const id = randomUUID();
-      await db.query(
-        "INSERT INTO query_jobs(id,tenant_id,project_id,user_id,spec,privacy_epoch) SELECT $1,$2,$3,$4,$5,p.privacy_epoch FROM projects p WHERE p.tenant_id=$2 AND p.id=$3",
+      const inserted=await db.query(
+        "INSERT INTO query_jobs(id,tenant_id,project_id,user_id,spec,privacy_epoch,timezone,report_id,report_version) SELECT $1,$2,$3,$4,$5,p.privacy_epoch,$6,$7,$8 FROM projects p WHERE p.tenant_id=$2 AND p.id=$3",
         [
           id,
           c.get("tenantId"),
           c.req.param("project"),
           c.get("userId"),
           JSON.stringify(spec),
+          timezone,report,version,
         ],
       );
+      if(inserted.rowCount!==1){await db.query('ROLLBACK');return c.json({error:'not_found'},404);}
       await db.query("COMMIT");
       return c.json({ id, status: "queued", expires_in_seconds: 86400 }, 202);
     } catch (e) {
@@ -61,7 +76,7 @@ export function registerQueryJobs(app: Hono<Env>) {
     c.json({
       jobs: (
         await query(
-          "SELECT id,spec->>'kind' AS kind,status,error,created_at,started_at,finished_at,expires_at FROM query_jobs WHERE tenant_id=$1 AND project_id=$2 AND expires_at>now() AND privacy_epoch=(SELECT privacy_epoch FROM projects WHERE tenant_id=$1 AND id=$2) ORDER BY created_at DESC LIMIT 50",
+          "SELECT id,spec->>'kind' AS kind,status,error,timezone,report_id,report_version,created_at,started_at,finished_at,expires_at FROM query_jobs WHERE tenant_id=$1 AND project_id=$2 AND expires_at>now() AND privacy_epoch=(SELECT privacy_epoch FROM projects WHERE tenant_id=$1 AND id=$2) ORDER BY created_at DESC LIMIT 50",
           [c.get("tenantId"), c.req.param("project")],
         )
       ).rows,
@@ -71,7 +86,7 @@ export function registerQueryJobs(app: Hono<Env>) {
     const id = c.req.param("job")!;
     if (!validId(id)) return c.json({ error: "not_found" }, 404);
     const found = await query(
-      "SELECT id,status,spec,result,error,created_at,started_at,finished_at,expires_at FROM query_jobs WHERE tenant_id=$1 AND project_id=$2 AND id=$3 AND expires_at>now() AND privacy_epoch=(SELECT privacy_epoch FROM projects WHERE tenant_id=$1 AND id=$2)",
+      "SELECT id,status,spec,result,error,timezone,report_id,report_version,created_at,started_at,finished_at,expires_at FROM query_jobs WHERE tenant_id=$1 AND project_id=$2 AND id=$3 AND expires_at>now() AND privacy_epoch=(SELECT privacy_epoch FROM projects WHERE tenant_id=$1 AND id=$2)",
       [c.get("tenantId"), c.req.param("project"), id],
     );
     return found.rowCount
@@ -148,6 +163,7 @@ export function startQueryJobs() {
       try {
         const spec = parseQuerySpec(job.spec),
           deadline = Date.now() + 30000;
+        if(job.report_id&&(!Number.isInteger(job.report_version)||job.report_version<1||typeof job.timezone!=='string'||!job.timezone))throw new InvalidQuery('report_snapshot_invalid');
         await db.query("BEGIN");
         // Serialize on this connection and allocate the remaining total deadline
         // to each statement, rather than allowing 30 seconds per subquery.
@@ -169,16 +185,17 @@ export function startQueryJobs() {
         };
         const result =
           spec.kind === "trend"
-            ? await trends(job.tenant_id, job.project_id, spec, run)
+            ? await trends(job.tenant_id, job.project_id, spec, run,job.timezone??undefined)
             : await behaviorQuery(
                 job.tenant_id,
                 job.project_id,
                 spec,
                 run,
                 true,
+                job.timezone??undefined,
               );
         if (Date.now() > deadline) throw new Error("query_timeout");
-        const encoded = JSON.stringify(result);
+        const encoded = JSON.stringify(job.report_id?{...result,saved_report:{id:job.report_id,version:job.report_version,timezone:job.timezone}}:result);
         if (Buffer.byteLength(encoded) > 2 * 1024 * 1024)
           throw new QueryBudgetExceeded("query_result_too_large");
         await db.query("COMMIT");

@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {reportDraft,reportRun,dashboardDraft} from '../packages/server/src/report-spec';
+import {reportDraft,reportRun,dashboardDraft,reportReference} from '../packages/server/src/report-spec';
 import {trends} from '../packages/server/src/trends';
 import {query} from '../packages/server/src/db';
 const range=()=>({from:new Date(Date.now()-86400000).toISOString(),to:new Date().toISOString()});
@@ -34,4 +34,8 @@ it('binds a saved timezone only to the daily-series query without adding unused 
   expect(calls).toHaveLength(3);
   for(const call of calls){const parameters=[...call.sql.matchAll(/\$(\d+)/g)].map(m=>Number(m[1]));expect(Math.max(...parameters)).toBe(call.values.length);}
   const series=calls.find(c=>c.sql.includes('date_trunc'))!;expect(series.values.at(-1)).toBe('UTC');expect(series.sql).not.toContain("TIME ZONE 'UTC'");expect(calls.filter(c=>c.values.includes('UTC'))).toHaveLength(1);
+});
+it('pins an async saved-report reference without accepting caller timezone, scope or nested revision',()=>{
+  const id='aaaaaaaa-1111-4111-8111-111111111111';expect(reportReference({report_id:id.toUpperCase(),expected_version:3,overrides:{filters:[]}})).toEqual({report_id:id,expected_version:3,overrides:{filters:[]}});
+  for(const value of [{report_id:id},{report_id:id,expected_version:3,timezone:'UTC'},{report_id:id,expected_version:3,tenant_id:'other'},{report_id:id,expected_version:3,overrides:{expected_version:1}},{report_id:id,expected_version:3,overrides:[]}])expect(()=>reportReference(value)).toThrow();
 });

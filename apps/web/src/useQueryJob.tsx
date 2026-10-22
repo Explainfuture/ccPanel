@@ -12,6 +12,9 @@ type Job = {
   finished_at?: string;
   expires_at: string;
   result?: unknown;
+  report_id?:string|null;
+  report_version?:number|null;
+  timezone?:string|null;
 };
 const statusText = {
   queued: "排队中",
@@ -29,6 +32,10 @@ const errorText = (code?: string) =>
     membership_revoked: "发起人的公司成员权限已失效。",
     query_expired_or_invalid: "查询时间已过期，请重新选择范围。",
     not_found: "任务不存在、已过期或无权访问。",
+    report_conflict:"报表已被修改，请刷新报表后重新提交。",
+    report_timezone_unrecorded:"该历史报表尚未记录时区，请重新保存后再运行。",
+    invalid_report_reference:"报表引用或版本无效，请重新选择报表。",
+    privacy_changed:"数据删除范围已变更，旧结果已失效，请重新查询。",
   })[code || ""] || "任务请求失败，请重试。";
 
 export function useQueryJob<T>(
@@ -153,6 +160,7 @@ export function useQueryJob<T>(
           <p role="status">
             当前任务：{statusText[job.status]}
             {job.status === "failed" ? " · " + errorText(job.error) : ""}
+            {job.report_id ? ` · 报表版本 ${job.report_version} · ${job.timezone}` : ''}
           </p>
         ) : null}
         {id && job && (job.status === "queued" || job.status === "running") ? (
@@ -174,7 +182,7 @@ export function useQueryJob<T>(
                 {jobs.slice(0, 10).map((row) => (
                   <tr key={row.id}>
                     <td>{new Date(row.created_at).toLocaleString("zh-CN")}</td>
-                    <td>{statusText[row.status]}</td>
+                    <td>{statusText[row.status]}{row.report_id?<div className="fine-print">报表版本 {row.report_version} · {row.timezone}</div>:null}</td>
                     <td>
                       <Button
                         type="button"

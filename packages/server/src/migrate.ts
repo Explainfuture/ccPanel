@@ -47,6 +47,9 @@ export async function migrate() {
       CREATE INDEX IF NOT EXISTS deletion_barriers_job ON deletion_barriers(project_id,deletion_job_id,identity_hash);
       ALTER TABLE projects ADD COLUMN IF NOT EXISTS privacy_epoch integer NOT NULL DEFAULT 0;
       ALTER TABLE query_jobs ADD COLUMN IF NOT EXISTS privacy_epoch integer NOT NULL DEFAULT 0;
+      ALTER TABLE query_jobs ADD COLUMN IF NOT EXISTS timezone text;
+      ALTER TABLE query_jobs ADD COLUMN IF NOT EXISTS report_id uuid;
+      ALTER TABLE query_jobs ADD COLUMN IF NOT EXISTS report_version integer CHECK(report_version>0) CHECK((report_id IS NULL AND report_version IS NULL) OR (report_id IS NOT NULL AND report_version IS NOT NULL AND report_version>0 AND timezone IS NOT NULL));
       ALTER TABLE deletion_jobs ALTER COLUMN user_id DROP NOT NULL;
       ALTER TABLE event_dedup ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'stored' CHECK(status IN ('stored','failed'));
       CREATE TABLE IF NOT EXISTS replay_jobs(id uuid NOT NULL,tenant_id uuid NOT NULL,project_id uuid NOT NULL,user_id uuid NOT NULL REFERENCES users(id),request_hash text NOT NULL,reason text NOT NULL,status text NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','completed','failed')),error text,created_at timestamptz NOT NULL DEFAULT clock_timestamp(),checked_at timestamptz NOT NULL DEFAULT clock_timestamp(),next_attempt_at timestamptz NOT NULL DEFAULT clock_timestamp(),finished_at timestamptz,PRIMARY KEY(project_id,id),FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
@@ -97,6 +100,7 @@ export async function migrate() {
       INSERT INTO schema_migrations(version) VALUES(12) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(13) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(14) ON CONFLICT DO NOTHING;
+      INSERT INTO schema_migrations(version) VALUES(15) ON CONFLICT DO NOTHING;
     `);
     const now = new Date();
     for (let i = -2; i <= 2; i++) {

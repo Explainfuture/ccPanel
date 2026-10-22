@@ -24,3 +24,9 @@ export function dashboardDraft(input:unknown,editing=false){
   const ids=(input.report_ids as string[]).map(id=>id.toLowerCase());if(new Set(ids).size!==ids.length)throw new ReportError(400,'invalid_dashboard');
   return{name:named(input.name),report_ids:ids,expected_version:editing?version(input.expected_version):undefined};
 }
+export function reportReference(input:unknown){
+  if(!object(input)||Object.keys(input).some(k=>!['report_id','expected_version','overrides'].includes(k))||!reportId(input.report_id))throw new ReportError(400,'invalid_report_reference');
+  const overrides=input.overrides??{};
+  if(!object(overrides)||Object.keys(overrides).some(k=>!['from','to','filters'].includes(k)))throw new ReportError(400,'invalid_report_reference');
+  return{report_id:input.report_id.toLowerCase(),expected_version:version(input.expected_version),overrides};
+}

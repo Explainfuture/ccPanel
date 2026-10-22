@@ -34,7 +34,7 @@ export function registerReportRoutes(app:Hono<Env>){
     if(flights.has(project))return c.json({error:'query_busy'},429);
     flights.add(project);
     try{const result=saved.spec.kind==='trend'?await trends(c.get('tenantId'),project,saved.spec,query,saved.timezone):await behaviorQuery(c.get('tenantId'),project,saved.spec,query,false,saved.timezone);return c.json({...result,saved_report:saved.report});}
-    catch(error){if(error instanceof QueryBudgetExceeded)return c.json({error:error.message,async_available:false},422);if((error as {code?:string}).code==='57014')return c.json({error:'query_timeout',async_available:false},504);throw error;}
+    catch(error){if(error instanceof QueryBudgetExceeded)return c.json({error:error.message,async_available:true,report_id:saved.report.id,expected_version:saved.report.version},422);if((error as {code?:string}).code==='57014')return c.json({error:'query_timeout',async_available:true,report_id:saved.report.id,expected_version:saved.report.version},504);throw error;}
     finally{flights.delete(project);}
   });
   app.delete(prefix+'/reports/:report',async c=>{
