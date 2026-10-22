@@ -1,6 +1,6 @@
 import { query } from './db';
 import { compileFilters,type TrendSpec } from './query-spec';
-export async function trends(tenantId:string,projectId:string,spec:TrendSpec){
+export async function trends(tenantId:string,projectId:string,spec:TrendSpec,run:typeof query=query){
   const values:unknown[]=[tenantId,projectId,spec.from,spec.to];
   const predicates=[`e.tenant_id=$1`,`e.project_id=$2`,`e.event_time >= $3`,`e.event_time < $4`,`e.event_name<>'$identify'`];
   if(spec.event_name){values.push(spec.event_name);predicates.push(`e.event_name=$${values.length}`);}
@@ -17,14 +17,14 @@ export async function trends(tenantId:string,projectId:string,spec:TrendSpec){
   const groups=grouping.length?`jsonb_build_array(${grouping.join(',')})`:`'[]'::jsonb`;
   const base=values.slice(0,values.length-grouping.length);
   const [summary,series,byGroup]=await Promise.all([
-    query(`SELECT ${metric} AS value,${excluded} AS excluded,count(*)::int AS events,count(DISTINCT COALESCE(l.user_id,e.distinct_id))::int AS users,max(e.received_at) AS latest_received_at ${joins}`,base),
-    query(`SELECT to_char(date_trunc('day',e.event_time AT TIME ZONE p.timezone),'YYYY-MM-DD') AS day,${metric} AS value,${excluded} AS excluded ${joins} GROUP BY 1 ORDER BY 1`,base),
-    query(`SELECT ${groups} AS dimensions,${metric} AS value,${excluded} AS excluded ${joins} GROUP BY 1 ORDER BY value DESC NULLS LAST LIMIT 21`,values),
+    run(`SELECT ${metric} AS value,${excluded} AS excluded,count(*)::int AS events,count(DISTINCT COALESCE(l.user_id,e.distinct_id))::int AS users,max(e.received_at) AS latest_received_at ${joins}`,base),
+    run(`SELECT to_char(date_trunc('day',e.event_time AT TIME ZONE p.timezone),'YYYY-MM-DD') AS day,${metric} AS value,${excluded} AS excluded ${joins} GROUP BY 1 ORDER BY 1`,base),
+    run(`SELECT ${groups} AS dimensions,${metric} AS value,${excluded} AS excluded ${joins} GROUP BY 1 ORDER BY value DESC NULLS LAST LIMIT 21`,values),
   ]);
   let other:unknown=null;
   if(byGroup.rows.length>20){
     const excluding=values.length+1;
-    const result=await query(`SELECT ${metric} AS value,${excluded} AS excluded ${joins} AND NOT (${groups}=ANY($${excluding}::jsonb[]))`,[...values,byGroup.rows.slice(0,20).map(r=>JSON.stringify(r.dimensions))]);
+    const result=await run(`SELECT ${metric} AS value,${excluded} AS excluded ${joins} AND NOT (${groups}=ANY($${excluding}::jsonb[]))`,[...values,byGroup.rows.slice(0,20).map(r=>JSON.stringify(r.dimensions))]);
     other=result.rows[0];
   }
   return{spec,summary:summary.rows[0],series:series.rows,groups:byGroup.rows.slice(0,20),other,groups_truncated:byGroup.rows.length>20,computed_at:new Date().toISOString()};

@@ -13,7 +13,9 @@ export function registerReportRoutes(app:Hono<Env>){
     let spec;
     try{spec=parseTrend(await c.req.json());}catch(e){return c.json({error:e instanceof InvalidQuery?e.message:'invalid_query'},400);}
     flights.add(project);
-    try{return c.json(await trends(c.get('tenantId'),project,spec));}finally{flights.delete(project);}
+    try{return c.json(await trends(c.get('tenantId'),project,spec));}
+    catch(e){if((e as {code?:string}).code==='57014')return c.json({error:'query_timeout',async_available:true},504);throw e;}
+    finally{flights.delete(project);}
   });
   app.get(prefix+'/reports',async c=>c.json({reports:(await query('SELECT id,name,spec,updated_at FROM reports WHERE tenant_id=$1 AND project_id=$2 ORDER BY updated_at DESC',[c.get('tenantId'),c.req.param('project')])).rows}));
   app.post(prefix+'/reports',async c=>{

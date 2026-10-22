@@ -73,16 +73,26 @@ try {
   const retention=await runBehavior({kind:'retention',start_event:'journey_start',return_event:'journey_return',days:3});assert.equal(retention.cohorts[0].size,1);assert.equal(retention.cohorts[0].retention[1].users,1);assert.equal(retention.cohorts[0].retention[3].users,null);
   const segment=await runBehavior({kind:'cohort',event_name:'journey_buy',count_op:'gte',count:1});assert.equal(segment.total,1);assert.equal(segment.users[0].user,'identified-user');
   const timeline=await fetch(base+root+'/users/events?'+new URLSearchParams({distinct_id:anonymous}),{headers:h});assert.equal(timeline.status,200);const history=await timeline.json();assert.equal(history.canonical_id,'identified-user');assert.equal(history.events.length,4);
+  const queued=await fetch(base+root+'/query-jobs',{method:'POST',headers:{...h,'content-type':'application/json'},body:JSON.stringify(spec)});assert.equal(queued.status,202);const job=(await queued.json()).id;
+  let completed;
+  await waitFor(async()=>{const r=await fetch(base+root+'/query-jobs/'+job,{headers:h});assert.equal(r.status,200);completed=await r.json();assert.notEqual(completed.status,'failed',completed.error);return completed.status==='succeeded';},'async trend job');
+  assert.equal(completed.result.summary.value,10,'async result matches synchronous result');
+  assert.equal((await fetch(base+`/api/tenants/${b.tenant}/projects/${b.project}/query-jobs/${job}`,{headers:h})).status,404,'cross-company job hidden');
+  const behaviorJob=await fetch(base+root+'/query-jobs',{method:'POST',headers:{...h,'content-type':'application/json'},body:JSON.stringify({...behavior,kind:'funnel',steps:['journey_start','journey_buy'],window_hours:24})});assert.equal(behaviorJob.status,202);const funnelJob=(await behaviorJob.json()).id;
+  await waitFor(async()=>{const result=await(await fetch(base+root+'/query-jobs/'+funnelJob,{headers:h})).json();assert.notEqual(result.status,'failed',result.error);if(result.status!=='succeeded')return false;assert.deepEqual(result.result.steps.map(s=>s.users),[1,1]);return true;},'async behavior job');
+  assert.equal((await fetch(base+root+'/query-jobs/'+funnelJob,{method:'DELETE',headers:h})).status,200,'cancel discards result');
+  const cancelled=await(await fetch(base+root+'/query-jobs/'+funnelJob,{headers:h})).json();assert.equal(cancelled.status,'cancelled');assert.equal(cancelled.result,null);
   await pool.query("INSERT INTO tenant_memberships VALUES($1,$2,'viewer')",[b.tenant,a.user]);
   assert.equal((await fetch(base+`/api/tenants/${b.tenant}/projects`,{headers:h})).status,200,'same account can read joined company');
   assert.equal((await fetch(base+`/api/tenants/${b.tenant}/projects/${b.project}/keys`,{method:'POST',headers:{...h,'content-type':'application/json'},body:'{}'})).status,403,'role scoped to current company');
   await pool.query('DELETE FROM tenant_memberships WHERE tenant_id=$1 AND user_id=$2',[a.tenant,a.user]);
   assert.equal((await fetch(base+root+'/events',{headers:h})).status,404,'revocation immediately enforced');
+  assert.equal((await fetch(base+root+'/query-jobs/'+job,{headers:h})).status,404,'revoked member cannot read old task result');
   console.log('PASS: Kafka/dedup/DLQ, tenant isolation and role switching, typed aggregates/filters, saved reports/dashboards, identity-linked funnel/retention/cohort, and revocation');
 } finally {
   await pool.query('DELETE FROM tenant_memberships WHERE user_id=ANY($1::uuid[])',[fixtures.map(f=>f.user)]);
   for(const f of fixtures) {
-    for(const table of ['dashboards','reports','dlq_records','aggregation_jobs','ingest_metrics','events','event_dedup','identity_links','event_schemas','write_keys','audit_logs','projects','tenant_memberships']) await pool.query(`DELETE FROM ${table} WHERE tenant_id=$1`,[f.tenant]);
+    for(const table of ['query_jobs','dashboards','reports','dlq_records','aggregation_jobs','ingest_metrics','events','event_dedup','identity_links','event_schemas','write_keys','audit_logs','projects','tenant_memberships']) await pool.query(`DELETE FROM ${table} WHERE tenant_id=$1`,[f.tenant]);
     await pool.query('DELETE FROM sessions WHERE user_id=$1',[f.user]);await pool.query('DELETE FROM users WHERE id=$1',[f.user]);await pool.query('DELETE FROM tenants WHERE id=$1',[f.tenant]);
   }
   await pool.end();

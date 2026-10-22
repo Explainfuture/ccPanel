@@ -5,6 +5,7 @@ import { registerReportRoutes } from '../../../packages/server/src/report-routes
 import { registerBehaviorRoutes } from '../../../packages/server/src/behavior-routes';
 import { registerSchemaRoutes } from '../../../packages/server/src/schema-routes';
 import { registerUserRoutes } from '../../../packages/server/src/user-routes';
+import { registerQueryJobs } from '../../../packages/server/src/query-jobs';
 import { checkRequired } from '../../../packages/server/src/project-schema';
 import { projectQueryFlights as queryFlights } from '../../../packages/server/src/query-budget';
 import { randomUUID } from "node:crypto";
@@ -522,5 +523,6 @@ export function createApp(deps: AppDeps) {
   registerBehaviorRoutes(app);
   registerSchemaRoutes(app);
   registerUserRoutes(app);
+  registerQueryJobs(app);
   return app;
 }
