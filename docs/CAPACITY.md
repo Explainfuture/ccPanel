@@ -88,3 +88,11 @@ UTC 17:29:36.169–17:59:36.524，后端固定 m4-query-jobs-001，Windows 工�
 结论：独立生成器证明提供速率和逐 ID 数据闭环、幂等与延迟目标通过；**资源门槛仍未通过**。本轮主要为换入、换出很少，不能把任何 swap 活动都解释为同等程度的内存抖动，但持续换入仍需分析、调整和复测，不因去掉生成器就自动宣称内存达标。保留现有确认标准，不提高流量。
 
 180 次宿主机采样在生成前启用，采样结束与生成尾部有几秒边界差异；最终全生命周期 OOM/重启状态另行核实。测试后将全部原始 ID 交由 PG 对账，并已清理临时公司。证据位于本机 `.local/load-public-clocked-result.json` 和服务器 `load-public-clocked-baseline-20261023.log`；当前新版后端需另行测试。
+
+## schema10 新版复测（运行中，尚无最终结论）
+
+2026-10-23在m4-integrity-001/schema10启动同一1EPS/1800秒公网独立生成器与每10秒趋势查询；结果文件为工作站`.local/capacity-integrity-result.json`，运行期间保持发布版本固定。此处仅记录已启动，不将旧版结果套用为新版容量。
+
+新增有限时长只读采样脚本capacity-sample.py，每10秒保存持续宿主机遥测与四个固定容器的cgroup memory.current、memory.events、cpu.stat；不读取进程参数或环境，不逐轮运行Docker CLI。采样器从负载前开始、计划运行1980秒，32MiB/CPU5%上限，首轮实际MemoryCurrent约6.18MiB；观察器开销计入同机资源，不从报告中扣除。容器ID与重启/OOM起始状态另存受限基线，结束仍需对比。
+
+服务ccpanel-capacity-integrity-20261022210155已确认active/running，首5帧有效；证据目录为服务器`/opt/ccpanel/shared/capacity-integrity.dMizyM`。采样过期、cgroup缺失等写错误帧而非伪造零值，最终必须检查时间覆盖与所有错误帧，再核对逐ID数据、重启/OOM和持续swap活动。当前试运行资源门槛继续保持未通过；仍须等待实际进程完成并验收，不能仅凭状态文件判定运行或成功。

@@ -13,3 +13,5 @@ test-results/
 output/
 .playwright-cli/
 *.tsbuildinfo
+__pycache__/
+*.pyc
