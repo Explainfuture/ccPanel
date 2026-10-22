@@ -1092,3 +1092,21 @@ label {
 .replay-reason-cell { max-width: 360px; overflow-wrap: anywhere; }
 .replay-outcome { margin-top: 8px; font-size: 12px; }
 .replay-outcome code,.replay-id { overflow-wrap: anywhere; }
+.join-company-button { width:100%; margin:0 0 14px; }
+.invitation-form { display:grid; grid-template-columns:minmax(0,1fr) 160px auto; gap:14px; align-items:end; }
+.invitation-form label,.invitation-issued label,.invitation-paste label { display:grid; gap:7px; color:var(--ink); font-size:13px; min-width:0; }
+.invitation-form select { width:100%; }
+.invitation-issued { margin:20px 0; padding:18px; border:1px solid #bcd6df; border-left:3px solid var(--primary); background:#f1f8fa; border-radius:6px; display:grid; gap:12px; }
+.invitation-actions { display:flex; flex-wrap:wrap; gap:9px; margin-top:14px; }
+.invitation-list-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:25px; }
+.invitation-list-heading h3 { font-size:14px; }
+.invitation-landing { min-height:100dvh; display:grid; place-items:center; padding:28px 16px; }
+.invitation-card { width:min(100%,620px); }
+.invitation-card h1 { font-size:23px; line-height:1.45; margin:6px 0; }
+.invitation-card .eyebrow { margin:0; }
+.invitation-summary { border-block:1px solid var(--line); padding:21px 0; margin:22px 0; }
+.invitation-summary h2 { font-size:21px; margin:0 0 10px; overflow-wrap:anywhere; }
+.invitation-summary p { line-height:1.8; }
+.invitation-paste { display:grid; gap:14px; margin-top:22px; }
+.invitation-panel td { overflow-wrap:anywhere; }
+@media(max-width:760px) { .invitation-form { grid-template-columns:minmax(0,1fr); } .invitation-card h1 { font-size:20px; } }

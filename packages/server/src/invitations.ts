@@ -64,7 +64,23 @@ export async function acceptInvitation(user:string,input:unknown){
     return{tenant_id:row.tenant_id,role,already_accepted:false};
   });
 }
+export async function previewInvitation(user:string,input:unknown){
+  const hash=digest(parseInvitationToken(input));
+  const row=(await query(`SELECT t.name AS company_name,i.email,coalesce(m.role,i.role) AS role,i.expires_at,i.accepted_at IS NOT NULL AS already_accepted
+    FROM tenant_invitations i JOIN tenants t ON t.id=i.tenant_id JOIN users u ON u.id=$2 AND u.email=i.email
+    LEFT JOIN tenant_memberships m ON m.tenant_id=i.tenant_id AND m.user_id=$2
+    WHERE i.token_hash=$1 AND i.revoked_at IS NULL AND (
+      (i.accepted_at IS NOT NULL AND i.accepted_by=$2 AND m.user_id IS NOT NULL) OR
+      (i.accepted_at IS NULL AND i.expires_at>clock_timestamp() AND EXISTS(SELECT 1 FROM tenant_memberships a WHERE a.tenant_id=i.tenant_id AND a.user_id=i.created_by AND a.role='admin'))
+    )`,[hash,user])).rows[0];
+  if(!row)throw unavailable();return row;
+}
 export function registerInvitationAcceptance(app:Hono<Env>,rate:(key:string,max:number,interval:number)=>boolean){
+  app.post('/api/invitations/preview',async c=>{
+    if(!rate('invitation-preview:'+c.get('userId'),30,60000))return c.json({error:'rate_limited'},429);
+    try{return c.json(await previewInvitation(c.get('userId'),await c.req.json().catch(()=>null)));}
+    catch(error){if(error instanceof InvitationError)return c.json({error:error.message},error.status);throw error;}
+  });
   app.post('/api/invitations/accept',async c=>{
     if(!rate('invitation-accept:'+c.get('userId'),20,60000))return c.json({error:'rate_limited'},429);
     try{return c.json(await acceptInvitation(c.get('userId'),await c.req.json().catch(()=>null)));}

@@ -7,6 +7,9 @@ import {
   lazy,
   Suspense,
 } from "react";
+import {invitationFromHash} from './invitation-link';
+const CompanyInvitations=lazy(()=>import('./CompanyInvitations'));
+const AcceptInvitation=lazy(()=>import('./AcceptInvitation'));
 import {
   Activity,
   ArrowDownToLine,
@@ -84,7 +87,7 @@ const errorText = (e: unknown) =>
         rate_limited: "请求过于频繁，请稍后重试",
         not_found: "当前公司下没有此项目，或访问权限已失效",
         account_requires_invitation_acceptance:
-          "该邮箱已有账号；邀请加入已有账号的功能尚未开放",
+          "该邮箱已有账号，请在下方创建公司邀请，由对方登录后主动接受",
         invalid_member: "请输入有效邮箱、至少 12 位的密码和角色",
         project_deleted: "项目数据已删除且接入已关闭，不能重新创建写入凭证",
       }[e.code] || "操作失败，请稍后重试"
@@ -99,7 +102,7 @@ function Logo() {
     </span>
   );
 }
-function Login({ onLogin }: { onLogin: (me: Me) => void }) {
+function Login({ onLogin,invited=false }: { onLogin: (me: Me) => void;invited?:boolean }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -163,7 +166,7 @@ function Login({ onLogin }: { onLogin: (me: Me) => void }) {
         <div className="login-inner">
           <p className="eyebrow">工作区登录</p>
           <h2>欢迎回来</h2>
-          <p className="muted">登录你的公司，继续探索用户行为。</p>
+          <p className="muted">{invited?'请登录受邀邮箱的账号，再确认加入公司。':'登录你的公司，继续探索用户行为。'}</p>
           <form onSubmit={submit}>
             <label>
               邮箱
@@ -312,6 +315,13 @@ function TrendChart({ data, timezone }: { data: Trends; timezone: string }) {
   );
 }
 export default function App() {
+  const [invitation,setInvitation]=useState(()=>invitationFromHash(location.hash)),[joinOpen,setJoinOpen]=useState(false);
+  useEffect(()=>{
+    // Read during initialization, strip only in the effect: StrictMode may run
+    // initializers twice. Keep the secret in memory, not URL/history/storage.
+    const clear=()=>{const value=invitationFromHash(location.hash);if(value){setInvitation(value);history.replaceState(history.state,'',location.pathname+location.search);}};
+    clear();window.addEventListener('hashchange',clear);return()=>window.removeEventListener('hashchange',clear);
+  },[]);
   const [me, setMe] = useState<Me | null>(null),
     [checking, setChecking] = useState(true),
     [tenantId, setTenantId] = useState(""),
@@ -382,7 +392,7 @@ export default function App() {
   const tenant = me?.tenants.find((t) => t.id === tenantId),
     project = projects.find((p) => p.id === projectId);
   useEffect(() => {
-    if (!tenantId) return;
+    if (!me || !tenantId) return;
     let active = true;
     setError("");
     setProjects([]);
@@ -403,7 +413,7 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [tenantId]);
+  }, [tenantId,me?.user.email]);
   const prefix = `/api/tenants/${tenantId}/projects/${projectId}`;
   useEffect(() => {
     analytics.current?.destroy();
@@ -417,7 +427,7 @@ export default function App() {
     setEvents([]);
   }, [tenantId, projectId]);
   useEffect(() => {
-    if (!tenantId || (tab !== 'members' && !projectId)) return;
+    if (!me || !tenantId || (tab !== 'members' && !projectId)) return;
     let active = true;
     setBusy(true);
     setError("");
@@ -471,6 +481,7 @@ export default function App() {
     };
   }, [
     prefix,
+    me?.user.email,
     projectId,
     tenantId,
     tab,
@@ -568,7 +579,8 @@ export default function App() {
       </main>
     );
   if (!me && error) return <main className="loading-screen"><Logo/><p role="alert">暂时无法连接工作区，请稍后重试。</p><Button onClick={() => location.reload()}>重新连接</Button></main>;
-  if (!me) return <Login onLogin={setMe} />;
+  if (!me) return <Login onLogin={value=>{setError('');setMe(value);}} invited={!!invitation} />;
+  if(invitation||joinOpen)return <Suspense fallback={<main className="loading-screen"><p>正在读取邀请页面…</p></main>}><AcceptInvitation secret={invitation} email={me.user.email} onToken={setInvitation} onClose={()=>{setInvitation('');setJoinOpen(false);}} onAccepted={async id=>{const value=await api<Me>('/api/me');if(!value.tenants.some(t=>t.id===id))throw new Error('membership_unavailable');setCsrf(value.csrf_token);setMe(value);setTenantId(id);setProjectId('');setInvitation('');setJoinOpen(false);setTab('members');setRefresh(v=>v+1);}} onSwitchAccount={async()=>{await api('/api/auth/logout',{method:'POST',body:'{}'});analytics.current?.destroy();setCsrf('');setError('');setMe(null);}}/></Suspense>;
   return (
     <div className="app-shell">
       <aside className="sidebar" inert={showCreate || !!detail || !!timelineUser}>
@@ -590,6 +602,7 @@ export default function App() {
             ))}
           </select>
         </label>
+        <Button type="button" variant="outline" className="join-company-button" onClick={()=>setJoinOpen(true)}>加入其他公司</Button>
         <p className="nav-label">数据工作台</p>
         <nav>
           {[
@@ -646,6 +659,7 @@ export default function App() {
               await api("/api/auth/logout", { method: "POST", body: "{}" });
               analytics.current?.destroy();
               setCsrf("");
+              setError('');
               setMe(null);
             }}
           >
@@ -665,7 +679,7 @@ export default function App() {
             开发预览
           </span>
           <button className="mobile-logout" aria-label="退出登录" onClick={async () => {
-            try { await api('/api/auth/logout', { method: 'POST', body: '{}' }); analytics.current?.destroy(); setCsrf(''); setMe(null); }
+            try { await api('/api/auth/logout', { method: 'POST', body: '{}' }); analytics.current?.destroy(); setCsrf('');setError(''); setMe(null); }
             catch (e) { setError(errorText(e)); }
           }}><LogOut size={16} /></button>
         </header>
@@ -1225,10 +1239,11 @@ export default function App() {
                         <Button>创建账号</Button>
                       </form>
                       <p className="fine-print panel-body">
-                        现有平台账号的跨公司邀请流程仍在开发；这里仅创建新账号。
+                        这里只创建全新平台账号；已有账号请使用公司邀请。
                       </p>
                     </section>
                   ) : null}
+                  {tenant.role==='admin'?<Suspense fallback={<p className="muted">正在读取公司邀请…</p>}><CompanyInvitations key={tenantId} tenantId={tenantId} companyName={tenant.name} refresh={refresh}/></Suspense>:null}
                 </>
               ) : null}
             </>

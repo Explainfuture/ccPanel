@@ -26,6 +26,9 @@ try{
   const listing=await req(owner,`/api/tenants/${a}/invitations`);assert.equal(listing.status,200);const listed=await listing.text();assert.ok(!listed.includes(invited.token)&&!listed.includes('token_hash'));
   assert.equal((await req(target,`/api/tenants/${a}/invitations`)).status,404);
   assert.equal((await req(wrong,'/api/invitations/accept',{token:invited.token})).status,404);
+  assert.equal((await req(wrong,'/api/invitations/preview',{token:invited.token})).status,404);
+  const preview=await req(target,'/api/invitations/preview',{token:invited.token});assert.equal(preview.status,200);assert.equal((await preview.json()).company_name,'INVITATION TEMP');
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM tenant_memberships WHERE tenant_id=$1 AND user_id=$2',[a,target])).rows[0].n,0,'preview never grants membership');
   const noCsrf={...headers.get(target)!};delete noCsrf['x-csrf-token'];assert.equal((await app.request('/api/invitations/accept',{method:'POST',headers:noCsrf,body:JSON.stringify({token:invited.token})})).status,403);
   const accepted=await Promise.all([req(target,'/api/invitations/accept',{token:invited.token}),req(target,'/api/invitations/accept',{token:invited.token})]);
   assert.ok(accepted.every(r=>r.status===200));const statuses=await Promise.all(accepted.map(r=>r.json()));assert.equal(statuses.filter(r=>r.already_accepted).length,1);
@@ -37,6 +40,7 @@ try{
   assert.equal((await pool.query('SELECT password_hash FROM users WHERE id=$1',[target])).rows[0].password_hash,'unchanged-test-password');
   assert.equal((await req(owner,`/api/tenants/${a}/members/${target}`,undefined,'DELETE')).status,200);
   assert.equal((await req(target,`/api/tenants/${a}/projects`)).status,404);assert.equal((await req(target,'/api/invitations/accept',{token:invited.token})).status,404);
+  assert.equal((await req(target,'/api/invitations/preview',{token:invited.token})).status,404);
   assert.equal((await req(target,`/api/tenants/${b}/projects`)).status,200);
   const pending=await invite('admin');await pool.query("INSERT INTO tenant_memberships VALUES($1,$2,'viewer')",[a,target]);
   const preserved=await req(target,'/api/invitations/accept',{token:pending.token});assert.equal(preserved.status,200);assert.equal((await preserved.json()).role,'viewer');
