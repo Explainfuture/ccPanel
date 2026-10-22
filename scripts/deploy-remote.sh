@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Run on the VPS after uploading a locally built archive. No credentials in source.
 set -euo pipefail
+exec 8>/opt/ccpanel/shared/deploy.lock
+flock -n 8 || { echo 'Another preview deployment is active' >&2; exit 1; }
 : "${CCPANEL_RELEASE:?set release name, e.g. m1-003}"
 case "$CCPANEL_RELEASE" in *[!a-zA-Z0-9_-]*|'') echo 'Invalid release name' >&2; exit 1;; esac
 release="/opt/ccpanel/releases/$CCPANEL_RELEASE"
@@ -23,6 +25,7 @@ find "$release/dist" -type d -exec chmod 755 {} +
 find "$release/dist" -type f -exec chmod 644 {} +
 chgrp www-data /opt/ccpanel /opt/ccpanel/releases
 chmod 750 /opt/ccpanel /opt/ccpanel/releases
+python3 "$release/scripts/retain-web-assets.py" "$previous" "$release"
 cd "$release/infra"
 docker compose run --rm -T --no-deps api node -e 'const fs=require("node:fs");for(const file of ["dist/api.mjs","dist/worker.mjs","dist/migrate.mjs","dist/deletion-ledger.mjs"])fs.accessSync(file,fs.constants.R_OK);require("pg");'
 docker compose run --rm -T --no-deps api node dist/ingest-preflight.mjs

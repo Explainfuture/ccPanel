@@ -624,3 +624,9 @@ UI创建、排序4卡双列仪表盘，默认plan=paid与临时code字符串20�
 对m4-dashboard-001/schema16启动独立30分钟1EPS/约1KiB+每10秒趋势查询，内存配置保持步骤69，不改确认语义/容器限额/内核/服务。采样器ccpanel-capacity-20261022231949，证据/opt/ccpanel/shared/capacity-integrity.HMjyru，工作站结果目标.local/capacity-schema16-result.json。正式负载前一次性夹具容器已退出，等待两份其后不同时间的有效宿主机帧，避免把运维建夹具计入测量；实际sampler_first_frame_valid及post_setup_baseline_ready=true、fresh_host_samples=2，生成器已启动。沿用33分钟有限采样和起止固定配置证明，未重用旧运行。
 
 load-fixture verify在支持聚合表的版本额外等待最多15秒、逐项目核对已处理无错误任务和可见桶计数等于全部唯一生成ID；旧schema10仍使用原无聚合检查分支。这是结束后的校验，不在计量窗口运行额外Docker/PG套件。远程bash语法通过，Node脚本语法/本轮create实际通过；最终aggregate verify仍待负载完成，不能将新版本宣称容量已通过。原Swap失败结论保留。
+
+### 步骤 92：发布历史资源与恢复清理保护（未部署）
+
+部署增加非阻塞互斥锁，防止并发发布交错重建同一运行容器/切换静态目录。切换前给新版本保留上一构建的哈希资源，减少已打开页面在下一次发布后加载懒模块404；所有权manifest只记录本构建原资源，下一轮不递归带上更老资源，限制512文件/64KiB manifest/合计16MiB，不让兼容文件无限累积。拒绝路径穿越、符号链接/非普通文件及同名不同内容；只在尚未启用的新版本目录复制，不覆盖旧发布或新资源。
+
+恢复检查清理增加created标志，只有本次createdb成功才允许drop，随机名称冲突或创建失败不会触碰预先存在的库。本地Python检查实际验证跨三代保留范围、原文件不变、冲突不覆盖、非法路径及文件数量限制；Python编译与Git Bash两份shell语法通过，加入CI。此步骤只改本地/仓库操作代码，未上传或运行到服务器，schema16容量配置/运行保持固定；采样约4分钟无错误，资源结论待完整结束。
