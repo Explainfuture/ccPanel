@@ -2,6 +2,8 @@
 
 更新日期：2026-10-22。基础方案已确认，本版补齐 SDK 本地队列、批量上报、页面退出补发和消费去重；产品需求与验收见 [PRD](PRD.md)。本版 Mermaid 和文字是实施依据。
 
+公司隔离范围已明确：一个 tenant/工作区对应一家公司；同公司所有成员均能查看全部项目和分析数据，角色只限制管理/编辑操作，不设置公司内部的员工、部门或项目数据范围。
+
 历史图片见 [v1 视觉草图](architecture-v1-visual-draft.png)，由内置 imagegen 根据 [提示词](architecture-image-prompt.txt) 生成，未包含本版 SDK 流程。图片存在两处绘图偏差：202 返回线应从 Kafka 确认经 Ingest 返回 SDK，而不是从 Consumer 返回；Kafka 按用户键哈希分区，不按时间分区，时间分区属于 PostgreSQL。图片仅留作历史参考，不得单独作为实施规格。
 
 ## 数据接入与分析流程
@@ -9,14 +11,14 @@
 ```mermaid
 flowchart LR
   SDK[Browser / Node SDK\n稳定 event_id · 批量 · 持久待发队列] --> GW[入口 TLS / 负载均衡\n请求大小与速率限制]
-  GW --> ING[Hono Ingest\n项目写入凭证 · 校验 · 租户配额]
+  GW --> ING[Hono Ingest\n凭证绑定公司与项目 · 校验 · 租户配额]
   ING -->|有效事件批次| K[Kafka events\n生产 RF=3 / min ISR=2\nacks=all · 幂等生产]
   K -.->|复制确认| ACK["Ingest 返回 202 + accepted_event_ids"]
   ACK -.->|SDK 收到确认后删除对应记录| SDK
   ING -->|429 / 503 / 超时| RETRY[SDK 指数退避与抖动\n复用 event_id · 容量上限告警]
   RETRY --> SDK
   K --> W[Consumer workers\n校验 · 标准化 · 批量写入]
-  W --> PG[(PostgreSQL\n原始事件分区 · 去重登记 · 身份映射\n元数据 · 聚合与任务状态)]
+  W --> PG[(PostgreSQL\n共享数据库 · tenant_id 公司隔离\n原始事件分区 · 去重登记 · 身份映射\n元数据 · 聚合与任务状态)]
   PG -->|事务提交成功| OFF[提交连续消费 offset]
   OFF -.-> K
   W -->|可重试故障| BACK[暂停对应分区 · 退避\n监控 lag 与剩余保留窗口]
@@ -25,7 +27,7 @@ flowchart LR
   DLQ -->|持久确认后推进该条 offset| OFF
   DLQ --> REPLAY[审计重放工具\n修复后保留 event_id]
   REPLAY --> K
-  UI[React / shadcn/ui / Tailwind\n探索 · 趋势 · 漏斗 · 留存 · 仪表盘] --> API[Hono Control / Query API\n登录 · RBAC · tenant scope\n结构化查询 DSL · 超时与并发预算]
+  UI[React / shadcn/ui / Tailwind\n公司切换 · 探索 · 趋势 · 漏斗 · 留存 · 仪表盘] --> API[Hono Control / Query API\n登录 · 公司成员校验 · 操作权限\n结构化查询 DSL · 超时与并发预算]
   API --> PG
   API --> JOB[PostgreSQL 任务队列\n重查询与聚合 worker]
   JOB --> PG
@@ -36,6 +38,8 @@ flowchart LR
 ```
 
 ## 确认、重复与顺序
+
+- tenant_id 标识公司；project_id 全平台唯一且固定属于某公司。项目数据、Kafka 信封、DLQ、任务与派生结果均携带公司/项目归属。接入端从写入凭证推导归属；查询端从登录用户的公司成员关系验证归属，禁止信任前端自报公司。具体全链路隔离与角色见 PRD 第 8 节。
 
 - HTTP 202 表示有效批次已被 Kafka 确认，不表示分析结果已更新。校验失败整批返回 400 并提供错误定位；鉴权失败 401/403；限流 429；持久接收无法确认返回 503 或超时。超时属于结果未知，使用相同 ID 重试。
 - SDK 生成稳定 event_id；浏览器用 IndexedDB（受浏览器配额、清理、关闭时机限制），Node SDK 提供持久 outbox 适配器。仅内存或 sendBeacon 不构成持久送达保证。浏览器写入凭证可公开，仅允许写入，不能访问查询或管理 API。
