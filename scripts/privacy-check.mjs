@@ -27,6 +27,13 @@ try{
   const journey=[event('privacy_start',anonymous),event('$identify','victim',{anonymous_id:anonymous}),event('privacy_purchase','victim',{anonymous_id:anonymous}),event('privacy_late',lateAlias),event('privacy_safe','unrelated')];
   for(const item of journey)await send(a,item);await send(b,{...journey[0],distinct_id:'victim'});
   await waitFor(async()=>Number((await pool.query('SELECT count(*) FROM events WHERE tenant_id=$1',[a.tenant])).rows[0].count)===5,'privacy fixture ingestion');
+  const malformed=event('privacy_bad_text','victim',{properties:{nul:'\u0000'}}),unpartitioned=event('privacy_bad_partition','victim',{event_time:new Date(Date.now()+365*86400000).toISOString()}),afterPoison=event('privacy_after_poison','victim');
+  const rawPoison=[malformed,unpartitioned].map(e=>JSON.stringify({tenant_id:b.tenant,project_id:b.project,received_at:new Date().toISOString(),event:e}));
+  await producer.send({topic:'ccpanel.events',acks:-1,messages:[...rawPoison,JSON.stringify({tenant_id:b.tenant,project_id:b.project,received_at:new Date().toISOString(),event:afterPoison})].map(value=>({key:b.project+':victim',value}))});
+  await waitFor(async()=>Number((await pool.query('SELECT count(*) FROM events WHERE tenant_id=$1',[b.tenant])).rows[0].count)===2,'valid record after poison offsets');
+  const dead=await pool.query('SELECT reason,payload FROM dlq_records WHERE tenant_id=$1 AND project_id=$2',[b.tenant,b.project]);assert.equal(dead.rowCount,2);
+  for(const raw of rawPoison)assert.ok(dead.rows.some(d=>d.payload.raw_base64===Buffer.from(raw).toString('base64')),'exact original poison bytes preserved');
+  assert.ok(dead.rows.some(d=>d.reason==='invalid_storage_value'),'partition constraint classified as permanent poison');
   const spec={kind:'trend',from:new Date(Date.now()-2*86400000).toISOString(),to:new Date().toISOString(),metric:'count'};
   const queued=await api(a,'/query-jobs',spec);assert.equal(queued.status,202);const oldJob=(await queued.json()).id;
   await waitFor(async()=>{const r=await(await api(a,'/query-jobs/'+oldJob,undefined,'GET')).json();assert.notEqual(r.status,'failed',r.error);return r.status==='succeeded';},'old cached result');
@@ -43,7 +50,7 @@ try{
     assert.equal(Number((await pool.query('SELECT count(*) FROM events WHERE tenant_id=$1',[a.tenant])).rows[0].count),5,'raw cleanup intentionally held');
     const visible=await(await api(a,'/events',undefined,'GET')).json();assert.equal(visible.events.length,2,'barrier hides linked history before raw deletion');
     for(const id of [oldJob,pendingJob])assert.equal((await api(a,'/query-jobs/'+id,undefined,'GET')).status,404,'old query snapshots invalidated');
-    assert.equal((await(await api(b,'/events',undefined,'GET')).json()).events.length,1,'same user in another company remains visible');
+    assert.equal((await(await api(b,'/events',undefined,'GET')).json()).events.length,2,'same user in another company remains visible');
   }finally{await guard.query('SELECT pg_advisory_unlock(169202614),pg_advisory_unlock(169202612)');guard.release();}
   const done=await completed(a,deletionId);assert.equal(Number(done.removed_events),3);assert.equal(done.stream_status,'pending-stream-expiry');
   assert.equal(Number((await pool.query('SELECT count(*) FROM aggregation_jobs WHERE tenant_id=$1 AND event_id=ANY($2::uuid[])',[a.tenant,journey.slice(0,3).map(e=>e.event_id)])).rows[0].count),0,'aggregate contributions removed');
@@ -60,7 +67,7 @@ try{
   assert.equal((await api(a,'/keys',{})).status,409,'deleted project cannot regain a write key');
   const retry=await fetch(base+'/v1/batch',{method:'POST',headers:{origin,'content-type':'text/plain'},body:JSON.stringify({write_key:a.key,schema_version:1,events:[journey[4]]})});assert.equal(retry.status,401,'project write key revoked');
   assert.equal(Number((await pool.query('SELECT count(*) FROM events WHERE tenant_id=$1',[a.tenant])).rows[0].count),0);
-  assert.equal(Number((await pool.query('SELECT count(*) FROM events WHERE tenant_id=$1',[b.tenant])).rows[0].count),1);
+  assert.equal(Number((await pool.query('SELECT count(*) FROM events WHERE tenant_id=$1',[b.tenant])).rows[0].count),2);
   console.log('PASS: confirmed scoped deletion, immediate visibility barrier, stale query invalidation, transactional cleanup, stable-ID and late-alias replay suppression, poison suppression, project revocation and tenant isolation');
 }finally{
   await producer.disconnect();
