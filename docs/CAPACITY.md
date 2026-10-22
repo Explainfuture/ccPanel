@@ -96,3 +96,7 @@ UTC 17:29:36.169–17:59:36.524，后端固定 m4-query-jobs-001，Windows 工�
 新增有限时长只读采样脚本capacity-sample.py，每10秒保存持续宿主机遥测与四个固定容器的cgroup memory.current、memory.events、cpu.stat；不读取进程参数或环境，不逐轮运行Docker CLI。采样器从负载前开始、计划运行1980秒，32MiB/CPU5%上限，首轮实际MemoryCurrent约6.18MiB；观察器开销计入同机资源，不从报告中扣除。容器ID与重启/OOM起始状态另存受限基线，结束仍需对比。
 
 服务ccpanel-capacity-integrity-20261022210155已确认active/running，首5帧有效；证据目录为服务器`/opt/ccpanel/shared/capacity-integrity.dMizyM`。采样过期、cgroup缺失等写错误帧而非伪造零值，最终必须检查时间覆盖与所有错误帧，再核对逐ID数据、重启/OOM和持续swap活动。当前试运行资源门槛继续保持未通过；仍须等待实际进程完成并验收，不能仅凭状态文件判定运行或成功。
+
+最终资源分析使用scripts/capacity-report-cli.ts：输入完整samples.jsonl、公网load结果、基线、结束metadata及一个不存在的输出文件。基线可为`{release,containers}`；本次早期采样基线是容器字典，结束metadata需从原始release.txt读取releaseStart，并带当前release和containers（id/restartCount/oomKilled/startedAt）。不能手填推断版本或只读取最后一个OOM状态代替生命周期计数。
+
+报告须同时包住负载开始/结束的捕获时间和真实宿主机计数时间，保留边界区间的少量额外观察。缺失/过期/错误帧、超过20秒捕获间隔、计数器回退、版本变化、容器替换均使evidenceValid=false；重复宿主机样本不重复累加。输出加权CPU空闲、各容器内存峰值、最小磁盘余量、实际swap字节与速率/最长连续活动、OOM和重启。conservativeResourcePass只在证据完整且无swap活动等条件时给出充分保守通过；有swap活动必须单独评估PRD的持续性要求，不据“swap已占用”直接判定抖动，也不自行改写验收标准。此报告不替代逐事件ID和DLQ对账。
