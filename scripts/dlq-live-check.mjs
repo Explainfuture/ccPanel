@@ -63,7 +63,20 @@ try{
       assert.equal((await pool.query('SELECT count(*)::int AS n FROM events')).rows[0].n,1);
       const audits=(await pool.query("SELECT action,count(*)::int AS n FROM audit_logs WHERE tenant_id=$1 AND action LIKE 'dlq_replay_%' GROUP BY action",[f.tenant])).rows;
       const values=Object.fromEntries(audits.map(r=>[r.action,r.n]));assert.equal(values.dlq_replay_requested,3);assert.equal(values.dlq_replay_published,2);assert.equal(values.dlq_replay_finished,3);
-      console.log(JSON.stringify({passed:true,live_api_worker_kafka:true,first_failure_registered:true,raw_bytes_preserved:true,repaired_stored_once:true,duplicate_task_no_extra_write:true,request_idempotency:true,source_preserved:true,unrepaired_outcome_linked:true,audit_counts:values,raw_events:1,aggregation_jobs:1}));
+      let progressVerified=false;
+      if((await pool.query("SELECT to_regclass('consumer_progress') AS relation")).rows[0].relation){
+        const admin=kafka.admin();await admin.connect();try{
+          await waitFor(async()=>{
+            const commits=(await admin.fetchOffsets({groupId:group,topics:[topic],resolveOffsets:false})).find(t=>t.topic===topic)?.partitions;
+            const highs=await admin.fetchTopicOffsets(topic);
+            const rows=(await pool.query('SELECT partition_id,next_offset::text FROM consumer_progress WHERE topic=$1 AND group_id=$2',[topic,group])).rows;
+            return highs.length===2&&rows.length===2&&highs.every(p=>rows.some(r=>r.partition_id===p.partition&&r.next_offset===p.high)&&commits?.some(c=>c.partition===p.partition&&(c.offset===p.high||(p.high==='0'&&c.offset==='-1'))));
+          },'PG checkpoints and Kafka commits caught up');
+          assert.equal((await pool.query('SELECT blocked FROM ingest_integrity_gate WHERE id=true')).rows[0].blocked,false);
+          progressVerified=true;
+        }finally{await admin.disconnect();}
+      }
+      console.log(JSON.stringify({passed:true,live_api_worker_kafka:true,first_failure_registered:true,raw_bytes_preserved:true,repaired_stored_once:true,duplicate_task_no_extra_write:true,request_idempotency:true,source_preserved:true,unrepaired_outcome_linked:true,progress_verified:progressVerified,audit_counts:values,raw_events:1,aggregation_jobs:1}));
     }else throw new Error('invalid_live_replay_mode');
   }
 }finally{await pool.end();}
