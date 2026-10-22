@@ -1,0 +1,7 @@
+Use case: infographic-diagram
+Create a technically precise Chinese architecture review diagram for ccPanel, a self-hosted Mixpanel alternative. Wide landscape, crisp readable typography, clean engineering diagram with arrows, white background and blue/teal/orange grouping. Title: ccPanel 埋点分析平台 · 架构草案 v1（待确认）.
+Top main ingestion flow left to right: Browser / Node SDK [event_id, 批量, 持久待发队列] -> TLS / 限流 -> Hono Ingest [鉴权 / 校验 / 配额] -> Kafka events [生产 RF=3, min ISR=2, acks=all] -> Consumer workers -> PostgreSQL [原始事件分区 / 去重登记 / 身份 / 聚合]. Draw a clearly labeled return arrow Kafka -> SDK: 复制确认后返回 202. Under SDK and Hono draw orange failure loop: 429 / 503 / 超时 -> SDK 退避重试（相同 event_id）. Under workers show DB COMMIT -> 提交 offset -> Kafka; show DB故障 -> 暂停消费 / Kafka缓冲; poison events -> Kafka DLQ -> 审计重放 -> Kafka. DLQ acknowledgment required before advancing offset.
+Separate lower read flow: React + shadcn/ui + Tailwind [探索 / 趋势 / 漏斗 / 留存 / 仪表盘] -> Hono Query API [RBAC / 租户隔离 / 查询预算] -> PostgreSQL. Add PostgreSQL异步任务 / 聚合 and 异机备份 / WAL归档. Monitoring band: ISR / lag / DLQ / 磁盘 / DB / SDK溢出.
+Bottom two deployment cards: 单机试运行: 单节点 Kafka + PostgreSQL + API + Worker; RF=1; 无副本高可用. 生产扩容: 多接入实例 + 3 Kafka brokers + PostgreSQL主备 + 异机备份.
+Footer exact meaning: 至少一次投递 + 数据库幂等；202不等于分析已完成；单机不能保证机器损毁零丢失；客户端队列与Kafka保留均有容量边界.
+Keep flows unambiguous. No decorative illustrations. Do not invent a direct database fallback or claim absolute zero loss. Image is a review aid; editable Mermaid and written architecture are authoritative.
