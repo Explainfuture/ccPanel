@@ -33,6 +33,7 @@ import { Input } from "./components/ui/input";
 const AnalysisExplorer = lazy(() => import('./AnalysisExplorer'));
 const BehaviorExplorer = lazy(() => import('./BehaviorExplorer'));
 const SchemaWorkspace = lazy(() => import('./SchemaWorkspace'));
+const PrivacyWorkspace = lazy(() => import('./PrivacyWorkspace'));
 const UserTimeline = lazy(() => import('./UserTimeline'));
 import { api, ApiError, setCsrf } from "./api";
 import {
@@ -84,6 +85,7 @@ const errorText = (e: unknown) =>
         account_requires_invitation_acceptance:
           "该邮箱已有账号；邀请加入已有账号的功能尚未开放",
         invalid_member: "请输入有效邮箱、至少 12 位的密码和角色",
+        project_deleted: "项目数据已删除且接入已关闭，不能重新创建写入凭证",
       }[e.code] || "操作失败，请稍后重试"
     : "网络连接失败，请检查后重试";
 function Logo() {
@@ -595,9 +597,10 @@ export default function App() {
             { id: "analysis", label: "分析与报表", icon: BarChart3 },
             { id: "behavior", label: "漏斗与留存", icon: Layers3 },
             { id: "schemas", label: "事件规范", icon: Settings2 },
+            { id: "privacy", label: "隐私与删除", icon: ShieldCheck },
             { id: "connect", label: "数据接入", icon: Code2 },
             { id: "members", label: "公司成员", icon: Users },
-          ].map((n) => (
+          ].filter(n=>n.id!=='privacy'||tenant?.role==='admin').map((n) => (
             <button
               key={n.id}
               className={`nav-item ${tab === n.id ? "active" : ""}`}
@@ -676,6 +679,7 @@ export default function App() {
                     analysis: "分析与报表",
                     behavior: "理解用户旅程",
                     schemas: "事件规范与设置",
+                    privacy: "隐私与数据删除",
                     connect: "连接你的数据",
                     members: "公司成员",
                   }[tab]
@@ -689,6 +693,7 @@ export default function App() {
                     analysis: "组合指标与属性，保存公司共享的分析视图。",
                     behavior: "从转化到回访，探索关联用户的真实行为。",
                     schemas: "统一业务事件口径，让每一次分析都有清晰定义。",
+                    privacy: "建立删除屏障，追踪数据库清理和保留期边界。",
                     connect: "安装 SDK，让业务行为进入你的分析工作台。",
                     members: "同一公司的成员，共享全部项目与分析数据。",
                   }[tab]
@@ -934,6 +939,7 @@ export default function App() {
               {tab === 'analysis' && project ? <Suspense fallback={<div className="chart-loading">正在打开分析工作台…</div>}><AnalysisExplorer key={prefix} prefix={prefix} canEdit={tenant.role !== 'viewer'} /></Suspense> : null}
               {tab === 'behavior' && project ? <Suspense fallback={<div className="chart-loading">正在打开行为分析…</div>}><BehaviorExplorer key={prefix} prefix={prefix}/></Suspense> : null}
               {tab === 'schemas' && project ? <Suspense fallback={<div className="chart-loading">正在读取事件规范…</div>}><SchemaWorkspace key={prefix} prefix={prefix} project={project} canEdit={tenant.role==='admin'} onSaved={reloadProjects}/></Suspense> : null}
+              {tab === 'privacy' && project ? <Suspense fallback={<div className="chart-loading">正在读取删除任务…</div>}><PrivacyWorkspace key={prefix} prefix={prefix} projectName={project.name} canManage={tenant.role==='admin'}/></Suspense> : null}
               {tab === "events" && project ? (
                 <section className="panel">
                   <div className="panel-heading">
