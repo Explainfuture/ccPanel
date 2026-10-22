@@ -15,7 +15,7 @@ docker compose run --rm -T --no-deps -e CCPANEL_OFFLINE_RESTORE=true api node di
 docker compose run --rm -T --no-deps api node dist/deletion-ledger.mjs check
 ```
 
-apply 需要明确的离线模式；API/Worker 持有共享会话租约，目标仍在线时不能取得排他租约。应用程序启动先取得共享租约并检查门禁，恢复中或恢复失败时不开放。PG 连接失效将使服务退出交给监督器恢复，Kafka 未提交位点仍重放；此故障行为待新版本再演练。
+apply 需要明确的离线模式；API/Worker 持有共享会话租约，目标仍在线时不能取得排他租约。应用程序启动先取得共享租约并检查门禁，恢复中或恢复失败时不开放。PG 连接失效将使服务退出交给监督器恢复，Kafka 未提交位点仍重放。m4-ledger-002 实际停 PG 后确认 API 租约丢失退出、消费位点不前进，恢复后监督器重启并补齐原 ID 事件；完整结果见 PROGRESS 步骤40，不能外推为断电或磁盘满通过。
 
 备份不携带 recovery_gate 和 recovery_import_scopes 的运行状态；恢复后缺失/关闭门禁均不能启动应用，迁移默认创建关闭状态。首次升级也需在停服务后从可信当前源库导出清单，并通过 CCPANEL_RECOVERY_LEDGER 显式提供，禁止自动信任恢复库的旧清单。
 
