@@ -1064,3 +1064,31 @@ label {
 .privacy-boundary p + p { margin-top: 8px; }
 .privacy-confirm { display: flex; align-items: flex-start; gap: 9px; color: #51677b; font-size: 13px; }
 .privacy-confirm input { margin-top: 3px; width: 15px; height: 15px; flex-shrink: 0; }
+.replay-workspace { display: grid; gap: 22px; }
+.replay-boundary { padding: 13px 16px; margin-bottom: 18px; border-left: 3px solid #84a6ba; background: #f2f7fa; color: #476174; font-size: 13px; line-height: 1.8; }
+.replay-scroll { overflow-x: auto; }
+.replay-table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
+.replay-table th { font-weight: 500; color: #6d8092; background: #f8fafb; }
+.replay-table th,.replay-table td { padding: 13px 12px; border-bottom: 1px solid #e8edf1; vertical-align: top; }
+.replay-table td:last-child { min-width: 160px; }
+.replay-table input { width: 16px; height: 16px; accent-color: #315a72; }
+.replay-form { display: grid; gap: 10px; margin-top: 22px; }
+.replay-form label { font-size: 13px; color: #42576b; }
+.replay-form label span { margin-left: 8px; }
+.replay-form textarea { width: 100%; padding: 12px; border: 1px solid #d8e1e8; border-radius: 6px; font: inherit; font-size: 13px; resize: vertical; }
+.replay-form textarea:focus-visible,.replay-link:focus-visible { outline: 2px solid #426d89; outline-offset: 3px; }
+.replay-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.replay-empty { padding: 30px 15px; text-align: center; color: #5c7385; }
+.replay-empty svg { margin: 0 auto 12px; }
+.replay-empty p { margin-bottom: 7px; }
+.replay-alert,.replay-notice { padding: 13px 16px; border: 1px solid #d4e3ec; background: #f2f7fa; border-radius: 7px; font-size: 13px; line-height: 1.8; }
+.replay-alert { border-color: #edcfc8; background: #fff4f1; color: #9b3d34; }
+.replay-state { display: inline-block; font-size: 12px; line-height: 1.6; padding: 3px 8px; border-radius: 5px; color: #536e83; background: #edf2f6; }
+.replay-state-stored,.replay-state-duplicate,.replay-state-completed { color: #35624e; background: #eaf4ee; }
+.replay-state-failed,.replay-state-rejected { color: #984739; background: #fbece6; }
+.replay-state-suppressed { color: #6c5b83; background: #f0ecf6; }
+.replay-link { color: #315f7c; font-family: monospace; text-decoration: underline; text-underline-offset: 4px; }
+.replay-active { background: #f0f6fa; }
+.replay-reason-cell { max-width: 360px; overflow-wrap: anywhere; }
+.replay-outcome { margin-top: 8px; font-size: 12px; }
+.replay-outcome code,.replay-id { overflow-wrap: anywhere; }

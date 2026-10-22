@@ -34,6 +34,7 @@ const AnalysisExplorer = lazy(() => import('./AnalysisExplorer'));
 const BehaviorExplorer = lazy(() => import('./BehaviorExplorer'));
 const SchemaWorkspace = lazy(() => import('./SchemaWorkspace'));
 const PrivacyWorkspace = lazy(() => import('./PrivacyWorkspace'));
+const ReplayWorkspace = lazy(() => import('./ReplayWorkspace'));
 const UserTimeline = lazy(() => import('./UserTimeline'));
 import { api, ApiError, setCsrf } from "./api";
 import {
@@ -598,9 +599,10 @@ export default function App() {
             { id: "behavior", label: "漏斗与留存", icon: Layers3 },
             { id: "schemas", label: "事件规范", icon: Settings2 },
             { id: "privacy", label: "隐私与删除", icon: ShieldCheck },
+            { id: "replay", label: "失败消息重放", icon: RefreshCw },
             { id: "connect", label: "数据接入", icon: Code2 },
             { id: "members", label: "公司成员", icon: Users },
-          ].filter(n=>n.id!=='privacy'||tenant?.role==='admin').map((n) => (
+          ].filter(n=>!['privacy','replay'].includes(n.id)||tenant?.role==='admin').map((n) => (
             <button
               key={n.id}
               className={`nav-item ${tab === n.id ? "active" : ""}`}
@@ -680,6 +682,7 @@ export default function App() {
                     behavior: "理解用户旅程",
                     schemas: "事件规范与设置",
                     privacy: "隐私与数据删除",
+                    replay: "失败消息重放",
                     connect: "连接你的数据",
                     members: "公司成员",
                   }[tab]
@@ -694,6 +697,7 @@ export default function App() {
                     behavior: "从转化到回访，探索关联用户的真实行为。",
                     schemas: "统一业务事件口径，让每一次分析都有清晰定义。",
                     privacy: "建立删除屏障，追踪数据库清理和保留期边界。",
+                    replay: "修复失败原因，按原始事件重放并追踪处理结果。",
                     connect: "安装 SDK，让业务行为进入你的分析工作台。",
                     members: "同一公司的成员，共享全部项目与分析数据。",
                   }[tab]
@@ -940,6 +944,7 @@ export default function App() {
               {tab === 'behavior' && project ? <Suspense fallback={<div className="chart-loading">正在打开行为分析…</div>}><BehaviorExplorer key={prefix} prefix={prefix}/></Suspense> : null}
               {tab === 'schemas' && project ? <Suspense fallback={<div className="chart-loading">正在读取事件规范…</div>}><SchemaWorkspace key={prefix} prefix={prefix} project={project} canEdit={tenant.role==='admin'} onSaved={reloadProjects}/></Suspense> : null}
               {tab === 'privacy' && project ? <Suspense fallback={<div className="chart-loading">正在读取删除任务…</div>}><PrivacyWorkspace key={prefix} prefix={prefix} projectName={project.name} canManage={tenant.role==='admin'}/></Suspense> : null}
+              {tab === 'replay' && project ? <Suspense fallback={<div className="chart-loading">正在读取重放任务…</div>}><ReplayWorkspace key={prefix} prefix={prefix} canManage={tenant.role==='admin'}/></Suspense> : null}
               {tab === "events" && project ? (
                 <section className="panel">
                   <div className="panel-heading">
