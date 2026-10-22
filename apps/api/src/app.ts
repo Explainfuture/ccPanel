@@ -2,6 +2,7 @@ import { Hono, type Context } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { bodyLimit } from "hono/body-limit";
 import { registerReportRoutes } from '../../../packages/server/src/report-routes';
+import { registerBehaviorRoutes } from '../../../packages/server/src/behavior-routes';
 import { projectQueryFlights as queryFlights } from '../../../packages/server/src/query-budget';
 import { randomUUID } from "node:crypto";
 import { pool, query } from "../../../packages/server/src/db";
@@ -513,5 +514,6 @@ export function createApp(deps: AppDeps) {
     });
   });
   registerReportRoutes(app);
+  registerBehaviorRoutes(app);
   return app;
 }

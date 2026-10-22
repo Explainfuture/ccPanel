@@ -58,12 +58,26 @@ try {
   const filtered=await fetch(base+root+'/query',{method:'POST',headers:{...h,'content-type':'application/json'},body:JSON.stringify({...spec,metric:'count',group_by:[],filters:[{key:'tag',op:'neq',value:null}]})});assert.equal(filtered.status,200);assert.equal((await filtered.json()).summary.value,2,'missing/null excluded from neq');
   const saved=await fetch(base+root+'/reports',{method:'POST',headers:{...h,'content-type':'application/json'},body:JSON.stringify({name:'INTEGRATION AVG',spec})});assert.equal(saved.status,201);const reportId=(await saved.json()).id;
   assert.equal((await fetch(base+root+'/dashboards',{method:'POST',headers:{...h,'content-type':'application/json'},body:JSON.stringify({name:'INTEGRATION BOARD',report_ids:[reportId]})})).status,201);
+  const start=Date.now()-3*86400000,anonymous=randomUUID();
+  const journey=[
+    {...e,event_id:randomUUID(),event_name:'journey_start',distinct_id:anonymous,anonymous_id:anonymous,event_time:new Date(start).toISOString()},
+    {...e,event_id:randomUUID(),event_name:'$identify',distinct_id:'identified-user',anonymous_id:anonymous,event_time:new Date(start+1000).toISOString()},
+    {...e,event_id:randomUUID(),event_name:'journey_buy',distinct_id:'identified-user',anonymous_id:anonymous,event_time:new Date(start+3600000).toISOString()},
+    {...e,event_id:randomUUID(),event_name:'journey_return',distinct_id:'identified-user',anonymous_id:anonymous,event_time:new Date(start+86400000).toISOString()},
+  ];
+  for(const item of journey)assert.equal((await send(a,item)).status,202);
+  await waitFor(async()=>Number((await pool.query("SELECT count(*) FROM events WHERE project_id=$1 AND event_name=ANY($2::text[])",[a.project,journey.map(j=>j.event_name)])).rows[0].count)===4,'identity and journey fixtures');
+  const behavior={from:new Date(start-1000).toISOString(),to:new Date(start+12*3600000).toISOString(),filters:[]};
+  const runBehavior=async extra=>{const r=await fetch(base+root+'/behavior',{method:'POST',headers:{...h,'content-type':'application/json'},body:JSON.stringify({...behavior,...extra})});assert.equal(r.status,200);return r.json();};
+  const funnel=await runBehavior({kind:'funnel',steps:['journey_start','journey_buy'],window_hours:24});assert.deepEqual(funnel.steps.map(s=>s.users),[1,1]);
+  const retention=await runBehavior({kind:'retention',start_event:'journey_start',return_event:'journey_return',days:3});assert.equal(retention.cohorts[0].size,1);assert.equal(retention.cohorts[0].retention[1].users,1);assert.equal(retention.cohorts[0].retention[3].users,null);
+  const segment=await runBehavior({kind:'cohort',event_name:'journey_buy',count_op:'gte',count:1});assert.equal(segment.total,1);assert.equal(segment.users[0].user,'identified-user');
   await pool.query("INSERT INTO tenant_memberships VALUES($1,$2,'viewer')",[b.tenant,a.user]);
   assert.equal((await fetch(base+`/api/tenants/${b.tenant}/projects`,{headers:h})).status,200,'same account can read joined company');
   assert.equal((await fetch(base+`/api/tenants/${b.tenant}/projects/${b.project}/keys`,{method:'POST',headers:{...h,'content-type':'application/json'},body:'{}'})).status,403,'role scoped to current company');
   await pool.query('DELETE FROM tenant_memberships WHERE tenant_id=$1 AND user_id=$2',[a.tenant,a.user]);
   assert.equal((await fetch(base+root+'/events',{headers:h})).status,404,'revocation immediately enforced');
-  console.log('PASS: real Kafka ack/dedup/DLQ, company isolation and role switching, numeric aggregation, missing/null filters, saved reports/dashboards, and membership revocation');
+  console.log('PASS: Kafka/dedup/DLQ, tenant isolation and role switching, typed aggregates/filters, saved reports/dashboards, identity-linked funnel/retention/cohort, and revocation');
 } finally {
   await pool.query('DELETE FROM tenant_memberships WHERE user_id=ANY($1::uuid[])',[fixtures.map(f=>f.user)]);
   for(const f of fixtures) {
