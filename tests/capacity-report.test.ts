@@ -1,4 +1,9 @@
 import {expect,it} from 'vitest';
+import {execFileSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import {mkdtempSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join,resolve,dirname} from 'node:path';
 import {capacityReport,type CapacityEvidence,type CapacityFrame} from '../scripts/capacity-report';
 const names=['api','worker','kafka','postgres'];
 function fixture():CapacityEvidence{
@@ -35,4 +40,20 @@ it('reports swap rates and continuous periods without conflating occupied swap w
 it('does not accept stopped containers or missing final running state despite unchanged restart counters',()=>{
   const stopped=fixture();stopped.final.api!.running=false;const report=capacityReport(stopped);expect(report.evidenceValid).toBe(true);expect(report.notRunning).toEqual(['api']);expect(report.conservativeResourcePass).toBe(false);
   const unknown=fixture();delete unknown.final.api!.running;expect(capacityReport(unknown).reasons).toContain('container_state_missing');
+});
+it('CLI binds exact UTC milliseconds and checksum to the exported source bytes',()=>{
+  const dir=mkdtempSync(join(tmpdir(),'ccpanel-capacity-cli-')),data=fixture();
+  try{
+    const raw=data.frames.map(f=>JSON.stringify(f)).join('\n')+'\n';
+    const final={containers:data.final,release:data.releaseEnd,releaseStart:data.releaseStart,loadFinishedAt:data.finishedAt,samplesSha256:createHash('sha256').update(raw).digest('hex')};
+    writeFileSync(join(dir,'samples'),raw);writeFileSync(join(dir,'load'),JSON.stringify({started_at:new Date(data.startedAt).toISOString(),completed_at:new Date(data.finishedAt).toISOString()}));writeFileSync(join(dir,'baseline'),JSON.stringify(data.baseline));writeFileSync(join(dir,'final'),JSON.stringify(final));
+    const run=(name:string)=>execFileSync(process.execPath,['--import','tsx','scripts/capacity-report-cli.ts',...['samples','load','baseline','final',name].map(p=>join(dir,p))],{stdio:'pipe'});
+    run('valid');expect(JSON.parse(readFileSync(join(dir,'valid'),'utf8')).evidenceValid).toBe(true);
+    for(const drift of [38,8*3600000]){writeFileSync(join(dir,'final'),JSON.stringify({...final,loadFinishedAt:data.finishedAt+drift}));expect(()=>run('invalid-window')).toThrow();}
+    writeFileSync(join(dir,'final'),JSON.stringify(final));writeFileSync(join(dir,'samples'),raw.replace('300000000','299999999'));expect(()=>run('invalid-hash')).toThrow();
+    writeFileSync(join(dir,'samples'),raw.slice(0,-1));expect(()=>run('incomplete')).toThrow();
+  }finally{
+    if(dirname(resolve(dir))!==resolve(tmpdir())||!dir.startsWith(join(tmpdir(),'ccpanel-capacity-cli-')))throw new Error('unexpected_temporary_directory');
+    rmSync(dir,{recursive:true});
+  }
 });

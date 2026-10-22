@@ -89,14 +89,40 @@ UTC 17:29:36.169–17:59:36.524，后端固定 m4-query-jobs-001，Windows 工�
 
 180 次宿主机采样在生成前启用，采样结束与生成尾部有几秒边界差异；最终全生命周期 OOM/重启状态另行核实。测试后将全部原始 ID 交由 PG 对账，并已清理临时公司。证据位于本机 `.local/load-public-clocked-result.json` 和服务器 `load-public-clocked-baseline-20261023.log`；当前新版后端需另行测试。
 
-## schema10 新版复测（运行中，尚无最终结论）
+## schema10 新版复测（已结束，资源门槛未通过）
 
 2026-10-23在m4-integrity-001/schema10启动同一1EPS/1800秒公网独立生成器与每10秒趋势查询；结果文件为工作站`.local/capacity-integrity-result.json`，运行期间保持发布版本固定。此处仅记录已启动，不将旧版结果套用为新版容量。
 
 新增有限时长只读采样脚本capacity-sample.py，每10秒保存持续宿主机遥测与四个固定容器的cgroup memory.current、memory.events、cpu.stat；不读取进程参数或环境，不逐轮运行Docker CLI。采样器从负载前开始、计划运行1980秒，32MiB/CPU5%上限，首轮实际MemoryCurrent约6.18MiB；观察器开销计入同机资源，不从报告中扣除。容器ID与重启/OOM起始状态另存受限基线，结束仍需对比。
 
-服务ccpanel-capacity-integrity-20261022210155已确认active/running，首5帧有效；证据目录为服务器`/opt/ccpanel/shared/capacity-integrity.dMizyM`。采样过期、cgroup缺失等写错误帧而非伪造零值，最终必须检查时间覆盖与所有错误帧，再核对逐ID数据、重启/OOM和持续swap活动。当前试运行资源门槛继续保持未通过；仍须等待实际进程完成并验收，不能仅凭状态文件判定运行或成功。
+启动时服务ccpanel-capacity-integrity-20261022210155已确认active/running，首5帧有效；证据目录为服务器`/opt/ccpanel/shared/capacity-integrity.dMizyM`。采样过期、cgroup缺失等写错误帧而非伪造零值。最终已确认生成器退出0、采样器自然结束inactive/dead且Result=success/ExecMainStatus=0；没有依据文件存在推断成功。
 
 最终资源分析使用scripts/capacity-report-cli.ts：输入完整samples.jsonl、公网load结果、基线、结束metadata及一个不存在的输出文件。基线可为`{release,containers}`；本次早期采样基线是容器字典，结束metadata需从原始release.txt读取releaseStart，并带当前release和containers（id/restartCount/oomKilled/startedAt）。不能手填推断版本或只读取最后一个OOM状态代替生命周期计数。
 
 报告须同时包住负载开始/结束的捕获时间和真实宿主机计数时间，保留边界区间的少量额外观察。缺失/过期/错误帧、超过20秒捕获间隔、计数器回退、版本变化、容器替换均使evidenceValid=false；重复宿主机样本不重复累加。输出加权CPU空闲、各容器内存峰值、最小磁盘余量、实际swap字节与速率/最长连续活动、OOM和重启。conservativeResourcePass只在证据完整且无swap活动等条件时给出充分保守通过；有swap活动必须单独评估PRD的持续性要求，不据“swap已占用”直接判定抖动，也不自行改写验收标准。此报告不替代逐事件ID和DLQ对账。
+
+### 新版最终实测
+
+UTC 2026-10-22 21:02:08.030–21:32:08.038，1800秒，固定m4-integrity-001/schema10。构建与流量生成在工作站，服务器包含有限资源采样与少量SSH只读运维/文件暂存开销；未部署、更改配置或在窗口内启动额外数据库测试。资源分析取负载前一帧至源计数覆盖结束的首帧，共183帧，均有效，捕获与宿主机时间覆盖完整，evidenceValid=true。后续数据库验证不在该窗口内。
+
+| 指标 | 结果 |
+|---|---:|
+| 生成 / 确认 / PG逐ID匹配 | 1800 / 1800 / 1800 |
+| 原始 / 去重 / 聚合任务 | 1800 / 1800 / 1800 |
+| 额外重复请求 / DLQ / 最终积压 / 错误 | 35 / 0 / 0 / 0 |
+| 生成时钟最大偏差 | 16ms |
+| 公网接入p95 / 可见p95 / 趋势查询p95 | 235.64ms / 1475ms / 717.47ms |
+| CPU空闲 / 最低可用内存 | 51.01% / 266.92MiB |
+| API / Worker / Kafka / PG memory.current采样峰值 | 69.31 / 35.87 / 222.28 / 66.92MiB |
+| 最低磁盘可用比例 | 64.46% |
+| 容器替换 / 重启 / OOM事件 | 0 / 0 / 0 |
+| swap换入 / 换出总量 | 95.71MiB / 173.32MiB |
+| 出现swap活动的有效增量区间 | 159 |
+| 最长连续swap活动 | 1293.76秒（约21.6分钟） |
+| swap换入 / 换出最高速率 | 2305.14 / 10099.91KiB/s |
+
+链路、去重和延迟通过；**资源门槛未通过**，持续swap活动明确存在，不提高流量或宣称稳定容量。memory.current峰值是10秒观察到的采样峰值，不是内核memory.peak全生命周期峰值。结束后仅按已验证测试公司清理数据与账号，原有关系指纹完全保留，HTTPS正常。
+
+首轮PowerShell时间转换丢失UTC偏移和毫秒，导出时间偏差8小时38ms，被CLI的窗口一致性校验拒绝，没有产生错误通过报告。保留初始错误导出，改为直接读取负载JSON中的UTC completed_at；确认初始183帧本来就覆盖真实UTC窗口，再正确导出并核对摘要。工作站证据为`.local/capacity-integrity-result.json`、`capacity-integrity-resource-report.json`与相应快照/状态文件，服务器保留同目录证据。端上与服务器测试凭据已移除。
+
+窗口结束后的只读进程快照显示Kafka Java进程及fwupd有较多换出页，swappiness=60；这只是后续定位线索，不足以归因全部持续换页。后续需评估系统服务用途、JVM与内核内存策略，调整后重新测量；不通过关闭WAL/fsync、跳过确认或改写验收标准换取表面通过。

@@ -5,13 +5,15 @@ set -euo pipefail
 umask 077
 dir=$(realpath -e "${CCPANEL_CAPACITY_DIR:?Set existing capacity evidence directory}")
 [[ "$dir" =~ ^/opt/ccpanel/shared/capacity-integrity\.[A-Za-z0-9]{6}$ ]]
-finish=${CCPANEL_CAPACITY_FINISHED_MS:?Set actual load completed_at in Unix milliseconds}
-[[ "$finish" =~ ^[0-9]{13}$ ]]
 exec 9>"$dir/.finalize.lock"
 flock -n 9 || { echo 'Capacity export already running' >&2; exit 1; }
-python3 - "$dir" "$finish" <<'PY'
-import hashlib,json,os,pathlib,subprocess,sys,time
-root=pathlib.Path(sys.argv[1]);finish=int(sys.argv[2])
+python3 - "$dir" <<'PY'
+import datetime,hashlib,json,os,pathlib,subprocess,sys,time
+root=pathlib.Path(sys.argv[1]);load=json.loads((root/'load-result.json').read_text())
+end=datetime.datetime.fromisoformat(load['completed_at'].replace('Z','+00:00'))
+assert end.tzinfo is not None and end.utcoffset()==datetime.timedelta(0),'UTC completed_at required'
+finish=int((end-datetime.datetime(1970,1,1,tzinfo=datetime.timezone.utc))//datetime.timedelta(milliseconds=1))
+assert finish<=time.time()*1000,'load not finished'
 if (root/'final.json').exists() and (root/'samples-finished.jsonl').exists():
     previous=json.loads((root/'final.json').read_text())
     assert previous['loadFinishedAt']==finish,'different load window'
