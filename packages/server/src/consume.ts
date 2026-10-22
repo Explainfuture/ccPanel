@@ -26,10 +26,16 @@ export async function persist(record: StoredEnvelope): Promise<'inserted' | 'dup
     const hash = digest(canonical(e));
     const registered = await c.query('INSERT INTO event_dedup(tenant_id,project_id,event_id,payload_hash) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING event_id', [record.tenant_id,record.project_id,e.event_id,hash]);
     if (!registered.rowCount) {
-      const old = await c.query('SELECT payload_hash FROM event_dedup WHERE tenant_id=$1 AND project_id=$2 AND event_id=$3', [record.tenant_id,record.project_id,e.event_id]);
+      const old = await c.query('SELECT payload_hash,status FROM event_dedup WHERE tenant_id=$1 AND project_id=$2 AND event_id=$3 FOR UPDATE', [record.tenant_id,record.project_id,e.event_id]);
       if (old.rows[0]?.payload_hash !== hash) throw new EventConflict('payload_conflict');
-      await c.query("INSERT INTO ingest_metrics VALUES($1,$2,'duplicates',1) ON CONFLICT(project_id,metric) DO UPDATE SET value=ingest_metrics.value+1", [record.tenant_id,record.project_id]);
-      await c.query('COMMIT'); return 'duplicate';
+      if(old.rows[0].status==='failed'){
+        // Retrying a repaired processor must write the original event once.
+        // This transition rolls back together with any failed raw/aggregate write.
+        await c.query("UPDATE event_dedup SET status='stored' WHERE tenant_id=$1 AND project_id=$2 AND event_id=$3",[record.tenant_id,record.project_id,e.event_id]);
+      }else{
+        await c.query("INSERT INTO ingest_metrics VALUES($1,$2,'duplicates',1) ON CONFLICT(project_id,metric) DO UPDATE SET value=ingest_metrics.value+1", [record.tenant_id,record.project_id]);
+        await c.query('COMMIT'); return 'duplicate';
+      }
     }
     if (e.event_name === '$identify') {
       if (!e.anonymous_id) throw new EventConflict('missing_anonymous_id');

@@ -31,6 +31,7 @@ export async function migrate() {
       ALTER TABLE projects ADD COLUMN IF NOT EXISTS privacy_epoch integer NOT NULL DEFAULT 0;
       ALTER TABLE query_jobs ADD COLUMN IF NOT EXISTS privacy_epoch integer NOT NULL DEFAULT 0;
       ALTER TABLE deletion_jobs ALTER COLUMN user_id DROP NOT NULL;
+      ALTER TABLE event_dedup ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'stored' CHECK(status IN ('stored','failed'));
       CREATE TABLE IF NOT EXISTS recovery_gate(id boolean PRIMARY KEY DEFAULT true CHECK(id),blocked boolean NOT NULL DEFAULT true,ledger_exported_at timestamptz,updated_at timestamptz NOT NULL DEFAULT clock_timestamp());
       INSERT INTO recovery_gate(id) VALUES(true) ON CONFLICT DO NOTHING;
       CREATE TABLE IF NOT EXISTS recovery_import_scopes(ledger_hash text NOT NULL,tenant_id uuid NOT NULL,project_id uuid NOT NULL,PRIMARY KEY(ledger_hash,tenant_id,project_id),FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
@@ -58,6 +59,7 @@ export async function migrate() {
       INSERT INTO schema_migrations(version) VALUES(4) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(5) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(6) ON CONFLICT DO NOTHING;
+      INSERT INTO schema_migrations(version) VALUES(7) ON CONFLICT DO NOTHING;
     `);
     const now = new Date();
     for (let i = -2; i <= 2; i++) {
