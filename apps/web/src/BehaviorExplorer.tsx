@@ -38,7 +38,8 @@ type CohortResult = {
   users_truncated: boolean;
   computed_at: string;
 };
-type Result = FunnelResult | RetentionResult | CohortResult;
+export type BehaviorResult = FunnelResult | RetentionResult | CohortResult;
+type Result = BehaviorResult;
 const percent = (v: number | null) =>
   v === null ? "—" : (v * 100).toFixed(1) + "%";
 export default function BehaviorExplorer({ prefix }: { prefix: string }) {
@@ -303,6 +304,14 @@ export default function BehaviorExplorer({ prefix }: { prefix: string }) {
         </div>
       ) : null}
       {result ? (
+        <BehaviorResultView result={result} />
+      ) : null}
+    </div>
+  );
+}
+
+export function BehaviorResultView({result}:{result:BehaviorResult}) {
+  return (
         <section className="panel">
           <div className="panel-heading">
             <h2>
@@ -476,7 +485,5 @@ export default function BehaviorExplorer({ prefix }: { prefix: string }) {
             </>
           )}
         </section>
-      ) : null}
-    </div>
   );
 }

@@ -11,12 +11,14 @@ import {
 import { api, ApiError } from "./api";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
+import { BehaviorResultView, type BehaviorResult } from "./BehaviorExplorer";
+import type { AnalysisSpec } from "../../../packages/server/src/analysis-spec";
 import { useQueryJob } from "./useQueryJob";
 import type {
   Filter,
   TrendSpec,
 } from "../../../packages/server/src/query-spec";
-type Result = {
+type TrendResult = {
   spec: TrendSpec;
   summary: {
     value: number | null;
@@ -34,7 +36,8 @@ type Result = {
   groups_truncated: boolean;
   computed_at: string;
 };
-type Report = { id: string; name: string; spec: TrendSpec; updated_at: string };
+type Result = (TrendResult | BehaviorResult) & { saved_report?: { id:string;version:number;timezone:string } };
+type Report = { id: string; name: string; spec: AnalysisSpec; updated_at: string; version: number; timezone: string | null };
 type Dashboard = { id: string; name: string; report_ids: string[] };
 const format = (value: number | null) =>
   value === null
@@ -50,10 +53,15 @@ const message = (e: unknown) =>
         numeric_property_required: "数值聚合需要填写属性名称",
         numeric_filter_required: "数值比较条件必须填写数字",
         forbidden: "当前角色没有此操作权限",
+        report_conflict: "报表已被修改，请刷新报表后重试",
+        report_timezone_unrecorded: "历史报表缺少时区，请先编辑并保存",
         not_found: "报表不存在或不属于当前公司",
       }[e.code] || "查询或保存失败，请检查条件后重试"
     : "连接失败，请稍后重试";
-function ResultView({ result }: { result: Result }) {
+function ResultView({result}:{result:Result}) {
+  return <>{result.saved_report ? <p className="fine-print panel-body">报表版本 {result.saved_report.version} · {result.saved_report.timezone}</p> : null}{"summary" in result ? <TrendResultView result={result} /> : <BehaviorResultView result={result} />}</>;
+}
+function TrendResultView({ result }: { result: TrendResult }) {
   const max = Math.max(1, ...result.series.map((r) => Math.abs(r.value || 0)));
   return (
     <div className="query-result">
@@ -168,8 +176,9 @@ export default function AnalysisExplorer({
     [cards, setCards] = useState<
       { name: string; result?: Result; error?: string }[]
     >([]);
+  const [editing, setEditing] = useState<Report | null>(null);
   const generation = useRef(0);
-  const background = useQueryJob<Result>(prefix, setResult, "trend");
+  const background = useQueryJob<Result>(prefix, setResult, "trend,funnel,retention,cohort");
   const refresh = async () => {
     const [r, d] = await Promise.all([
       api<{ reports: Report[] }>(prefix + "/reports"),
@@ -181,6 +190,7 @@ export default function AnalysisExplorer({
   useEffect(() => {
     let live = true;
     setResult(null);
+    setEditing(null);
     setCards([]);
     setSelected([]);
     setError("");
@@ -202,15 +212,16 @@ export default function AnalysisExplorer({
       generation.current++;
     };
   }, [prefix]);
-  async function execute(spec: TrendSpec) {
+  async function execute(spec: TrendSpec | Report) {
     setBusy(true);
     setError("");
     setNotice("");
     const version = ++generation.current;
     try {
-      const r = await api<Result>(prefix + "/query", {
+      const saved = "id" in spec;
+      const r = await api<Result>(prefix + (saved ? `/reports/${spec.id}/run` : "/query"), {
         method: "POST",
-        body: JSON.stringify(spec),
+        body: JSON.stringify(saved ? {expected_version:spec.version} : spec),
       });
       if (version === generation.current) setResult(r);
     } catch (e) {
@@ -268,7 +279,7 @@ export default function AnalysisExplorer({
   }
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!result) return;
+    if (!result || !("summary" in result)) return;
     try {
       await api(prefix + "/reports", {
         method: "POST",
@@ -282,6 +293,27 @@ export default function AnalysisExplorer({
     } catch (e) {
       setError(message(e));
     }
+  }
+  async function updateReport(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!editing) return;
+    const form = new FormData(e.currentTarget), current = ++generation.current;
+    setBusy(true); setError("");
+    try {
+      const useCurrent = form.get("replace_query") === "on";
+      await api(prefix + "/reports/" + editing.id, {
+        method: "PATCH", body: JSON.stringify({
+          name: form.get("name"), timezone: form.get("timezone"),
+          spec: useCurrent && result && "summary" in result ? result.spec : editing.spec,
+          expected_version: editing.version,
+        }),
+      });
+      if (current === generation.current) {
+        setEditing(null); setNotice("报表已更新。已排队的任务仍使用提交时的版本。");
+        await refresh();
+      }
+    } catch(e) { if(current === generation.current) setError(message(e)); }
+    finally { if(current === generation.current) setBusy(false); }
   }
   async function createDashboard(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -313,9 +345,9 @@ export default function AnalysisExplorer({
         continue;
       }
       try {
-        const value = await api<Result>(prefix + "/query", {
+        const value = await api<Result>(prefix + `/reports/${report.id}/run`, {
           method: "POST",
-          body: JSON.stringify(report.spec),
+          body: JSON.stringify({expected_version:report.version}),
         });
         next.push({ name: report.name, result: value });
       } catch (e) {
@@ -492,7 +524,7 @@ export default function AnalysisExplorer({
         </form>
         {background.panel}
         {result ? <ResultView result={result} /> : null}
-        {result && canEdit ? (
+        {result && "summary" in result && canEdit ? (
           <form className="save-report" onSubmit={save}>
             <Input
               name="name"
@@ -514,6 +546,18 @@ export default function AnalysisExplorer({
             <h2>公司共享报表</h2>
             <BookmarkPlus size={19} />
           </div>
+          {editing ? (
+            <form key={editing.id + ":" + editing.version} className="panel-body query-form" onSubmit={updateReport}>
+              <p className="muted">编辑报表 · 版本 {editing.version}</p>
+              <div className="query-fields">
+                <label>报表名称<Input name="name" defaultValue={editing.name} required maxLength={128} /></label>
+                <label>报表时区<Input name="timezone" defaultValue={editing.timezone || "UTC"} required placeholder="例如 Asia/Shanghai" /></label>
+              </div>
+              {result && "summary" in result ? <label><input type="checkbox" name="replace_query" /> 使用上方最近一次趋势查询条件替换此报表</label> : null}
+              <p className="fine-print">时区决定每日统计和留存日期；保存时会生成新版本。</p>
+              <div className="query-actions"><Button disabled={busy}>保存修改</Button><Button type="button" variant="ghost" disabled={busy} onClick={() => setEditing(null)}>取消</Button></div>
+            </form>
+          ) : null}
           {reports.length ? (
             <div className="report-list">
               {reports.map((r) => (
@@ -522,17 +566,19 @@ export default function AnalysisExplorer({
                     <strong>{r.name}</strong>
                     <small>
                       {new Date(r.updated_at).toLocaleString("zh-CN")} ·
-                      固定时间范围
+                      版本 {r.version} · {r.timezone || "待补充时区"} · 固定时间范围
                     </small>
                   </div>
                   <Button
                     size="sm"
                     variant="outline"
                     disabled={busy}
-                    onClick={() => void execute(r.spec)}
+                    onClick={() => void execute(r)}
                   >
                     查看
                   </Button>
+                  <Button size="sm" variant="outline" disabled={busy || background.busy} onClick={() => void background.submit({report_id:r.id, expected_version:r.version})}>后台计算</Button>
+                  {canEdit ? <Button size="sm" variant="outline" disabled={busy} onClick={() => { setEditing(r); setError(""); }}>编辑</Button> : null}
                   {canEdit ? (
                     <Button
                       size="sm"

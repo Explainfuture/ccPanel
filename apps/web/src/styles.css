@@ -1110,3 +1110,6 @@ label {
 .invitation-paste { display:grid; gap:14px; margin-top:22px; }
 .invitation-panel td { overflow-wrap:anywhere; }
 @media(max-width:760px) { .invitation-form { grid-template-columns:minmax(0,1fr); } .invitation-card h1 { font-size:20px; } }
+
+/* Report metadata stays readable while actions wrap within narrow cards. */
+.report-list>div{flex-wrap:wrap}.report-list>div>div{flex:1 0 100%;min-width:0}.report-list strong,.report-list small{overflow-wrap:anywhere}.report-list button{flex-shrink:0}
