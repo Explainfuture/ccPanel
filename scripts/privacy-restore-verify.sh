@@ -18,13 +18,19 @@ esac
 db="ccpanel_restore_$(date -u +%Y%m%d%H%M%S)_$(openssl rand -hex 4)"
 [[ "$db" =~ ^ccpanel_restore_[0-9]{14}_[a-f0-9]{8}$ ]]
 probe="ccpanel-restore-probe-$(openssl rand -hex 4)"
+replay_worker="ccpanel-restore-worker-$(openssl rand -hex 4)"
+replay_prefix="ccpanel.restore.$(openssl rand -hex 6)"
+worker=${CCPANEL_DRILL_WORKER:-scripts/staged-worker.mjs}
+topics_created=false
 target="${DATABASE_URL%/*}/$db"
 cleanup(){
   docker rm -f "$probe" >/dev/null 2>&1 || true
+  docker rm -f "$replay_worker" >/dev/null 2>&1 || true
+  if [ "$topics_created" = true ]; then run scripts/privacy-restore-fixture.mjs replay-cleanup <"$dir/fixture.json" || true; fi
   docker compose exec -T postgres dropdb -U ccpanel --if-exists --force "$db"
 }
 trap cleanup EXIT
-run(){ docker compose run --rm -T --no-deps -e DATABASE_URL="$target" -e CCPANEL_OFFLINE_RESTORE=true api node "$@"; }
+run(){ docker compose run --rm -T --no-deps -e DATABASE_URL="$target" -e CCPANEL_OFFLINE_RESTORE=true -e CCPANEL_REPLAY_PREFIX="$replay_prefix" api node "$@"; }
 gate(){ docker compose exec -T postgres psql -X -U ccpanel -d "$db" -At -c 'SELECT blocked FROM recovery_gate WHERE id=true'; }
 apply(){ run "$ledger" apply <"$1"; }
 reject(){
@@ -34,6 +40,10 @@ reject(){
   test "$(gate)" = t
 }
 started=$(date +%s)
+docker compose exec -T postgres pg_restore --list <"$dir/restored-database.dump" >"$dir/archive-list.txt"
+grep -Eq 'TABLE public recovery_gate ' "$dir/archive-list.txt"
+grep -Eq 'TABLE public recovery_import_scopes ' "$dir/archive-list.txt"
+! grep -Eq 'TABLE DATA public (recovery_gate|recovery_import_scopes) ' "$dir/archive-list.txt"
 docker compose exec -T postgres createdb -U ccpanel "$db"
 docker compose exec -T postgres pg_restore -U ccpanel --dbname="$db" --single-transaction --exit-on-error --no-owner --no-acl <"$dir/restored-database.dump"
 docker compose exec -T postgres psql -X -U ccpanel -d "$db" -At -v ON_ERROR_STOP=1 <../scripts/backup-fingerprint.sql >"$dir/restored-fingerprint.jsonl"
@@ -84,4 +94,12 @@ if apply "$dir/restored-ledger.json" >"$dir/online-rejection.log" 2>&1; then ech
 grep -q services_still_online "$dir/online-rejection.log"
 test "$(gate)" = f
 docker rm -f "$probe" >/dev/null
-printf '{"passed":true,"elapsed_seconds":%s,"old_rows":4,"remaining_rows":1,"deleted_rows":3,"default_closed":true,"invalid_and_stale_rejected":true,"missing_scope_rejected":true,"online_service_fenced":true,"repeat_apply_idempotent":true,"actor_absent_from_backup":true}\n' "$(( $(date +%s)-started ))" | tee "$dir/result.json"
+run scripts/privacy-restore-fixture.mjs replay-prepare <"$dir/fixture.json"
+topics_created=true
+docker compose run --rm -d -T --name "$replay_worker" --no-deps -e DATABASE_URL="$target" -e KAFKA_EVENTS_TOPIC="$replay_prefix.events" -e KAFKA_DLQ_TOPIC="$replay_prefix.dlq" -e KAFKA_GROUP_ID="$replay_prefix.writer" api node "$worker" >"$dir/replay-worker-id"
+run scripts/privacy-restore-fixture.mjs replay-verify <"$dir/fixture.json"
+run scripts/privacy-restore-fixture.mjs after <"$dir/fixture.json"
+docker stop --time 10 "$replay_worker" >/dev/null
+run scripts/privacy-restore-fixture.mjs replay-cleanup <"$dir/fixture.json"
+topics_created=false
+printf '{"passed":true,"elapsed_seconds":%s,"old_rows":4,"remaining_rows":1,"deleted_rows":3,"default_closed":true,"invalid_and_stale_rejected":true,"missing_scope_rejected":true,"online_service_fenced":true,"repeat_apply_idempotent":true,"actor_absent_from_backup":true,"isolated_kafka_replay":true}\n' "$(( $(date +%s)-started ))" | tee "$dir/result.json"
