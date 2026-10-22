@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import {downloadQueryResult} from "./query-download";
 import { api, ApiError } from "./api";
 import { Button } from "./components/ui/button";
 
@@ -35,6 +36,12 @@ const errorText = (code?: string) =>
     report_conflict:"报表已被修改，请刷新报表后重新提交。",
     report_timezone_unrecorded:"该历史报表尚未记录时区，请重新保存后再运行。",
     invalid_report_reference:"报表引用或版本无效，请重新选择报表。",
+    download_failed:"下载连接已中断，请重试；未保存不完整文件。",
+    forbidden:"当前角色不能下载结果。",
+    query_not_ready:"任务尚未完成，请等待后再下载。",
+    export_busy:"下载通道繁忙，请稍后重试。",
+    export_limits_exceeded:"文件超出1MiB预算，请缩小范围后重新计算。",
+    invalid_response:"未收到完整文件，请重试下载。",
     privacy_changed:"数据删除范围已变更，旧结果已失效，请重新查询。",
   })[code || ""] || "任务请求失败，请重试。";
 
@@ -42,21 +49,24 @@ export function useQueryJob<T>(
   prefix: string,
   onResult: (result: T, context: {spec:unknown;timezone?:string|null}) => void,
   kinds: string,
+  canExport=false,
 ) {
   const [id, setId] = useState(""),
     [job, setJob] = useState<Job | null>(null),
     [jobs, setJobs] = useState<Job[]>([]),
     [posting, setPosting] = useState(false),
     [error, setError] = useState("");
+  const [downloading,setDownloading]=useState("");
+  const downloadAbort=useRef<AbortController|null>(null),downloadVersion=useRef(0);
   const activePoll=useRef<AbortController|null>(null);
   const callback = useRef(onResult);
   callback.current = onResult;
   const [refresh, setRefresh] = useState(0);
   const version = useRef(0);
   useEffect(
-    () => () => {
-      version.current++;
-    },
+    () => {setDownloading("");return () => {
+      version.current++;downloadVersion.current++;downloadAbort.current?.abort();
+    };},
     [prefix],
   );
   useEffect(() => {
@@ -144,6 +154,13 @@ export function useQueryJob<T>(
       setError(errorText(e instanceof ApiError ? e.code : undefined));
     }
   }
+  async function download(id:string,format:'json'|'csv'){
+    if(!canExport)return;downloadAbort.current?.abort();const abort=new AbortController();downloadAbort.current=abort;
+    const current=++downloadVersion.current;setDownloading(id+':'+format);setError("");
+    try{await downloadQueryResult(prefix,id,format,abort.signal);}
+    catch(reason){if(current===downloadVersion.current&&!abort.signal.aborted)setError(errorText(reason instanceof ApiError?reason.code:"download_failed"));}
+    finally{if(current===downloadVersion.current)setDownloading("");}
+  }
   const busy =
     posting ||
     (!!id && (!job || job.status === "queued" || job.status === "running"));
@@ -190,7 +207,7 @@ export function useQueryJob<T>(
                   <tr key={row.id}>
                     <td>{new Date(row.created_at).toLocaleString("zh-CN")}</td>
                     <td>{statusText[row.status]}{row.report_id?<div className="fine-print">报表版本 {row.report_version} · {row.timezone}</div>:null}</td>
-                    <td>
+                    <td><div className="query-job-actions">
                       <Button
                         type="button"
                         variant="ghost"
@@ -204,7 +221,11 @@ export function useQueryJob<T>(
                       >
                         查看
                       </Button>
-                    </td>
+                      {canExport&&row.status==='succeeded'?<>
+                        <Button type="button" variant="ghost" aria-label="下载 JSON" disabled={!!downloading} onClick={()=>void download(row.id,'json')}>{downloading===row.id+':json'?'…':'JSON'}</Button>
+                        <Button type="button" variant="ghost" aria-label="下载 CSV" disabled={!!downloading} onClick={()=>void download(row.id,'csv')}>{downloading===row.id+':csv'?'…':'CSV'}</Button>
+                      </>:null}
+                    </div></td>
                   </tr>
                 ))}
               </tbody>
@@ -215,6 +236,8 @@ export function useQueryJob<T>(
             还没有查询任务。较慢的分析可以选择“后台计算”。
           </p>
         )}
+        {downloading?<p role="status">正在下载结果…</p>:null}
+        {canExport?<p className="fine-print">已完成任务可下载JSON原值或CSV字段路径表。CSV适合表格查看，程序导入请选择JSON；文件最多1MiB。</p>:null}
         <p className="muted">
           取消会丢弃结果；已开始的计算可能继续短暂运行，最长受 30 秒预算限制。
         </p>

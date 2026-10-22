@@ -175,7 +175,7 @@ export default function AnalysisExplorer({
     >([]);
   const [editing, setEditing] = useState<Report | null>(null);
   const generation = useRef(0);
-  const background = useQueryJob<Result>(prefix, setResult, "trend,funnel,retention,cohort");
+  const background = useQueryJob<Result>(prefix, setResult, "trend,funnel,retention,cohort",canEdit);
   const refresh = async () => {
     const [r, d] = await Promise.all([
       api<{ reports: Report[] }>(prefix + "/reports"),

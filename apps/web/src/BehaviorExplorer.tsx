@@ -62,6 +62,7 @@ export default function BehaviorExplorer({ prefix,canEdit=false }: { prefix: str
       setKind(value.kind);
     },
     "funnel,retention,cohort",
+    canEdit,
   );
   async function run(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
