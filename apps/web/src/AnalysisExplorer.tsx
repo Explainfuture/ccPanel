@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   BarChart3,
   BookmarkPlus,
-  LayoutDashboard,
   Play,
   Plus,
   Trash2,
@@ -11,6 +10,8 @@ import {
 import { api, ApiError } from "./api";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
+import DashboardWorkspace from "./DashboardWorkspace";
+import type {Dashboard} from "./DashboardEditor";
 import ReportEditor from "./ReportEditor";
 import { BehaviorResultView, type BehaviorResult } from "./BehaviorExplorer";
 import type { AnalysisSpec } from "../../../packages/server/src/analysis-spec";
@@ -39,7 +40,6 @@ type TrendResult = {
 };
 type Result = (TrendResult | BehaviorResult) & { saved_report?: { id:string;version:number;timezone:string } };
 type Report = { id: string; name: string; spec: AnalysisSpec; updated_at: string; version: number; timezone: string | null };
-type Dashboard = { id: string; name: string; report_ids: string[] };
 const format = (value: number | null) =>
   value === null
     ? "—"
@@ -172,10 +172,6 @@ export default function AnalysisExplorer({
   const [metric, setMetric] = useState("count"),
     [filters, setFilters] = useState<
       { key: string; op: Filter["op"]; value: string }[]
-    >([]),
-    [selected, setSelected] = useState<string[]>([]),
-    [cards, setCards] = useState<
-      { name: string; result?: Result; error?: string }[]
     >([]);
   const [editing, setEditing] = useState<Report | null>(null);
   const generation = useRef(0);
@@ -192,8 +188,6 @@ export default function AnalysisExplorer({
     let live = true;
     setResult(null);
     setEditing(null);
-    setCards([]);
-    setSelected([]);
     setError("");
     Promise.all([
       api<{ reports: Report[] }>(prefix + "/reports"),
@@ -214,6 +208,7 @@ export default function AnalysisExplorer({
     };
   }, [prefix]);
   async function execute(spec: TrendSpec | Report) {
+    background.clear();
     setBusy(true);
     setError("");
     setNotice("");
@@ -294,48 +289,6 @@ export default function AnalysisExplorer({
     } catch (e) {
       setError(message(e));
     }
-  }
-  async function createDashboard(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    try {
-      await api(prefix + "/dashboards", {
-        method: "POST",
-        body: JSON.stringify({
-          name: new FormData(e.currentTarget).get("name"),
-          report_ids: selected,
-        }),
-      });
-      await refresh();
-      setNotice("仪表盘已保存。");
-    } catch (e) {
-      setError(message(e));
-    }
-  }
-  async function openDashboard(board: Dashboard) {
-    setBusy(true);
-    setCards([]);
-    setError("");
-    const version = ++generation.current;
-    const next: typeof cards = [];
-    for (const id of board.report_ids) {
-      if (version !== generation.current) break;
-      const report = reports.find((r) => r.id === id);
-      if (!report) {
-        next.push({ name: "已删除的报表", error: "此卡片对应的报表已不存在" });
-        continue;
-      }
-      try {
-        const value = await api<Result>(prefix + `/reports/${report.id}/run`, {
-          method: "POST",
-          body: JSON.stringify({expected_version:report.version}),
-        });
-        next.push({ name: report.name, result: value });
-      } catch (e) {
-        next.push({ name: report.name, error: message(e) });
-      }
-      if (version === generation.current) setCards([...next]);
-    }
-    if (version === generation.current) setBusy(false);
   }
   return (
     <div className="analysis-explorer">
@@ -578,73 +531,8 @@ export default function AnalysisExplorer({
             <p className="empty-inline">运行查询并保存后，报表会显示在这里。</p>
           )}
         </section>
-        <section className="panel">
-          <div className="panel-heading">
-            <h2>仪表盘</h2>
-            <LayoutDashboard size={19} />
-          </div>
-          <div className="panel-body">
-            {dashboards.map((d) => (
-              <Button
-                key={d.id}
-                variant="outline"
-                className="dashboard-link"
-                disabled={busy}
-                onClick={() => void openDashboard(d)}
-              >
-                <LayoutDashboard />
-                {d.name}
-                <span className="muted">{d.report_ids.length} 张卡片</span>
-              </Button>
-            ))}
-            {!dashboards.length ? (
-              <p className="muted">选择报表，组成公司共享的分析视图。</p>
-            ) : null}
-            {canEdit ? (
-              <form onSubmit={createDashboard} className="dashboard-form">
-                <label>
-                  仪表盘名称
-                  <Input name="name" required maxLength={128} />
-                </label>
-                <div className="report-checks">
-                  {reports.map((r) => (
-                    <label key={r.id}>
-                      <input
-                        type="checkbox"
-                        checked={selected.includes(r.id)}
-                        onChange={(e) =>
-                          setSelected((v) =>
-                            e.target.checked
-                              ? [...v, r.id]
-                              : v.filter((id) => id !== r.id),
-                          )
-                        }
-                      />
-                      {r.name}
-                    </label>
-                  ))}
-                </div>
-                <Button disabled={!selected.length || selected.length > 50}>
-                  <Plus />
-                  创建仪表盘
-                </Button>
-              </form>
-            ) : null}
-          </div>
-        </section>
+        <DashboardWorkspace<Result> prefix={prefix} boards={dashboards} reports={reports} canEdit={canEdit} disabled={busy} onChanged={refresh} onBusy={setBusy} onAsync={background.submit} renderResult={value=><ResultView result={value}/>}/>
       </div>
-      {cards.map((card, i) => (
-        <section key={i} className="panel">
-          <div className="panel-heading">
-            <h2>{card.name}</h2>
-          </div>
-          {card.result ? (
-            <ResultView result={card.result} />
-          ) : (
-            <p className="error panel-body">{card.error}</p>
-          )}
-        </section>
-      ))}
     </div>
   );
 }
