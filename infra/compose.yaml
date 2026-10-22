@@ -1,0 +1,97 @@
+name: ccpanel
+services:
+  kafka-volume-init:
+    image: node:22.22.3-bookworm-slim
+    user: root
+    mem_limit: 24m
+    entrypoint: [chown]
+    command: ['1000:1000', /data]
+    volumes: [kafka_data:/data]
+    restart: 'no'
+    logging: &logging
+      driver: json-file
+      options: {max-size: 5m, max-file: '2'}
+  postgres:
+    image: postgres:17.7-bookworm
+    restart: unless-stopped
+    mem_limit: 160m
+    environment:
+      POSTGRES_USER: ccpanel
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set database password}
+      POSTGRES_DB: ccpanel
+    command: [postgres, -c, shared_buffers=32MB, -c, max_connections=20, -c, work_mem=1MB, -c, maintenance_work_mem=16MB]
+    volumes: [pg_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U ccpanel]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    logging: *logging
+  kafka:
+    image: apache/kafka:4.1.2
+    restart: unless-stopped
+    mem_limit: 384m
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 2
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      KAFKA_LOG_SEGMENT_BYTES: 16777216
+      KAFKA_LOG_RETENTION_BYTES: 134217728
+      KAFKA_LOG_CLEANER_DEDUPE_BUFFER_SIZE: 16777216
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      KAFKA_HEAP_OPTS: -Xms128m -Xmx192m
+      KAFKA_NUM_NETWORK_THREADS: 2
+      KAFKA_NUM_IO_THREADS: 2
+      KAFKA_SOCKET_SEND_BUFFER_BYTES: 65536
+      KAFKA_SOCKET_RECEIVE_BUFFER_BYTES: 65536
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    volumes: [kafka_data:/tmp/kraft-combined-logs]
+    depends_on:
+      kafka-volume-init: {condition: service_completed_successfully}
+    logging: *logging
+  api:
+    image: node:22.22.3-bookworm-slim
+    restart: unless-stopped
+    mem_limit: 128m
+    working_dir: /app
+    user: node
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      NODE_OPTIONS: --max-old-space-size=64
+    command: [node, dist/api.mjs]
+    volumes: [../:/app:ro]
+    ports: [127.0.0.1:3000:3000]
+    depends_on:
+      postgres: {condition: service_healthy}
+      kafka: {condition: service_started}
+    logging: *logging
+  worker:
+    image: node:22.22.3-bookworm-slim
+    restart: unless-stopped
+    mem_limit: 96m
+    working_dir: /app
+    user: node
+    env_file: .env
+    environment:
+      NODE_OPTIONS: --max-old-space-size=48
+    command: [node, dist/worker.mjs]
+    volumes: [../:/app:ro]
+    depends_on:
+      postgres: {condition: service_healthy}
+      kafka: {condition: service_started}
+    logging: *logging
+volumes:
+  pg_data:
+  kafka_data:
