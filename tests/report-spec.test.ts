@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {reportDraft,reportRun,dashboardDraft,reportReference} from '../packages/server/src/report-spec';
+import {reportDraft,reportRun,dashboardDraft,reportReference,dashboardRunReference} from '../packages/server/src/report-spec';
 import {trends} from '../packages/server/src/trends';
 import {query} from '../packages/server/src/db';
 const range=()=>({from:new Date(Date.now()-86400000).toISOString(),to:new Date().toISOString()});
@@ -38,4 +38,16 @@ it('binds a saved timezone only to the daily-series query without adding unused 
 it('pins an async saved-report reference without accepting caller timezone, scope or nested revision',()=>{
   const id='aaaaaaaa-1111-4111-8111-111111111111';expect(reportReference({report_id:id.toUpperCase(),expected_version:3,overrides:{filters:[]}})).toEqual({report_id:id,expected_version:3,overrides:{filters:[]}});
   for(const value of [{report_id:id},{report_id:id,expected_version:3,timezone:'UTC'},{report_id:id,expected_version:3,tenant_id:'other'},{report_id:id,expected_version:3,overrides:{expected_version:1}},{report_id:id,expected_version:3,overrides:[]}])expect(()=>reportReference(value)).toThrow();
+});
+
+it('bounds dashboard layouts, ranges and typed filters without guessing missing updates',()=>{
+  const draft=dashboardDraft({name:'board',report_ids:[],columns:2,range_days:7,filters:[{key:'code',op:'eq',value:'20'}]});
+  expect(draft.columns).toBe(2);expect(draft.range_days).toBe(7);expect(draft.filters?.[0]?.value).toBe('20');
+  expect(dashboardDraft({name:'old client',report_ids:[],expected_version:2},true).columns).toBeUndefined();
+  expect(dashboardDraft({name:'clear',report_ids:[],range_days:null,filters:[]}).range_days).toBeNull();
+  for(const field of [{columns:0},{columns:3},{columns:'2'},{range_days:'7'},{range_days:2},{filters:null},{filters:{}},{filters:Array.from({length:21},()=>({key:'plan',op:'exists'}))}])expect(()=>dashboardDraft({name:'bad',report_ids:[],...field})).toThrow();
+});
+it('accepts viewer dashboard run overrides only with a revision and bounded fields',()=>{
+  expect(dashboardRunReference({expected_version:4,range_days:null,filters:[]})).toMatchObject({expected_version:4,range_days:null,filters:[]});
+  for(const body of [{},{expected_version:0},{expected_version:4,tenant_id:'other'},{expected_version:4,columns:2},{expected_version:4,report_ids:[]},{expected_version:4,filters:[{key:'price',op:'gt',value:'20'}]}])expect(()=>dashboardRunReference(body)).toThrow();
 });

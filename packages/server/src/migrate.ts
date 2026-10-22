@@ -38,6 +38,9 @@ export async function migrate() {
       CREATE TABLE IF NOT EXISTS dashboards(id uuid PRIMARY KEY,tenant_id uuid NOT NULL,project_id uuid NOT NULL,name text NOT NULL,report_ids uuid[] NOT NULL DEFAULT '{}',updated_at timestamptz NOT NULL DEFAULT now(),FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
       ALTER TABLE reports ADD COLUMN IF NOT EXISTS timezone text;
       ALTER TABLE reports ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 1 CHECK(version>0);
+      ALTER TABLE dashboards ADD COLUMN IF NOT EXISTS columns smallint NOT NULL DEFAULT 1 CHECK(columns IN (1,2));
+      ALTER TABLE dashboards ADD COLUMN IF NOT EXISTS range_days integer CHECK(range_days IN (1,7,30));
+      ALTER TABLE dashboards ADD COLUMN IF NOT EXISTS filters jsonb NOT NULL DEFAULT '[]' CHECK(jsonb_typeof(filters)='array' AND jsonb_array_length(filters)<=20);
       ALTER TABLE dashboards ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 1 CHECK(version>0);
       CREATE TABLE IF NOT EXISTS query_jobs(id uuid PRIMARY KEY,tenant_id uuid NOT NULL,project_id uuid NOT NULL,user_id uuid NOT NULL REFERENCES users(id),spec jsonb NOT NULL,status text NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','succeeded','failed','cancelled')),result jsonb,error text,created_at timestamptz NOT NULL DEFAULT now(),started_at timestamptz,finished_at timestamptz,expires_at timestamptz NOT NULL DEFAULT now()+interval '24 hours',FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
       CREATE INDEX IF NOT EXISTS query_jobs_queue ON query_jobs(created_at) WHERE status IN ('queued','running');
@@ -101,6 +104,7 @@ export async function migrate() {
       INSERT INTO schema_migrations(version) VALUES(13) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(14) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(15) ON CONFLICT DO NOTHING;
+      INSERT INTO schema_migrations(version) VALUES(16) ON CONFLICT DO NOTHING;
     `);
     const now = new Date();
     for (let i = -2; i <= 2; i++) {

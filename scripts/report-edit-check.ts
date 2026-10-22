@@ -40,15 +40,29 @@ try{
   const legacy=randomUUID();await pool.query('INSERT INTO reports(id,tenant_id,project_id,name,spec) VALUES($1,$2,$3,$4,$5)',[legacy,a,project,'legacy',JSON.stringify(trend)]);
   assert.equal((await req(viewer,root+'/reports/'+legacy+'/run',{})).status,409);
   assert.equal((await req(analyst,root+'/reports/'+legacy,{name:'recorded',spec:trend,timezone:'UTC',expected_version:1},'PATCH')).status,200);
-  const boardResponse=await req(analyst,root+'/dashboards',{name:'board',report_ids:[report.id,behaviorIds[0]]});assert.equal(boardResponse.status,201);const board=await boardResponse.json();
+  const boardResponse=await req(analyst,root+'/dashboards',{name:'board',report_ids:[report.id,behaviorIds[0]],columns:2,range_days:7,filters:[{key:'plan',op:'eq',value:'paid'}]});assert.equal(boardResponse.status,201);const board=await boardResponse.json();
+  assert.equal(board.columns,2);assert.equal(board.range_days,7);assert.equal(board.filters[0].value,'paid');
+  const planResponse=await req(viewer,root+'/dashboards/'+board.id+'/run',{expected_version:1,filters:[{key:'extra',op:'not_exists'}]});assert.equal(planResponse.status,200);const plan=await planResponse.json();
+  assert.equal(plan.dashboard.version,1);assert.equal(plan.dashboard.columns,2);assert.deepEqual(plan.cards.map((r:{report_id:string})=>r.report_id),[report.id,behaviorIds[0]]);
+  assert.ok(plan.cards.every((r:{overrides:{from:string;to:string;filters:unknown[]}})=>r.overrides.to===plan.planned_at&&Date.parse(r.overrides.to)-Date.parse(r.overrides.from)===7*86400000&&r.overrides.filters.length===2));
+  assert.equal((await req(viewer,root+'/reports/'+plan.cards[0].report_id+'/run',{...plan.cards[0].overrides,expected_version:plan.cards[0].expected_version})).status,200);
+  assert.ok(plan.cards.every((card:{name:unknown})=>typeof card.name==='string'));
+  const filteredPlan=await(await req(viewer,root+'/dashboards/'+board.id+'/run',{expected_version:1,filters:[{key:'extra',op:'exists'}]})).json();
+  const filteredResult=await req(viewer,root+'/reports/'+filteredPlan.cards[0].report_id+'/run',{...filteredPlan.cards[0].overrides,expected_version:filteredPlan.cards[0].expected_version});assert.equal(filteredResult.status,200);assert.equal((await filteredResult.json()).summary.value,0);
+  const ownRange=await req(viewer,root+'/dashboards/'+board.id+'/run',{expected_version:1,range_days:null});assert.equal(ownRange.status,200);assert.equal((await ownRange.json()).cards[0].overrides.from,undefined);
+  assert.equal((await req(viewer,root+'/dashboards/'+board.id+'/run',{expected_version:99})).status,409);
+  assert.equal((await req(foreign,other+'/dashboards/'+board.id+'/run',{expected_version:1})).status,404);
+  assert.equal((await req(viewer,root+'/dashboards/'+board.id+'/run',{expected_version:1,filters:Array.from({length:20},()=>({key:'x',op:'exists'}))})).status,400);
   assert.equal((await req(viewer,root+'/dashboards/'+board.id,{name:'no',report_ids:[],expected_version:1},'PATCH')).status,403);
   const otherReport=await req(foreign,other+'/reports',{name:'foreign',spec:trend});const otherId=(await otherReport.json()).id;
   assert.equal((await req(analyst,root+'/dashboards',{name:'bad-scope',report_ids:[otherId]})).status,404);
   assert.equal((await req(analyst,root+'/reports/'+otherId,{name:'bad',spec:trend,expected_version:1},'PATCH')).status,404);
   assert.equal((await req(admin,root+'/reports/'+report.id,undefined,'DELETE')).status,200);
-  const boards=await req(viewer,root+'/dashboards');const updated=(await boards.json()).dashboards.find((d:{id:string})=>d.id===board.id);assert.deepEqual(updated.report_ids,[behaviorIds[0]]);assert.equal(updated.version,2);
+  const boards=await req(viewer,root+'/dashboards');const updated=(await boards.json()).dashboards.find((d:{id:string})=>d.id===board.id);assert.deepEqual(updated.report_ids,[behaviorIds[0]]);assert.equal(updated.version,2);assert.equal(updated.columns,2);assert.equal(updated.range_days,7);assert.equal(updated.filters[0].value,'paid');
   assert.equal((await req(analyst,root+'/dashboards/'+board.id,{name:'stale',report_ids:[],expected_version:1},'PATCH')).status,409);
   assert.equal((await req(analyst,root+'/dashboards/'+board.id,{name:'reordered',report_ids:[behaviorIds[2],behaviorIds[0]],expected_version:2},'PATCH')).status,200);
+  const preserved=(await pool.query('SELECT columns,range_days,filters FROM dashboards WHERE id=$1',[board.id])).rows[0];assert.equal(preserved.columns,2);assert.equal(preserved.range_days,7);assert.equal(preserved.filters[0].value,'paid');
+  const cleared=await req(analyst,root+'/dashboards/'+board.id,{name:'clear view',report_ids:[],expected_version:3,columns:1,range_days:null,filters:[]},'PATCH');assert.equal(cleared.status,200);const clear=await cleared.json();assert.equal(clear.columns,1);assert.equal(clear.range_days,null);assert.deepEqual(clear.filters,[]);
   const raced=await req(analyst,root+'/reports',{name:'race',spec:trend});const racedId=(await raced.json()).id;
   const race=await Promise.all([req(analyst,root+'/dashboards',{name:'race',report_ids:[racedId]}),req(admin,root+'/reports/'+racedId,undefined,'DELETE')]);
   if(race[0]!.status===201){const id=(await race[0]!.json()).id;assert.deepEqual((await pool.query('SELECT report_ids FROM dashboards WHERE id=$1',[id])).rows[0].report_ids,[]);}else assert.equal(race[0]!.status,404);
@@ -71,5 +85,5 @@ try{
   const rejected=(await pool.query('SELECT status,error,result FROM query_jobs WHERE id=$1',[revokedJob.id])).rows[0];assert.equal(rejected.status,'failed');assert.equal(rejected.error,'membership_revoked');assert.equal(rejected.result,null);
   assert.equal((await req(analyst,root+'/query-jobs/'+revokedJob.id)).status,404);
   assert.equal((await pool.query('SELECT status,result FROM query_jobs WHERE id=$1',[cancelledJob.id])).rows[0].status,'cancelled');
-  console.log(JSON.stringify({passed:true,concurrent_edit_conflict:true,saved_timezone_pinned:true,retention_timezone_pinned:true,all_analysis_kinds_saved:true,legacy_timezone_not_guessed:true,viewer_read_only:true,cross_company_not_found:true,delete_repairs_dashboard:true,dashboard_revision_conflict:true,create_delete_reference_race_safe:true,removed_member_denied:true,queued_report_snapshot_pinned:true,queued_revision_conflict:true,anonymous_query_compatible:true,revoked_job_failed:true,cancelled_job_not_executed:true}));
+  console.log(JSON.stringify({passed:true,concurrent_edit_conflict:true,saved_timezone_pinned:true,retention_timezone_pinned:true,all_analysis_kinds_saved:true,legacy_timezone_not_guessed:true,viewer_read_only:true,cross_company_not_found:true,delete_repairs_dashboard:true,dashboard_revision_conflict:true,create_delete_reference_race_safe:true,removed_member_denied:true,queued_report_snapshot_pinned:true,queued_revision_conflict:true,anonymous_query_compatible:true,revoked_job_failed:true,cancelled_job_not_executed:true,dashboard_layout_and_filters:true,dashboard_snapshot_one_range:true,dashboard_stale_or_foreign_denied:true,legacy_update_preserves_settings:true,explicit_view_clear:true}));
 }finally{stopJobs?.();await pool.end();}

@@ -15,7 +15,15 @@ assert meta['loadFinishedAt']==int((end-datetime.datetime(1970,1,1,tzinfo=dateti
 assert meta['loadFinishedAt']<=time.time()*1000
 assert hashlib.sha256((root/'samples-finished.jsonl').read_bytes()).hexdigest()==meta['samplesSha256']
 PY
-stage=/opt/ccpanel/shared/validation-v15
+version=${CCPANEL_VALIDATION_VERSION:-16}
+[[ "$version" =~ ^(15|16)$ ]]
+stage="/opt/ccpanel/shared/validation-v$version"
+case "${CCPANEL_VALIDATION_SUITE:-all}" in
+  all) suites='company-provision report-edit';;
+  company-provision) suites=company-provision;;
+  report-edit) suites=report-edit;;
+  *) echo 'Unsupported isolated validation suite' >&2;exit 1;;
+esac
 # The parent /app source mount is read-only. Docker needs the nested mount
 # point to exist on the host checkout before assembling this one-off container.
 install -d -m 755 /opt/ccpanel/current/scripts/validation
@@ -27,12 +35,12 @@ cleanup(){
   rm -f "$dir/test.env" "$dir/ledger.json"
 }
 trap cleanup EXIT
-for suite in company-provision report-edit; do
+for suite in $suites; do
   db="ccpanel_restore_$(date -u +%Y%m%d%H%M%S)_$(openssl rand -hex 4)"
   [[ "$db" =~ ^ccpanel_restore_[0-9]{14}_[a-f0-9]{8}$ ]]
   printf 'DATABASE_URL=%s/%s\n' "${DATABASE_URL%/*}" "$db" >"$dir/test.env"
   docker compose exec -T postgres createdb -U ccpanel "$db";created=true
-  docker compose run --rm -T --no-deps --env-from-file "$dir/test.env" -v "$stage:/app/scripts/validation:ro" api node scripts/validation/migrate-v15.mjs
+  docker compose run --rm -T --no-deps --env-from-file "$dir/test.env" -v "$stage:/app/scripts/validation:ro" api node "scripts/validation/migrate-v$version.mjs"
   # A fresh empty database exports its own fresh source ledger. This is not
   # an old backup and never overrides the running database recovery gate.
   docker compose run --rm -T --no-deps --env-from-file "$dir/test.env" -v "$stage:/app/scripts/validation:ro" api node scripts/validation/deletion-ledger.mjs export >"$dir/ledger.json"
@@ -45,4 +53,4 @@ for suite in company-provision report-edit; do
   docker compose exec -T postgres dropdb -U ccpanel --force "$db";created=false
 done
 rm -f "$dir/test.env" "$dir/ledger.json"
-echo 'Isolated schema15 provisioning/report checks completed; running release not migrated'
+echo "Isolated schema$version checks completed; running release not migrated"

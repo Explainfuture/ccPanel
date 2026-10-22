@@ -4,7 +4,7 @@ import { parseTrend,InvalidQuery } from './query-spec';
 import { trends } from './trends';
 import type { Env } from '../../../apps/api/src/app';
 import { projectQueryFlights as flights } from './query-budget';
-import {saveReport,removeReport,savedReportRun,saveDashboard,removeDashboard} from './reports';
+import {saveReport,removeReport,savedReportRun,saveDashboard,removeDashboard,savedDashboardRun} from './reports';
 import {behaviorQuery,QueryBudgetExceeded} from './behavior-routes';
 export function registerReportRoutes(app:Hono<Env>){
   const prefix='/api/tenants/:tenant/projects/:project';
@@ -41,7 +41,7 @@ export function registerReportRoutes(app:Hono<Env>){
     if(c.get('role')==='viewer')return c.json({error:'forbidden'},403);
     return c.json(await removeReport(c.get('tenantId'),c.req.param('project')!,c.get('userId'),c.req.param('report')!));
   });
-  app.get(prefix+'/dashboards',async c=>c.json({dashboards:(await query('SELECT id,name,report_ids,version,updated_at FROM dashboards WHERE tenant_id=$1 AND project_id=$2 ORDER BY updated_at DESC',[c.get('tenantId'),c.req.param('project')])).rows}));
+  app.get(prefix+'/dashboards',async c=>c.json({dashboards:(await query('SELECT id,name,report_ids,columns,range_days,filters,version,updated_at FROM dashboards WHERE tenant_id=$1 AND project_id=$2 ORDER BY updated_at DESC',[c.get('tenantId'),c.req.param('project')])).rows}));
   app.post(prefix+'/dashboards',async c=>{
     if(c.get('role')==='viewer')return c.json({error:'forbidden'},403);
     return c.json(await saveDashboard(c.get('tenantId'),c.req.param('project')!,c.get('userId'),await c.req.json().catch(()=>null)),201);
@@ -50,6 +50,7 @@ export function registerReportRoutes(app:Hono<Env>){
     if(c.get('role')==='viewer')return c.json({error:'forbidden'},403);
     return c.json(await saveDashboard(c.get('tenantId'),c.req.param('project')!,c.get('userId'),await c.req.json().catch(()=>null),c.req.param('dashboard')));
   });
+  app.post(prefix+'/dashboards/:dashboard/run',async c=>c.json(await savedDashboardRun(c.get('tenantId'),c.req.param('project')!,c.req.param('dashboard')!,await c.req.json().catch(()=>null))));
   app.delete(prefix+'/dashboards/:dashboard',async c=>{
     if(c.get('role')==='viewer')return c.json({error:'forbidden'},403);
     return c.json(await removeDashboard(c.get('tenantId'),c.req.param('project')!,c.get('userId'),c.req.param('dashboard')!));
