@@ -10,6 +10,7 @@ import { assertConsumerIntegrity,assertTopicCreationSafe,ensureConsumerProgress,
 import { readKafkaPressure } from '../../../packages/server/src/kafka-pressure';
 import { defaultPressurePolicy } from '../../../packages/server/src/ingest-pressure';
 import { startAggregations } from '../../../packages/server/src/aggregations';
+import { startRetention } from '../../../packages/server/src/retention';
 const releaseRecoveryLease=await holdRecoveryLease();
 const stream={topic:eventsTopic,group:consumerGroup};
 await assertTopicCreationSafe(stream,await ensureTopics());
@@ -71,6 +72,7 @@ await consumer.run({ autoCommit: false, eachBatchAutoResolve: false, eachBatch: 
 } });
 console.log(JSON.stringify({ code: 'worker_ready' }));
 const stopAggregations=startAggregations();
+const stopRetention=startRetention();
 let checking=false;
 const progressTimer=setInterval(async()=>{
   if(checking)return;checking=true;
@@ -79,4 +81,4 @@ const progressTimer=setInterval(async()=>{
   finally{checking=false;}
 },5000);
 progressTimer.unref();
-for (const signal of ['SIGTERM','SIGINT'] as const) process.once(signal, async () => { stopAggregations();clearInterval(progressTimer);await consumer.disconnect(); await producer.disconnect();await progressAdmin.disconnect();await releaseRecoveryLease();await pool.end(); process.exit(0); });
+for (const signal of ['SIGTERM','SIGINT'] as const) process.once(signal, async () => { stopRetention();stopAggregations();clearInterval(progressTimer);await consumer.disconnect(); await producer.disconnect();await progressAdmin.disconnect();await releaseRecoveryLease();await pool.end(); process.exit(0); });

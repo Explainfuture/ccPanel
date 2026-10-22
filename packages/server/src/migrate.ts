@@ -72,7 +72,7 @@ export async function migrate() {
       CREATE OR REPLACE VIEW visible_events WITH (security_barrier=true) AS
         SELECT e.* FROM events e
         LEFT JOIN identity_links l ON l.tenant_id=e.tenant_id AND l.project_id=e.project_id AND l.anonymous_id=e.distinct_id
-        WHERE NOT EXISTS (
+        WHERE e.event_time>=CURRENT_TIMESTAMP-interval '30 days' AND NOT EXISTS (
           SELECT 1 FROM deletion_barriers b WHERE b.tenant_id=e.tenant_id AND b.project_id=e.project_id AND (
             b.identity_hash='*' OR (
               b.identity_hash IN (
@@ -85,7 +85,11 @@ export async function migrate() {
         );
       CREATE OR REPLACE VIEW visible_event_count_buckets WITH (security_barrier=true) AS
         SELECT b.* FROM event_count_buckets b JOIN projects p ON p.tenant_id=b.tenant_id AND p.id=b.project_id AND p.privacy_epoch=b.privacy_epoch
-        WHERE NOT EXISTS(SELECT 1 FROM deletion_barriers d WHERE d.tenant_id=b.tenant_id AND d.project_id=b.project_id AND d.identity_hash='*');
+        WHERE b.bucket_start>=CURRENT_TIMESTAMP-interval '30 days' AND NOT EXISTS(SELECT 1 FROM deletion_barriers d WHERE d.tenant_id=b.tenant_id AND d.project_id=b.project_id AND d.identity_hash='*');
+      CREATE INDEX IF NOT EXISTS events_retention_time ON events(event_time);
+      CREATE INDEX IF NOT EXISTS dedup_retention_time ON event_dedup(created_at);
+      CREATE INDEX IF NOT EXISTS buckets_retention_time ON event_count_buckets(bucket_start);
+      CREATE INDEX IF NOT EXISTS replay_items_event ON replay_items(project_id,event_id);
       CREATE INDEX IF NOT EXISTS events_scope_time ON events(tenant_id,project_id,event_time DESC);
       CREATE INDEX IF NOT EXISTS events_user_time ON events(tenant_id,project_id,distinct_id,event_time DESC);
       CREATE INDEX IF NOT EXISTS events_scope_event ON events(tenant_id,project_id,event_id);
@@ -105,6 +109,7 @@ export async function migrate() {
       INSERT INTO schema_migrations(version) VALUES(14) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(15) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(16) ON CONFLICT DO NOTHING;
+      INSERT INTO schema_migrations(version) VALUES(17) ON CONFLICT DO NOTHING;
     `);
     const now = new Date();
     for (let i = -2; i <= 2; i++) {
