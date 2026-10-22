@@ -664,3 +664,5 @@ schema17增加逻辑30天事件视图、全局过期索引及可显式启用的W
 支持Web Locks时跨标签页串行清理与grant，避免迟到清理删掉新授权事件；新撤回优先于旧排队grant。身份保存/reset同样检查授权。不支持Web Locks/存储不可用时仅承诺本实例顺序，网站同意层仍须通知各页面，详见SDK-PERFORMANCE.md。新增三项单测及仅本地可运行的Playwright CLI复现函数。
 
 130项单测曾完整通过；最终授权代次调整后针对三项授权测试/类型/构建通过。最终构建Browser gzip5882、Node6845字节。Chrome155/Windows真实IndexedDB完整复测passed:true：重复grant不打断合法采集、跨标签页撤回、重开保持撤回、显式grant及其他页不自动恢复、关闭重开保留ID/模拟202清空。传输stub不替代服务端Kafka证据；最终80秒性能对照进行中，结果另记。首次复测因旧页面缓存旧ESM与新页加载新版混合而失败，已使复现函数先完整导航重新加载构建后通过；未将混合版本误当新版验收。
+
+步骤97最终构建性能：Chrome155/Windows/20逻辑处理器/浏览器报告16GiB，80秒三组对照全程可见；20EPS1200条全部queued-persistent，同步p95/p99=0.4/0.6ms，持久完成p95/p99=3.4/6.5ms，长任务0/诊断0/最终队列0，passed:true。Browser gzip5882/Node6845。传输仍内存202，非网络或Kafka吞吐。GitHub Actions39874079796（34aecd3）verify与postgres均success，130项完整单测及5套真实PG控制器全部通过。真实SDK生命周期函数与最终构建复测通过。当前/上一版多浏览器及真实移动设备矩阵尚未完成。
