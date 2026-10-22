@@ -156,3 +156,5 @@ UTC21:44:22.648–22:14:23.187，实际窗口1800.539秒，仍为m4-integrity-00
 链路、去重、数据对账与延迟通过；Swap明显减少但仍连续活动，**资源门槛仍未通过**，conservativeResourcePass=false。保持试验预览，不因优化有效就放宽PRD或承诺生产吞吐。未采用swapoff、清缓存或降低Kafka确认标准。该窗口未运行schema11–15或聚合处理器，不能把结论外推到新功能。
 
 证据保留于服务器`/opt/ccpanel/shared/capacity-integrity.Hivo2c`及工作站`.local/capacity-tuned-{result,resource-report,baseline,final}.json`、`capacity-tuned-samples.jsonl`；不可变结束快照185帧，报告选择其中183帧覆盖完整窗口，SHA256及结束时间一致。逐条verify后仅清理本次合成公司/项目/账号，两端夹具凭据已删除，原业务关系指纹与升级前一致，消费进度检查通过，HTTPS就绪。完整窗口导出后才运行新的隔离PG验收；采样器按原有限时配置自行结束，另核对最终状态。
+
+UTC22:17:19实际复核本轮有限采样器为inactive/dead、Result=success、ExecMainStatus=0；它按原33分钟配置自行退出，无人为停止或重启。
