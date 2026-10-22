@@ -11,3 +11,5 @@ IndexedDB 不可用时进入有界内存缓冲并调用 onError；内存事件�
 项目可导出 ProjectEvents 类型，并调用 `createAnalytics<ProjectEvents>(options)`：事件名获得补全，必填属性与值类型在编译期检查；不提供泛型时仍支持通用事件。服务端的运行时校验始终保留，TypeScript 不能作为可信数据边界。
 
 可选 `propertyAllowlist` 按事件名限制顶层 properties，例如 `{ checkout_started: ['product_id', 'amount'], button_clicked: ['button'] }`。一旦配置，未列出的事件仍可上报，但 properties 为空；未批准字段不会被读取或写入队列。配置在初始化时复制，后续修改原对象不会扩大采集范围。嵌套敏感键过滤始终保留，白名单不能绕过密码/令牌等过滤；它不控制身份或 SDK 的固定上下文字段。最多配置 1000 个事件，每事件最多 100 个属性键。Node SDK 使用相同选项和语义。
+
+事件字符串和属性键必须兼容 PostgreSQL UTF-8/JSONB：拒绝 NUL 和未配对的 UTF-16 代理项，正常中文与 Emoji 可用。被拒绝的事件返回明确状态，不进入无限数据库重试。

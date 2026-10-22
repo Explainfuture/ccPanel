@@ -16,13 +16,22 @@ export const byteLength = (v: unknown) => new TextEncoder().encode(JSON.stringif
 const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype;
 function jsonSafe(v: unknown, depth = 0, seen = new Set<object>()): boolean {
-  if (v === null || typeof v === 'string' || typeof v === 'boolean') return true;
+  if (typeof v === 'string') return storageSafeText(v);
+  if (v === null || typeof v === 'boolean') return true;
   if (typeof v === 'number') return Number.isFinite(v);
   if (typeof v !== 'object' || depth >= 5 || seen.has(v) || (!Array.isArray(v) && !record(v))) return false;
   seen.add(v);
-  const ok = Object.values(v).every(x => jsonSafe(x, depth + 1, seen));
+  const ok = Object.entries(v).every(([key,x])=>storageSafeText(key)&&jsonSafe(x,depth+1,seen));
   seen.delete(v);
   return ok;
+}
+export function storageSafeText(text:string){
+  for(let i=0;i<text.length;i++){
+    const code=text.charCodeAt(i);if(code===0)return false;
+    if(code>=0xd800&&code<=0xdbff){const next=text.charCodeAt(++i);if(!(next>=0xdc00&&next<=0xdfff))return false;}
+    else if(code>=0xdc00&&code<=0xdfff)return false;
+  }
+  return true;
 }
 export function validateEvent(value: unknown, now = Date.now(), checkTime = true): string | undefined {
   if (!record(value)) return 'invalid_event';
@@ -32,6 +41,7 @@ export function validateEvent(value: unknown, now = Date.now(), checkTime = true
   if (typeof value.event_name !== 'string' || !value.event_name.trim() || value.event_name.length > 128) return 'invalid_event_name';
   if (typeof value.distinct_id !== 'string' || !value.distinct_id || value.distinct_id.length > 256) return 'invalid_distinct_id';
   if (value.anonymous_id !== undefined && (typeof value.anonymous_id !== 'string' || !value.anonymous_id || value.anonymous_id.length > 256)) return 'invalid_anonymous_id';
+  if(!storageSafeText(value.event_name)||!storageSafeText(value.distinct_id)||(typeof value.anonymous_id==='string'&&!storageSafeText(value.anonymous_id)))return 'invalid_text';
   if (value.schema_version !== 1) return 'invalid_schema_version';
   const time = typeof value.event_time === 'string' && /Z$/.test(value.event_time) ? Date.parse(value.event_time) : NaN;
   if (!Number.isFinite(time) || (checkTime && (time < now - limits.ttl || time > now + 300000))) return 'invalid_event_time';

@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
 import { pool } from "./db";
 import { digest } from "./security";
-import type { StoredEnvelope } from "../../schema/src/index";
+import { storageSafeText,type StoredEnvelope } from "../../schema/src/index";
 
 export const identityHash = (
   tenant: string,
@@ -137,7 +137,7 @@ export async function discardDeletedDeadLetter(input: unknown) {
       : {};
   const identities = [e.distinct_id, e.anonymous_id].filter(
     (v): v is string =>
-      typeof v === "string" && v.length > 0 && v.length <= 256,
+      typeof v === "string" && v.length > 0 && v.length <= 256 && storageSafeText(v),
   );
   const hashes = identities.map((id) =>
     identityHash(r.tenant_id as string, r.project_id as string, id),

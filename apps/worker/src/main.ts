@@ -3,7 +3,7 @@ import { persist, EventConflict } from '../../../packages/server/src/consume';
 import { validateEvent, type StoredEnvelope } from '../../../packages/schema/src/index';
 import { query, pool } from '../../../packages/server/src/db';
 import { digest } from '../../../packages/server/src/security';
-import { discardDeletedDeadLetter } from '../../../packages/server/src/privacy';
+import { discardDeletedDeadLetter,identityHash } from '../../../packages/server/src/privacy';
 await ensureTopics();
 const consumer = kafka.consumer({ groupId: 'ccpanel-writer-v1', sessionTimeout: 30000 });
 const producer = kafka.producer({ idempotent: true, maxInFlightRequests: 1 });
@@ -36,10 +36,13 @@ await consumer.run({ autoCommit: false, eachBatchAutoResolve: false, eachBatch: 
     if(reason&&await discardDeletedDeadLetter(record))reason=undefined;
     if (reason) {
       const id = digest(`${batch.topic}:${batch.partition}:${message.offset}`);
-      const dead = { id, reason, source: { topic: batch.topic, partition: batch.partition, offset: message.offset }, record, raw:message.value?.toString()||null, processor_version: 1 };
-      await producer.send({ topic: dlqTopic, acks: -1, messages: [{ key: id, value: JSON.stringify(dead) }] });
-      // The DLQ acknowledgement precedes the offset. A failed admin-index write retries safely.
       const validScope=(value:unknown)=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)?value:null;
+      const tenant=validScope(record?.tenant_id),project=validScope(record?.project_id);
+      const identities=tenant&&project?[record?.event?.distinct_id,record?.event?.anonymous_id].filter((v):v is string=>typeof v==='string'&&v.length>0&&v.length<=256).map(v=>identityHash(tenant,project,v)):[];
+      const dead = { id, reason, source: { topic: batch.topic, partition: batch.partition, offset: message.offset },tenant_id:tenant,project_id:project,identity_hashes:identities,raw_base64:message.value?.toString('base64')??null,processor_version:2 };
+      await producer.send({ topic: dlqTopic, acks: -1, messages: [{ key: id, value: JSON.stringify(dead) }] });
+      // The exact original bytes remain in a storage-safe envelope. The DLQ
+      // acknowledgement precedes the offset; a failed index write retries.
       await query('INSERT INTO dlq_records(id,tenant_id,project_id,reason,payload) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING', [id,validScope(record?.tenant_id),validScope(record?.project_id),reason,JSON.stringify(dead)]);
     }
     resolveOffset(message.offset);

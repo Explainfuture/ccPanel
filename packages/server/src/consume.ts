@@ -3,6 +3,10 @@ import { pool } from './db';
 import { digest } from './security';
 import { lockProjectPrivacy,suppressedByDeletion } from './privacy';
 export class EventConflict extends Error { constructor(public reason: string) { super(reason); } }
+export function storageFailureReason(error:unknown){
+  const code=(error as {code?:unknown})?.code;
+  return typeof code==='string'&&(/^22[0-9A-Z]{3}$/.test(code)||code==='23514')?'invalid_storage_value':undefined;
+}
 export async function persist(record: StoredEnvelope): Promise<'inserted' | 'duplicate' | 'suppressed'> {
   const c = await pool.connect(); const e = record.event;
   try {
@@ -35,5 +39,5 @@ export async function persist(record: StoredEnvelope): Promise<'inserted' | 'dup
     await c.query('INSERT INTO aggregation_jobs(tenant_id,project_id,event_id) VALUES($1,$2,$3)', [record.tenant_id,record.project_id,e.event_id]);
     await c.query("INSERT INTO ingest_metrics VALUES($1,$2,'inserted',1) ON CONFLICT(project_id,metric) DO UPDATE SET value=ingest_metrics.value+1", [record.tenant_id,record.project_id]);
     await c.query('COMMIT'); return 'inserted';
-  } catch (e) { await c.query('ROLLBACK'); throw e; } finally { c.release(); }
+  } catch (e) { await c.query('ROLLBACK');const reason=storageFailureReason(e);if(reason)throw new EventConflict(reason);throw e; } finally { c.release(); }
 }

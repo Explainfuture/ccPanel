@@ -3,6 +3,7 @@ import type { Hono, MiddlewareHandler } from "hono";
 import type { PoolClient } from "pg";
 import type { Env } from "../../../apps/api/src/app";
 import { pool, query } from "./db";
+import { storageSafeText } from '../../schema/src/index';
 import {
   identityHash,
   identityHashSql,
@@ -21,6 +22,7 @@ export function deletionRequest(input: unknown) {
     typeof b.scope !== "string" ||
     !["user", "project"].includes(b.scope) ||
     typeof b.reason !== "string" ||
+    !storageSafeText(b.reason) ||
     b.reason.trim().length < 5 ||
     b.reason.length > 512 ||
     typeof b.confirmation !== "string"
@@ -30,6 +32,7 @@ export function deletionRequest(input: unknown) {
     b.scope === "user" &&
     (typeof b.distinct_id !== "string" ||
       !b.distinct_id ||
+      !storageSafeText(b.distinct_id) ||
       b.distinct_id.length > 256 ||
       b.confirmation !== b.distinct_id)
   )
@@ -275,7 +278,7 @@ export async function deleteBatch(
   const deadHash = (field: string) =>
     `encode(sha256(convert_to(d.tenant_id::text||':'||d.project_id::text||':'||(d.payload->'record'->'event'->>'${field}'),'UTF8')),'hex')`;
   const redacted = await db.query(
-    `UPDATE dlq_records SET payload=jsonb_build_object('redacted',true,'deletion_job_id',$3::text) WHERE tenant_id=$1 AND project_id=$2 AND id IN (SELECT d.id FROM dlq_records d WHERE d.tenant_id=$1 AND d.project_id=$2 AND NOT (d.payload ? 'redacted') AND EXISTS(SELECT 1 FROM deletion_barriers b WHERE b.tenant_id=d.tenant_id AND b.project_id=d.project_id AND b.deletion_job_id=$3::uuid AND (b.identity_hash='*' OR b.identity_hash IN (${deadHash("distinct_id")},${deadHash("anonymous_id")}))) LIMIT 500) RETURNING id`,
+    `UPDATE dlq_records SET payload=jsonb_build_object('redacted',true,'deletion_job_id',$3::text) WHERE tenant_id=$1 AND project_id=$2 AND id IN (SELECT d.id FROM dlq_records d WHERE d.tenant_id=$1 AND d.project_id=$2 AND NOT (d.payload ? 'redacted') AND EXISTS(SELECT 1 FROM deletion_barriers b WHERE b.tenant_id=d.tenant_id AND b.project_id=d.project_id AND b.deletion_job_id=$3::uuid AND (b.identity_hash='*' OR (d.payload->'identity_hashes' ? b.identity_hash) OR b.identity_hash IN (${deadHash("distinct_id")},${deadHash("anonymous_id")}))) LIMIT 500) RETURNING id`,
     values,
   );
   return !redacted.rowCount;
