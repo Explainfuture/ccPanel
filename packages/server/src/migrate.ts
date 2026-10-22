@@ -12,6 +12,9 @@ export async function migrate() {
       CREATE TABLE IF NOT EXISTS tenant_memberships(tenant_id uuid REFERENCES tenants(id), user_id uuid REFERENCES users(id), role text NOT NULL CHECK(role IN ('admin','analyst','viewer')), PRIMARY KEY(tenant_id,user_id));
       CREATE TABLE IF NOT EXISTS tenant_invitations(id uuid PRIMARY KEY,tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,email text NOT NULL CHECK(email=lower(email) AND length(email) BETWEEN 3 AND 254),role text NOT NULL CHECK(role IN ('admin','analyst','viewer')),token_hash text UNIQUE NOT NULL CHECK(token_hash ~ '^[a-f0-9]{64}$'),created_by uuid REFERENCES users(id) ON DELETE SET NULL,created_at timestamptz NOT NULL DEFAULT clock_timestamp(),expires_at timestamptz NOT NULL DEFAULT clock_timestamp()+interval '7 days',accepted_by uuid REFERENCES users(id) ON DELETE SET NULL,accepted_at timestamptz,revoked_at timestamptz,CHECK(expires_at>created_at),CHECK(accepted_at IS NULL OR revoked_at IS NULL),CHECK(accepted_at IS NOT NULL OR accepted_by IS NULL));
       CREATE UNIQUE INDEX IF NOT EXISTS tenant_invitations_pending_email ON tenant_invitations(tenant_id,email) WHERE accepted_at IS NULL AND revoked_at IS NULL;
+      CREATE TABLE IF NOT EXISTS platform_operators(user_id uuid PRIMARY KEY REFERENCES users(id),created_at timestamptz NOT NULL DEFAULT clock_timestamp(),revoked_at timestamptz);
+      CREATE TABLE IF NOT EXISTS company_provision_requests(id uuid PRIMARY KEY,operator_id uuid NOT NULL REFERENCES platform_operators(user_id),tenant_id uuid NOT NULL REFERENCES tenants(id),owner_id uuid NOT NULL REFERENCES users(id),request_hash text NOT NULL CHECK(request_hash ~ '^[a-f0-9]{64}$'),created_at timestamptz NOT NULL DEFAULT clock_timestamp());
+      CREATE TABLE IF NOT EXISTS platform_audit(id bigserial PRIMARY KEY,operator_id uuid NOT NULL REFERENCES platform_operators(user_id),tenant_id uuid REFERENCES tenants(id),action text NOT NULL,details jsonb NOT NULL DEFAULT '{}',created_at timestamptz NOT NULL DEFAULT clock_timestamp());
       CREATE TABLE IF NOT EXISTS sessions(token_hash text PRIMARY KEY,user_id uuid NOT NULL REFERENCES users(id),csrf_hash text NOT NULL, expires_at timestamptz NOT NULL);
       CREATE TABLE IF NOT EXISTS projects(id uuid PRIMARY KEY,tenant_id uuid NOT NULL REFERENCES tenants(id),name text NOT NULL,timezone text NOT NULL DEFAULT 'Asia/Shanghai',origins text[] NOT NULL DEFAULT '{}',schema_mode text NOT NULL DEFAULT 'loose' CHECK(schema_mode IN ('loose','strict')),created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(tenant_id,id));
       CREATE TABLE IF NOT EXISTS write_keys(id uuid PRIMARY KEY,tenant_id uuid NOT NULL,project_id uuid NOT NULL,key_hash text UNIQUE NOT NULL,label text NOT NULL,revoked_at timestamptz,FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
@@ -89,6 +92,7 @@ export async function migrate() {
       INSERT INTO schema_migrations(version) VALUES(10) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(11) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(12) ON CONFLICT DO NOTHING;
+      INSERT INTO schema_migrations(version) VALUES(13) ON CONFLICT DO NOTHING;
     `);
     const now = new Date();
     for (let i = -2; i <= 2; i++) {

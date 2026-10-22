@@ -29,3 +29,11 @@ API 必须只读挂载 telemetry **目录**，不能只绑定 host.json 文件�
 scripts/preview-memory-profile.sh只适用于确认独占用途的KVM/vda单盘环境：要求根挂载来自vda、没有device-mapper或其他磁盘、固件刷新任务不在执行，所有目标unit状态均已识别。apply将原swappiness及unit状态保存到受限/opt/ccpanel/shared/memory-profile-before.json后，停用并屏蔽fwupd及multipathd常驻/激活路径，停用固件刷新timer，设置vm.swappiness=10。保留APT系统更新、SSH、fail2ban、宿主机遥测、swap容量与平台数据持久化配置。
 
 仅在这些前提核实后使用`bash scripts/preview-memory-profile.sh apply`，`check`查看状态；需要恢复时执行`rollback`，校验自有sysctl文件后按原状态恢复，并保留审计快照。脚本拒绝覆盖已有原始记录，不用于物理机、SAN/多路径或通用服务器。已完成现行机apply与健康核验，未执行现行机rollback演练。调整属于试验配置，不能替代同版本30分钟复测，也不承诺1GiB服务器生产可用。
+
+## 公司开通命令（schema13，尚未部署）
+
+公司开通只通过部署命令，不开放公共注册。全新bootstrap会显式登记首个平台开通者；已有部署升级后不会把公司管理员自动提升为平台开通者，需要受控执行一次initialize-operator，为一个已存在的平台账号建立权限。该权限只用于开通元数据，不绕过任何公司成员关系或授予事件查询权。
+
+在root拥有、0600的独立环境文件中配置CCPANEL_OPERATOR_MODE=true、CCPANEL_OPERATOR_EMAIL。首次显式初始化使用`docker compose run --rm -T --no-deps --env-from-file /root/ccpanel-provision.env api node dist/company-provision.mjs initialize-operator`；全新bootstrap已完成初始化时无需再次调用。create还需CCPANEL_PROVISION_REQUEST_ID（固定UUID）、CCPANEL_COMPANY_NAME、CCPANEL_OWNER_EMAIL、CCPANEL_OWNER_PASSWORD。命令同上，将最后一个参数改为create；密码只放受限文件，不进入命令参数、输出或Git。
+
+同一请求ID及公司/管理员身份重试返回原回执，不重新创建或重设密码；reused=true时原凭据不变，即使重试环境中的密码不同。相同ID改变公司/管理员身份会拒绝。首管理员必须是新平台账号；已有账号由公司管理员在新公司中发起邀请并主动接受，开通命令不改其密码或静默授予权限。创建公司、账号、成员关系、回执及审计同事务，恢复门禁关闭或独占恢复进行时拒绝执行。平台开通者可用revoked_at撤销，后续命令重新检查权限；开通后不自动成为该公司成员。

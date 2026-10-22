@@ -14,6 +14,8 @@ try {
   await c.query('INSERT INTO users VALUES($1,$2,$3)', [user,email.toLowerCase(),passwordHash(password)]);
   await c.query('INSERT INTO tenants VALUES($1,$2)', [tenant,process.env.COMPANY_NAME || '我的公司']);
   await c.query("INSERT INTO tenant_memberships VALUES($1,$2,'admin')", [tenant,user]);
+  await c.query('INSERT INTO platform_operators(user_id) VALUES($1)',[user]);
+  await c.query("INSERT INTO platform_audit(operator_id,tenant_id,action) VALUES($1,$2,'initial_platform_bootstrap')",[user,tenant]);
   await c.query('COMMIT');
   console.log('Administrator and company created; no credentials printed');
 } catch (e) { await c.query('ROLLBACK'); throw e; } finally { c.release(); await pool.end(); }
