@@ -2,7 +2,7 @@ import type{AnalyticsEvent}from'../../schema/src/index';
 export type PropertyType='string'|'number'|'boolean'|'object'|'array'|'null';
 export function propertyRules(input:unknown):Record<string,PropertyType>{
   if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).length>100)throw new Error('invalid_property_rules');
-  for(const[key,type]of Object.entries(input))if(!key||key.length>128||!['string','number','boolean','object','array','null'].includes(String(type)))throw new Error('invalid_property_rules');
+  for(const[key,type]of Object.entries(input))if(!key||key.length>128||typeof type!=='string'||!['string','number','boolean','object','array','null'].includes(type))throw new Error('invalid_property_rules');
   return input as Record<string,PropertyType>;
 }
 export function checkRequired(event:AnalyticsEvent,rules:Record<string,PropertyType>){

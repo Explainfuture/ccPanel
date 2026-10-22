@@ -82,6 +82,26 @@ try {
   await waitFor(async()=>{const result=await(await fetch(base+root+'/query-jobs/'+funnelJob,{headers:h})).json();assert.notEqual(result.status,'failed',result.error);if(result.status!=='succeeded')return false;assert.deepEqual(result.result.steps.map(s=>s.users),[1,1]);return true;},'async behavior job');
   assert.equal((await fetch(base+root+'/query-jobs/'+funnelJob,{method:'DELETE',headers:h})).status,200,'cancel discards result');
   const cancelled=await(await fetch(base+root+'/query-jobs/'+funnelJob,{headers:h})).json();assert.equal(cancelled.status,'cancelled');assert.equal(cancelled.result,null);
+  const queueLock=await pool.connect();const pendingJobs=[];
+  try{
+    await queueLock.query('SELECT pg_advisory_lock(169202612)');
+    for(let i=0;i<5;i++){const r=await fetch(base+root+'/query-jobs',{method:'POST',headers:{...h,'content-type':'application/json'},body:JSON.stringify(spec)});assert.equal(r.status,202);pendingJobs.push((await r.json()).id);}
+    assert.equal((await fetch(base+root+'/query-jobs',{method:'POST',headers:{...h,'content-type':'application/json'},body:JSON.stringify(spec)})).status,429,'per-project queue is bounded');
+    assert.equal((await fetch(base+root+'/query-jobs/'+pendingJobs[0],{method:'DELETE',headers:h})).status,200,'queued task can be cancelled before execution');
+    await pool.query('DELETE FROM tenant_memberships WHERE tenant_id=$1 AND user_id=$2',[a.tenant,a.user]);
+  }finally{await queueLock.query('SELECT pg_advisory_unlock(169202612)');queueLock.release();}
+  await waitFor(async()=>Number((await pool.query("SELECT count(*) FROM query_jobs WHERE id=ANY($1::uuid[]) AND status='failed' AND error='membership_revoked'",[pendingJobs.slice(1)])).rows[0].count)===4,'execution rechecks revoked membership');
+  await pool.query("INSERT INTO tenant_memberships VALUES($1,$2,'admin')",[a.tenant,a.user]);
+  const schema=await fetch(base+root+'/schemas/typed_purchase',{method:'PUT',headers:{...h,'content-type':'application/json'},body:JSON.stringify({required_properties:{amount:'number',items:'array',note:'null'}})});assert.equal(schema.status,200);assert.equal((await schema.json()).version,1);
+  const types=await fetch(base+root+'/schemas/types',{headers:h});assert.equal(types.status,200);assert.match(await types.text(),/"typed_purchase"/);
+  const settings={schema_mode:'strict',timezone:'Asia/Shanghai',origins:[origin]};
+  assert.equal((await fetch(base+root+'/settings',{method:'PUT',headers:{...h,'content-type':'application/json'},body:JSON.stringify(settings)})).status,200);
+  const bad=await send(a,{...e,event_id:randomUUID(),event_name:'typed_purchase',properties:{amount:'1',items:[],note:null}});assert.equal(bad.status,400);assert.equal(bad.headers.get('Access-Control-Allow-Origin'),'*','cross-origin caller can inspect permanent validation errors');
+  assert.equal((await send(a,{...e,event_id:randomUUID(),event_name:'unregistered',properties:{}})).status,400,'strict registry rejects unknown event');
+  const typed={...e,event_id:randomUUID(),event_name:'typed_purchase',properties:{amount:1,items:[],note:null}};assert.equal((await send(a,typed)).status,202);
+  await waitFor(async()=>{const r=await pool.query('SELECT registered,project_schema_version FROM events WHERE tenant_id=$1 AND project_id=$2 AND event_id=$3',[a.tenant,a.project,typed.event_id]);return r.rowCount===1&&r.rows[0].registered===true&&r.rows[0].project_schema_version===1;},'accepted schema version persisted');
+  const viewerRoot=`/api/tenants/${viewer.tenant}/projects/${viewer.project}`;
+  assert.equal((await fetch(base+viewerRoot+'/settings',{method:'PUT',headers:{...v,'content-type':'application/json'},body:JSON.stringify(settings)})).status,403,'viewer cannot alter validation policy');
   await pool.query("INSERT INTO tenant_memberships VALUES($1,$2,'viewer')",[b.tenant,a.user]);
   assert.equal((await fetch(base+`/api/tenants/${b.tenant}/projects`,{headers:h})).status,200,'same account can read joined company');
   assert.equal((await fetch(base+`/api/tenants/${b.tenant}/projects/${b.project}/keys`,{method:'POST',headers:{...h,'content-type':'application/json'},body:'{}'})).status,403,'role scoped to current company');
