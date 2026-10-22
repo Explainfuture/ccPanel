@@ -674,3 +674,9 @@ schema17增加逻辑30天事件视图、全局过期索引及可显式启用的W
 冻结后真实PG逐ID verify：raw/dedup/聚合任务/已处理任务/可见桶均1800，DLQ0。全局Kafka两分区high=committed=5605/5108，lag0，PG进度check通过。仅清理本次公司/项目/用户/数据及两端夹具凭据；除预期全局消费位点推进外，所有原关系旧字段和数量hash均与步骤89升级前一致。当前游标合计10713（原4398+4476，加前次4条UI及本轮1835条）。HTTPS ready。
 
 证据/opt/ccpanel/shared/capacity-integrity.HMjyru；工作站.local/capacity-schema16-{result,resource-report,baseline,final,final-offsets}.json、samples.jsonl、after-cleanup.jsonl。服务器仍m4-dashboard-001/schema16，步骤92–97新代码尚未部署。本轮不包含schema17维护，未来部署需单独验证，不借用本轮资源结论。UTC23:53:02复核采样器inactive/dead、Result=success、ExecMainStatus=0；原33分钟时长自然结束，未停止/重启。
+
+### 步骤 99：查询保留期边界完整性说明（未部署）
+
+对应PRD“观察区间落在已过期范围须显示数据不完整”。趋势/漏斗/留存/分群统一附data_coverage，按执行时30天保留起点与当前可观测时间标注请求范围过期/未来重叠，不依据匹配事件有无判断缺失区间没有活动。同步、保存报表、异步与仪表盘复用原查询执行器/结果展示，因此元数据随快照保存，前端用共享提示展示真实截止时间及“缺失不表示没有事件/转化”；旧结果缺字段保持兼容。现有漏斗窗口/自然日留存成熟标记继续独立表达每个观察窗口，data_coverage描述请求范围而非代替它们。
+
+新增精确30天边界/1毫秒过期、未来及混合范围单测，真实PG报表控制器补趋势和行为API过期元数据检查。132项单测、类型和构建通过。新增PG断言待本分支CI；UI真实浏览器提示尚待验证。服务器仍schema16，尚未部署。

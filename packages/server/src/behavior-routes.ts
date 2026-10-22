@@ -10,6 +10,7 @@ import {
 import { query } from "./db";
 import { InvalidQuery } from "./query-spec";
 import { projectQueryFlights as flights } from "./query-budget";
+import {dataCoverage} from './data-coverage';
 
 export class QueryBudgetExceeded extends Error {}
 export async function behaviorQuery(
@@ -84,6 +85,7 @@ export async function behaviorQuery(
     computed_at: new Date().toISOString(),
     source_events: events.length,
     source_limit: limit,
+    data_coverage:dataCoverage(spec),
   };
 }
 export function registerBehaviorRoutes(app: Hono<Env>) {

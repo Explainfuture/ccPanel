@@ -5,6 +5,7 @@ import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import type {BehaviorSpec} from "../../../packages/server/src/behavior";
 import { useQueryJob } from "./useQueryJob";
+import {DataCoverageNotice,type DataCoverage} from './DataCoverageNotice';
 type FunnelResult = {
   kind: "funnel";
   steps: { name: string; users: number; conversion: number | null }[];
@@ -39,7 +40,7 @@ type CohortResult = {
   users_truncated: boolean;
   computed_at: string;
 };
-export type BehaviorResult = FunnelResult | RetentionResult | CohortResult;
+export type BehaviorResult = (FunnelResult | RetentionResult | CohortResult)&{data_coverage?:DataCoverage};
 type Result = BehaviorResult;
 const percent = (v: number | null) =>
   v === null ? "—" : (v * 100).toFixed(1) + "%";
@@ -333,6 +334,7 @@ export default function BehaviorExplorer({ prefix,canEdit=false }: { prefix: str
 export function BehaviorResultView({result}:{result:BehaviorResult}) {
   return (
         <section className="panel">
+          <DataCoverageNotice coverage={result.data_coverage}/>
           <div className="panel-heading">
             <h2>
               {result.kind === "funnel"

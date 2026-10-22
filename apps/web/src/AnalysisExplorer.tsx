@@ -16,11 +16,13 @@ import ReportEditor from "./ReportEditor";
 import { BehaviorResultView, type BehaviorResult } from "./BehaviorExplorer";
 import type { AnalysisSpec } from "../../../packages/server/src/analysis-spec";
 import { useQueryJob } from "./useQueryJob";
+import {DataCoverageNotice,type DataCoverage} from './DataCoverageNotice';
 import type {
   Filter,
   TrendSpec,
 } from "../../../packages/server/src/query-spec";
 type TrendResult = {
+  data_coverage?:DataCoverage;
   spec: TrendSpec;
   summary: {
     value: number | null;
@@ -66,6 +68,7 @@ function TrendResultView({ result }: { result: TrendResult }) {
   const max = Math.max(1, ...result.series.map((r) => Math.abs(r.value || 0)));
   return (
     <div className="query-result">
+      <DataCoverageNotice coverage={result.data_coverage}/>
       <div className="query-summary">
         <div>
           <span>查询结果</span>

@@ -30,6 +30,10 @@ try{
   await pool.query("UPDATE projects SET timezone='Asia/Shanghai' WHERE id=$1",[project]);
   const saved=await req(viewer,root+'/reports/'+report.id+'/run',{});assert.equal(saved.status,200);const snapshot=await saved.json();assert.equal(snapshot.saved_report.timezone,'UTC');assert.equal(snapshot.series[0].day,new Date(first).toISOString().slice(0,10));
   const current=await req(viewer,root+'/query',trend);assert.equal(current.status,200);assert.notEqual((await current.json()).series[0].day,snapshot.series[0].day);
+  const expiredRange={from:new Date(Date.now()-30.5*86400000).toISOString(),to:new Date(Date.now()-86400000).toISOString()};
+  for(const [path,spec]of [['/query',{...trend,...expiredRange}],['/behavior',{kind:'funnel',...expiredRange,steps:['view','return'],window_hours:24,filters:[]}] ] as const){
+    const response=await req(viewer,root+path,spec);assert.equal(response.status,200);const value=await response.json();assert.equal(value.data_coverage.expired_overlap,true);assert.equal(value.data_coverage.incomplete,true);
+  }
   const behaviorIds:string[]=[];
   for(const spec of [{kind:'funnel',...range,steps:['view','return'],window_hours:24,filters:[]},{kind:'retention',...range,start_event:'view',return_event:'return',days:1,filters:[]},{kind:'cohort',...range,event_name:'view',count_op:'gte',count:1,filters:[]}]){
     const result=await req(analyst,root+'/reports',{name:spec.kind,spec,timezone:'UTC'});assert.equal(result.status,201);const row=await result.json();behaviorIds.push(row.id);

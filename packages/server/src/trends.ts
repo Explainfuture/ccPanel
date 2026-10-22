@@ -1,5 +1,6 @@
 import { query } from './db';
 import { compileFilters,type TrendSpec } from './query-spec';
+import {dataCoverage} from './data-coverage';
 export async function trends(tenantId:string,projectId:string,spec:TrendSpec,run:typeof query=query,timezone?:string){
   const values:unknown[]=[tenantId,projectId,spec.from,spec.to];
   const predicates=[`e.tenant_id=$1`,`e.project_id=$2`,`e.event_time >= $3`,`e.event_time < $4`,`e.event_name<>'$identify'`];
@@ -28,5 +29,5 @@ export async function trends(tenantId:string,projectId:string,spec:TrendSpec,run
     const result=await run(`SELECT ${metric} AS value,${excluded} AS excluded ${joins} AND NOT (${groups}=ANY($${excluding}::jsonb[]))`,[...values,byGroup.rows.slice(0,20).map(r=>JSON.stringify(r.dimensions))]);
     other=result.rows[0];
   }
-  return{spec,summary:summary.rows[0],series:series.rows,groups:byGroup.rows.slice(0,20),other,groups_truncated:byGroup.rows.length>20,computed_at:new Date().toISOString()};
+  return{spec,summary:summary.rows[0],series:series.rows,groups:byGroup.rows.slice(0,20),other,groups_truncated:byGroup.rows.length>20,computed_at:new Date().toISOString(),data_coverage:dataCoverage(spec)};
 }
