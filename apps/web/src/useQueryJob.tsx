@@ -40,7 +40,7 @@ const errorText = (code?: string) =>
 
 export function useQueryJob<T>(
   prefix: string,
-  onResult: (result: T) => void,
+  onResult: (result: T, context: {spec:unknown;timezone?:string|null}) => void,
   kinds: string,
 ) {
   const [id, setId] = useState(""),
@@ -48,6 +48,7 @@ export function useQueryJob<T>(
     [jobs, setJobs] = useState<Job[]>([]),
     [posting, setPosting] = useState(false),
     [error, setError] = useState("");
+  const activePoll=useRef<AbortController|null>(null);
   const callback = useRef(onResult);
   callback.current = onResult;
   const [refresh, setRefresh] = useState(0);
@@ -73,6 +74,7 @@ export function useQueryJob<T>(
   useEffect(() => {
     if (!id) return;
     const abort = new AbortController();
+    activePoll.current=abort;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
@@ -89,7 +91,7 @@ export function useQueryJob<T>(
           value.result &&
           kinds.split(",").includes(value.spec?.kind || "")
         )
-          callback.current(value.result as T);
+          callback.current(value.result as T, {spec:value.spec,timezone:value.timezone});
         else if (value.status === "queued" || value.status === "running")
           timer = setTimeout(() => void poll(), 2000);
       } catch (e) {
@@ -104,6 +106,8 @@ export function useQueryJob<T>(
     };
   }, [prefix, id, kinds, refresh]);
   async function submit(spec: unknown) {
+    activePoll.current?.abort();
+    setId("");setJob(null);
     setPosting(true);
     setError("");
     const current = ++version.current;
@@ -124,8 +128,11 @@ export function useQueryJob<T>(
     }
   }
   async function cancel() {
+    const current=version.current;
     try {
       await api(prefix + "/query-jobs/" + id, { method: "DELETE" });
+      if(current!==version.current)return;
+      activePoll.current?.abort();
       setJob((old) =>
         old ? { ...old, status: "cancelled", result: undefined } : null,
       );
@@ -188,6 +195,7 @@ export function useQueryJob<T>(
                         type="button"
                         variant="ghost"
                         onClick={() => {
+                          activePoll.current?.abort();version.current++;setPosting(false);
                           setJob(null);
                           setError("");
                           setId(row.id);
@@ -213,5 +221,6 @@ export function useQueryJob<T>(
       </div>
     </section>
   );
-  return { submit, busy, panel };
+  function clear(){activePoll.current?.abort();version.current++;setId("");setJob(null);setPosting(false);setError("");}
+  return { submit, busy, panel, clear };
 }

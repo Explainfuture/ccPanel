@@ -969,7 +969,7 @@ export default function App() {
                 </>
               ) : null}
               {tab === 'analysis' && project ? <Suspense fallback={<div className="chart-loading">正在打开分析工作台…</div>}><AnalysisExplorer key={prefix} prefix={prefix} canEdit={tenant.role !== 'viewer'} /></Suspense> : null}
-              {tab === 'behavior' && project ? <Suspense fallback={<div className="chart-loading">正在打开行为分析…</div>}><BehaviorExplorer key={prefix} prefix={prefix}/></Suspense> : null}
+              {tab === 'behavior' && project ? <Suspense fallback={<div className="chart-loading">正在打开行为分析…</div>}><BehaviorExplorer key={prefix} prefix={prefix} canEdit={tenant.role !== 'viewer'}/></Suspense> : null}
               {tab === 'schemas' && project ? <Suspense fallback={<div className="chart-loading">正在读取事件规范…</div>}><SchemaWorkspace key={prefix} prefix={prefix} project={project} canEdit={tenant.role==='admin'} onSaved={reloadProjects}/></Suspense> : null}
               {tab === 'privacy' && project ? <Suspense fallback={<div className="chart-loading">正在读取删除任务…</div>}><PrivacyWorkspace key={prefix} prefix={prefix} projectName={project.name} canManage={tenant.role==='admin'}/></Suspense> : null}
               {tab === 'replay' && project ? <Suspense fallback={<div className="chart-loading">正在读取重放任务…</div>}><ReplayWorkspace key={prefix} prefix={prefix} canManage={tenant.role==='admin'}/></Suspense> : null}

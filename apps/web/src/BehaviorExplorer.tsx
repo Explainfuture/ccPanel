@@ -1,8 +1,9 @@
-import { useState, type FormEvent } from "react";
-import { ArrowDown, ChartNoAxesCombined, Plus, Play, X } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { ArrowDown, ChartNoAxesCombined, BookmarkPlus, Plus, Play, X } from "lucide-react";
 import { api, ApiError } from "./api";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
+import type {BehaviorSpec} from "../../../packages/server/src/behavior";
 import { useQueryJob } from "./useQueryJob";
 type FunnelResult = {
   kind: "funnel";
@@ -42,15 +43,21 @@ export type BehaviorResult = FunnelResult | RetentionResult | CohortResult;
 type Result = BehaviorResult;
 const percent = (v: number | null) =>
   v === null ? "—" : (v * 100).toFixed(1) + "%";
-export default function BehaviorExplorer({ prefix }: { prefix: string }) {
-  const [kind, setKind] = useState("funnel"),
+export default function BehaviorExplorer({ prefix,canEdit=false }: { prefix: string;canEdit?:boolean }) {
+  const [kind, setKind] = useState<BehaviorSpec["kind"]>("funnel"),
     [steps, setSteps] = useState(["", ""]),
     [result, setResult] = useState<Result | null>(null),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [completedSpec,setCompletedSpec]=useState<BehaviorSpec|null>(null),
+    [saving,setSaving]=useState(false),
+    [notice,setNotice]=useState("");
+  const generation=useRef(0);
+  useEffect(()=>()=>{generation.current++;},[prefix]);
   const background = useQueryJob<Result>(
     prefix,
-    (value) => {
+    (value,context) => {
+      setCompletedSpec(context.spec && typeof context.spec==="object" && "kind" in context.spec && context.spec.kind===value.kind ? structuredClone(context.spec as BehaviorSpec) : null);
       setResult(value);
       setKind(value.kind);
     },
@@ -58,6 +65,8 @@ export default function BehaviorExplorer({ prefix }: { prefix: string }) {
   );
   async function run(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const current=++generation.current;
+    background.clear();setCompletedSpec(null);setNotice("");setResult(null);
     const f = new FormData(e.currentTarget),
       now = new Date(),
       days = Number(f.get("range"));
@@ -67,25 +76,25 @@ export default function BehaviorExplorer({ prefix }: { prefix: string }) {
       to: now.toISOString(),
       filters: [],
     };
-    const spec =
+    const spec:BehaviorSpec =
       kind === "funnel"
         ? {
             ...base,
-            steps,
+            steps:[...steps],
             window_hours: Number(f.get("window")),
             group: String(f.get("group") || "") || undefined,
           }
         : kind === "retention"
           ? {
               ...base,
-              start_event: f.get("start"),
-              return_event: f.get("return"),
+              start_event: String(f.get("start") || ""),
+              return_event: String(f.get("return") || ""),
               days: Number(f.get("days")),
             }
           : {
               ...base,
-              event_name: f.get("event"),
-              count_op: f.get("count_op"),
+              event_name: String(f.get("event") || ""),
+              count_op: f.get("count_op") as BehaviorSpec["count_op"],
               count: Number(f.get("count")),
             };
     if (
@@ -100,13 +109,10 @@ export default function BehaviorExplorer({ prefix }: { prefix: string }) {
     setError("");
     setResult(null);
     try {
-      setResult(
-        await api<Result>(prefix + "/behavior", {
-          method: "POST",
-          body: JSON.stringify(spec),
-        }),
-      );
+      const value=await api<Result>(prefix + "/behavior", {method:"POST",body:JSON.stringify(spec)});
+      if(current===generation.current){setResult(value);setCompletedSpec(structuredClone(spec));}
     } catch (e) {
+      if(current!==generation.current)return;
       setError(
         e instanceof ApiError && e.code === "query_requires_narrower_range"
           ? "数据超出当前试验环境的安全预算，请缩小时间范围。结果没有被截断返回。"
@@ -115,8 +121,17 @@ export default function BehaviorExplorer({ prefix }: { prefix: string }) {
             : "分析失败，请检查事件名和参数后重试。",
       );
     } finally {
-      setBusy(false);
+      if(current===generation.current)setBusy(false);
     }
+  }
+  async function saveReport(e:FormEvent<HTMLFormElement>){
+    e.preventDefault();if(!completedSpec||!result||!canEdit||saving)return;
+    const current=generation.current;setSaving(true);setError("");setNotice("");
+    try{
+      await api(prefix+"/reports",{method:"POST",body:JSON.stringify({name:new FormData(e.currentTarget).get("name"),spec:completedSpec,...(result.kind==='retention'?{timezone:result.timezone}:{})})});
+      if(current===generation.current)setNotice("报表已保存，可在“分析与报表”中查看或加入仪表盘。");
+    }catch(e){if(current===generation.current)setError(e instanceof ApiError&&e.code==='forbidden'?"当前角色不能保存报表。":"保存失败，请重试；时间范围过期时需重新运行分析。");}
+    finally{setSaving(false);}
   }
   return (
     <div>
@@ -137,7 +152,8 @@ export default function BehaviorExplorer({ prefix }: { prefix: string }) {
               <select
                 value={kind}
                 onChange={(e) => {
-                  setKind(e.target.value);
+                  generation.current++;background.clear();setBusy(false);setCompletedSpec(null);setNotice("");
+                  setKind(e.target.value as BehaviorSpec["kind"]);
                   setResult(null);
                   setError("");
                 }}
@@ -303,9 +319,12 @@ export default function BehaviorExplorer({ prefix }: { prefix: string }) {
           {error}
         </div>
       ) : null}
-      {result ? (
-        <BehaviorResultView result={result} />
-      ) : null}
+      {notice?<p role="status" className="notice">{notice}</p>:null}
+      {result ? <BehaviorResultView result={result} /> : null}
+      {result && completedSpec && canEdit ? <section className="panel"><form className="save-report" onSubmit={saveReport}>
+        <Input name="name" aria-label="行为报表名称" placeholder="为本次分析命名" required maxLength={128}/>
+        <Button variant="outline" disabled={saving}><BookmarkPlus/>{saving?"正在保存…":"保存行为报表"}</Button>
+      </form><p className="fine-print panel-body">保存本次结果对应的条件；未重新运行的表单修改不会改变此报表。</p></section>:null}
     </div>
   );
 }
