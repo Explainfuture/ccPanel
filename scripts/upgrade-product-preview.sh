@@ -1,23 +1,31 @@
 #!/usr/bin/env bash
-# Trusted live schema10 -> schema15 preview upgrade. Never run on a restore.
+# Trusted live schema10 ->15 or schema15 ->16 preview upgrade. Never restore.
 set -euo pipefail
 umask 077
 mode=${1:?prepare or apply}
+source_schema=${CCPANEL_SOURCE_SCHEMA:-10}
+target_schema=${CCPANEL_TARGET_SCHEMA:-15}
+case "$source_schema:$target_schema" in 10:15|15:16) ;; *) echo 'Unsupported trusted upgrade pair' >&2;exit 1;; esac
+# A trusted live upgrade must retain its already-open gate and durable cursor.
+unset CCPANEL_PROGRESS_BOOTSTRAP_REASON CCPANEL_RECOVERY_LEDGER
 : "${CCPANEL_RELEASE:?Set a new release name}"
 : "${CCPANEL_ARCHIVE_SHA256:?Set verified archive SHA256}"
 [[ "$CCPANEL_RELEASE" =~ ^[a-zA-Z0-9_-]+$ ]]
 [[ "$CCPANEL_ARCHIVE_SHA256" =~ ^[a-f0-9]{64}$ ]]
 test "$(sha256sum /opt/ccpanel/shared/release.tar.gz | cut -d' ' -f1)" = "$CCPANEL_ARCHIVE_SHA256"
 cd /opt/ccpanel/current/infra
-test "$(docker compose exec -T postgres psql -X -U ccpanel -d ccpanel -Atqc 'SELECT max(version) FROM schema_migrations')" = 10
+test "$(docker compose exec -T postgres psql -X -U ccpanel -d ccpanel -Atqc 'SELECT max(version) FROM schema_migrations')" = "$source_schema"
 if [ "$mode" = prepare ]; then
   test ! -e "/opt/ccpanel/releases/$CCPANEL_RELEASE"
   docker compose run --rm -T --no-deps api node dist/ingest-preflight.mjs
   docker compose run --rm -T --no-deps api node dist/consumer-progress.mjs check
+  docker compose run --rm -T --no-deps api node dist/deletion-ledger.mjs check
   dir=$(mktemp -d /opt/ccpanel/shared/product-upgrade.XXXXXX)
   printf '%s\n' "$dir" >/opt/ccpanel/shared/product-upgrade.path
   readlink -f /opt/ccpanel/current >"$dir/previous-release.txt"
   printf '%s\n' "$CCPANEL_RELEASE" >"$dir/target-release.txt"
+  printf '%s\n' "$source_schema" >"$dir/source-schema.txt"
+  printf '%s\n' "$target_schema" >"$dir/target-schema.txt"
   printf '%s\n' "$CCPANEL_ARCHIVE_SHA256" >"$dir/archive.sha256"
   docker compose stop api worker
   # Freeze the original column projection. New metadata columns may be added,
@@ -35,6 +43,8 @@ elif [ "$mode" = apply ]; then
   dir=$(realpath -e "${CCPANEL_UPGRADE_DIR:?Set prepared upgrade directory}")
   [[ "$dir" =~ ^/opt/ccpanel/shared/product-upgrade\.[A-Za-z0-9]{6}$ ]]
   test "$(cat "$dir/target-release.txt")" = "$CCPANEL_RELEASE"
+  test "$(cat "$dir/source-schema.txt")" = "$source_schema"
+  test "$(cat "$dir/target-schema.txt")" = "$target_schema"
   test "$(cat "$dir/archive.sha256")" = "$CCPANEL_ARCHIVE_SHA256"
   test "$(readlink -f /opt/ccpanel/current)" = "$(cat "$dir/previous-release.txt")"
   test -s "$dir/backup-verified.json"
@@ -56,7 +66,7 @@ PY
   cd /opt/ccpanel/current/infra
   docker compose exec -T postgres psql -X -U ccpanel -d ccpanel -At -v ON_ERROR_STOP=1 <"$dir/fingerprint.sql" >"$dir/after.jsonl"
   if ! cmp "$dir/before.jsonl" "$dir/after.jsonl"; then docker compose stop api worker; echo 'Original data changed; services stopped for inspection' >&2; exit 1; fi
-  test "$(docker compose exec -T postgres psql -X -U ccpanel -d ccpanel -Atqc 'SELECT max(version) FROM schema_migrations')" = 15
+  test "$(docker compose exec -T postgres psql -X -U ccpanel -d ccpanel -Atqc 'SELECT max(version) FROM schema_migrations')" = "$target_schema"
   docker compose run --rm -T --no-deps api node dist/consumer-progress.mjs check
   curl -fsS https://192.236.151.125/ready
   echo 'Product preview upgraded; original columns and counts preserved; capacity remains unapproved'
