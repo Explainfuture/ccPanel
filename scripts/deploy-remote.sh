@@ -10,8 +10,10 @@ test -f /opt/ccpanel/shared/release.tar.gz
 mkdir -p "$release"
 tar -xzf /opt/ccpanel/shared/release.tar.gz -C "$release"
 # Dependencies are read-only to the containers. Install anew if the runtime lock changes.
-cmp "$previous/pnpm-lock.yaml" "$release/pnpm-lock.yaml"
 cp -al "$previous/node_modules" "$release/node_modules"
+if ! cmp -s "$previous/pnpm-lock.yaml" "$release/pnpm-lock.yaml"; then
+  docker run --rm -v "$release:/app" -w /app node:22.22.3-bookworm-slim sh -c 'npm install -g pnpm@12.3.4 --ignore-scripts --no-audit --no-fund && pnpm install --prod --frozen-lockfile'
+fi
 cp /opt/ccpanel/shared/runtime.env "$release/infra/.env"
 chmod 600 "$release/infra/.env"
 find "$release/dist" -type d -exec chmod 755 {} +

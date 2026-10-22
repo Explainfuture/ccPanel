@@ -147,7 +147,7 @@ importers:
         specifier: 4.3.3
         version: 4.3.3(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
       '@types/node':
-        specifier: ^22.20.5
+        specifier: 22.20.5
         version: 22.20.5
       '@types/pg':
         specifier: 8.23.1
@@ -183,7 +183,19 @@ importers:
         specifier: 5.0.5
         version: 5.0.5(@types/node@22.20.5)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
 
+  apps/api: {}
+
+  apps/web: {}
+
+  apps/worker: {}
+
   packages/schema: {}
+
+  packages/sdk-browser: {}
+
+  packages/sdk-node: {}
+
+  packages/server: {}
 
 packages:
 
