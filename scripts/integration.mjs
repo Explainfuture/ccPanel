@@ -72,6 +72,7 @@ try {
   const funnel=await runBehavior({kind:'funnel',steps:['journey_start','journey_buy'],window_hours:24});assert.deepEqual(funnel.steps.map(s=>s.users),[1,1]);
   const retention=await runBehavior({kind:'retention',start_event:'journey_start',return_event:'journey_return',days:3});assert.equal(retention.cohorts[0].size,1);assert.equal(retention.cohorts[0].retention[1].users,1);assert.equal(retention.cohorts[0].retention[3].users,null);
   const segment=await runBehavior({kind:'cohort',event_name:'journey_buy',count_op:'gte',count:1});assert.equal(segment.total,1);assert.equal(segment.users[0].user,'identified-user');
+  const timeline=await fetch(base+root+'/users/events?'+new URLSearchParams({distinct_id:anonymous}),{headers:h});assert.equal(timeline.status,200);const history=await timeline.json();assert.equal(history.canonical_id,'identified-user');assert.equal(history.events.length,4);
   await pool.query("INSERT INTO tenant_memberships VALUES($1,$2,'viewer')",[b.tenant,a.user]);
   assert.equal((await fetch(base+`/api/tenants/${b.tenant}/projects`,{headers:h})).status,200,'same account can read joined company');
   assert.equal((await fetch(base+`/api/tenants/${b.tenant}/projects/${b.project}/keys`,{method:'POST',headers:{...h,'content-type':'application/json'},body:'{}'})).status,403,'role scoped to current company');

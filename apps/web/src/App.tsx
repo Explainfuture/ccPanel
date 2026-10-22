@@ -33,6 +33,7 @@ import { Input } from "./components/ui/input";
 const AnalysisExplorer = lazy(() => import('./AnalysisExplorer'));
 const BehaviorExplorer = lazy(() => import('./BehaviorExplorer'));
 const SchemaWorkspace = lazy(() => import('./SchemaWorkspace'));
+const UserTimeline = lazy(() => import('./UserTimeline'));
 import { api, ApiError, setCsrf } from "./api";
 import {
   createAnalytics,
@@ -324,6 +325,7 @@ export default function App() {
     [page, setPage] = useState(0),
     [filter, setFilter] = useState(""),
     [detail, setDetail] = useState<EventRow | null>(null);
+  const [timelineUser,setTimelineUser]=useState<string|null>(null);
   const [showCreate, setShowCreate] = useState(false),
     [writeKey, setWriteKey] = useState(""),
     [keys, setKeys] = useState<
@@ -336,13 +338,12 @@ export default function App() {
     [notice, setNotice] = useState("");
   const analytics = useRef<Analytics | null>(null);
   useEffect(() => {
-    if (!showCreate && !detail) return;
+    if (!showCreate && !detail && !timelineUser) return;
     const previous = document.activeElement as HTMLElement | null;
-    const dialog = document.querySelector<HTMLElement>('.modal');
-    const focusable = () => Array.from(dialog?.querySelectorAll<HTMLElement>('button:not(:disabled), input, select, a[href], [tabindex="0"]') || []);
+    const focusable = () => Array.from(document.querySelector<HTMLElement>('.modal')?.querySelectorAll<HTMLElement>('button:not(:disabled), input, select, summary, a[href], [tabindex="0"]') || []);
     focusable()[0]?.focus();
     const keydown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setShowCreate(false); setDetail(null); }
+      if (e.key === 'Escape') { setShowCreate(false); setDetail(null); setTimelineUser(null); }
       if (e.key !== 'Tab') return;
       const items = focusable(), first = items[0], last = items.at(-1);
       if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
@@ -350,7 +351,7 @@ export default function App() {
     };
     document.addEventListener('keydown', keydown);
     return () => { document.removeEventListener('keydown', keydown); previous?.focus(); };
-  }, [showCreate, detail]);
+  }, [showCreate, detail, timelineUser]);
   useEffect(() => {
     let active = true;
     api<Me>("/api/me")
@@ -408,6 +409,7 @@ export default function App() {
     setKeys([]);
     setPage(0);
     setDetail(null);
+    setTimelineUser(null);
     setTrends(null);
     setEvents([]);
   }, [tenantId, projectId]);
@@ -566,7 +568,7 @@ export default function App() {
   if (!me) return <Login onLogin={setMe} />;
   return (
     <div className="app-shell">
-      <aside className="sidebar" inert={showCreate || !!detail}>
+      <aside className="sidebar" inert={showCreate || !!detail || !!timelineUser}>
         <Logo />
         <label className="company-label">
           当前公司
@@ -646,7 +648,7 @@ export default function App() {
           </button>
         </div>
       </aside>
-      <div className="main-shell" inert={showCreate || !!detail}>
+      <div className="main-shell" inert={showCreate || !!detail || !!timelineUser}>
         <header className="topbar">
           <div className="breadcrumb">
             工作区
@@ -988,7 +990,7 @@ export default function App() {
                                 {e.event_name}
                               </button>
                             </td>
-                            <td className="mono">{e.distinct_id}</td>
+                            <td className="mono"><button className="user-link" onClick={()=>setTimelineUser(e.distinct_id)}>{e.distinct_id}</button></td>
                             <td>
                               {new Date(e.event_time).toLocaleString("zh-CN")}
                             </td>
@@ -1277,6 +1279,7 @@ export default function App() {
           </section>
         </div>
       ) : null}
+      {timelineUser ? <Suspense fallback={<div className="modal-backdrop"><p className="notice">正在读取用户时间线…</p></div>}><UserTimeline key={prefix+timelineUser} prefix={prefix} identity={timelineUser} onClose={()=>setTimelineUser(null)}/></Suspense> : null}
       {detail ? (
         <div className="modal-backdrop">
           <section

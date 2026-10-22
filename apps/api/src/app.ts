@@ -4,6 +4,7 @@ import { bodyLimit } from "hono/body-limit";
 import { registerReportRoutes } from '../../../packages/server/src/report-routes';
 import { registerBehaviorRoutes } from '../../../packages/server/src/behavior-routes';
 import { registerSchemaRoutes } from '../../../packages/server/src/schema-routes';
+import { registerUserRoutes } from '../../../packages/server/src/user-routes';
 import { checkRequired } from '../../../packages/server/src/project-schema';
 import { projectQueryFlights as queryFlights } from '../../../packages/server/src/query-budget';
 import { randomUUID } from "node:crypto";
@@ -520,5 +521,6 @@ export function createApp(deps: AppDeps) {
   registerReportRoutes(app);
   registerBehaviorRoutes(app);
   registerSchemaRoutes(app);
+  registerUserRoutes(app);
   return app;
 }
