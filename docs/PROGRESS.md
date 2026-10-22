@@ -656,3 +656,11 @@ schema17增加逻辑30天事件视图、全局过期索引及可显式启用的W
 本地Node语法检查通过；真实PG执行结果待本分支CI，暂不记通过。服务器容量仍在运行且未改配置。
 
 步骤96实测结果补充：GitHub Actions 39873070266（a49ad98）verify/postgres均success。5套独立PostgreSQL17.7控制器全部passed:true，包含步骤93/95的101条过期批量、30天逻辑可见性、45天dedup、锁超时回滚、活动重放保护/结束释放、DLQ无归属清理及步骤94未来分区创建/迁移互斥/写入NOWAIT/空旧分区释放/非空和未知分区保留。此前“待真实PG”状态在CI环境已完成；VPS尚未迁移schema17。日志中的预期CHECK失败和锁超时由控制器assert.rejects验收，不是未处理错误。运行链接：https://github.com/Explainfuture/ccPanel/actions/runs/39873070266 。
+
+### 步骤 97：同项目多标签页授权撤回与崩溃清理（未部署）
+
+修复其他标签页在身份被删除后重新生成匿名身份继续收集的问题。按endpoint/project隔离非身份授权标记；storage通知及采集/身份/发送/beacon入口检查撤回代次，漏过中间撤回通知的旧实例也不能因后续grant继续使用旧授权。明确grant保留撤回代次，因此重复确认授权不会打断其他合法活跃实例；撤回后的其他实例不自动grant。已有撤回标记阻止构造consent:true直接复活，显式setConsent(true)先清崩溃遗留队列。
+
+支持Web Locks时跨标签页串行清理与grant，避免迟到清理删掉新授权事件；新撤回优先于旧排队grant。身份保存/reset同样检查授权。不支持Web Locks/存储不可用时仅承诺本实例顺序，网站同意层仍须通知各页面，详见SDK-PERFORMANCE.md。新增三项单测及仅本地可运行的Playwright CLI复现函数。
+
+130项单测曾完整通过；最终授权代次调整后针对三项授权测试/类型/构建通过。最终构建Browser gzip5882、Node6845字节。Chrome155/Windows真实IndexedDB完整复测passed:true：重复grant不打断合法采集、跨标签页撤回、重开保持撤回、显式grant及其他页不自动恢复、关闭重开保留ID/模拟202清空。传输stub不替代服务端Kafka证据；最终80秒性能对照进行中，结果另记。首次复测因旧页面缓存旧ESM与新页加载新版混合而失败，已使复现函数先完整导航重新加载构建后通过；未将混合版本误当新版验收。

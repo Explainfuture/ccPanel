@@ -19,6 +19,8 @@ export class Analytics {
   private snapshot:AnalyticsEvent[]=[];
   private hiddenSent=false;private paused=false;private lastError:string|undefined;private epoch=0;
   private owner=crypto.randomUUID();private identityKey:string;
+  private consentKey:string;
+  private consentMarker:string|null=null;
   private batchSize:number;private running=true;private pendingWrites=0;
   private needsRecovery=false;private nextRecovery=0;
   private consentChanges:Promise<void>=Promise.resolve();
@@ -40,8 +42,10 @@ export class Analytics {
         this.allowedProperties.set(name,new Set(keys));
       }
     }
-    this.consent=options.consent;
     this.identityKey=`ccpanel:identity:${url.origin}${url.pathname}:${options.projectId}`;
+    this.consentKey=this.identityKey+':consent';
+    this.consentMarker=this.readConsentMarker();
+    this.consent=options.consent&&!this.consentMarker?.startsWith('revoked:');
     this.queue=options.queue??(typeof indexedDB!=='undefined'?new IndexedQueue(this.identityKey+':queue'):this.memory);
     if(this.consent)this.loadIdentity();
     this.timer=setInterval(()=>{void this.flush();},options.flushInterval??3000);
@@ -49,20 +53,27 @@ export class Analytics {
     if(typeof window!=='undefined'){
       const hidden=()=>{if(document.visibilityState==='hidden')this.beacon();else{this.hiddenSent=false;void this.flush();}};
       const pagehide=()=>this.beacon();const online=()=>void this.flush();
-      const storage=(e:StorageEvent)=>{if(e.key===this.identityKey&&this.consent)this.loadIdentity();};
+      const storage=(e:StorageEvent)=>{if(e.key===this.consentKey)this.hasConsent();else if(e.key===this.identityKey&&this.hasConsent())this.loadIdentity();};
       document.addEventListener('visibilitychange',hidden);window.addEventListener('pagehide',pagehide);window.addEventListener('online',online);window.addEventListener('storage',storage);
       this.cleanup.push(()=>{document.removeEventListener('visibilitychange',hidden);window.removeEventListener('pagehide',pagehide);window.removeEventListener('online',online);window.removeEventListener('storage',storage);});
     }
     void this.flush();
   }
   private error(code:string,details?:{event_ids:string[]}){this.lastError=code;try{this.options.onError?.(code,details);}catch{/* diagnostics must not break business code */}}
+  private readConsentMarker(){try{return typeof localStorage==='undefined'?null:localStorage.getItem(this.consentKey);}catch{return null;}}
+  private consentRevision(marker:string|null){return marker?.replace(/^(?:revoked|granted):/,'')??'initial';}
+  private hasConsent(){
+    const marker=this.readConsentMarker();
+    if(this.consent&&(marker?.startsWith('revoked:')||this.consentRevision(marker)!==this.consentRevision(this.consentMarker)))void this.changeConsent(false,false).catch(()=>this.error('consent_cleanup_error'));
+    return this.consent;
+  }
   private loadIdentity(){
     try{const s=typeof localStorage!=='undefined'?localStorage.getItem(this.identityKey):null;if(s){const v=JSON.parse(s);if(typeof v.anonymous==='string'){this.anonymous=v.anonymous;this.user=typeof v.user==='string'?v.user:undefined;return;}}}catch{this.error('identity_storage_error');}
     this.anonymous=crypto.randomUUID();this.user=undefined;this.saveIdentity();
   }
-  private saveIdentity(){try{if(typeof localStorage!=='undefined')localStorage.setItem(this.identityKey,JSON.stringify({anonymous:this.anonymous,user:this.user}));}catch{this.error('identity_storage_error');}}
+  private saveIdentity(){if(!this.hasConsent())return;try{if(typeof localStorage!=='undefined')localStorage.setItem(this.identityKey,JSON.stringify({anonymous:this.anonymous,user:this.user}));}catch{this.error('identity_storage_error');}}
   async track(name:string,properties:Record<string,Json>={}):Promise<TrackResult>{
-    if(!this.consent||!this.running)return{status:'rejected',reason:'consent_required'};
+    if(!this.hasConsent()||!this.running)return{status:'rejected',reason:'consent_required'};
     const version=this.epoch;
     // Freeze the payload before the first await so identity changes and caller mutation cannot rewrite it.
     let event:AnalyticsEvent;
@@ -90,21 +101,43 @@ export class Analytics {
       let stored=false;
       try{stored=await this.queue.add(event,this.queue.persistent?1000:100,this.queue.persistent?5*1024*1024:512*1024);}
       catch{this.needsRecovery=true;this.error('storage_error');stored=await this.memory.add(event,100,512*1024);}
-      if(!this.consent||version!==this.epoch){await this.queue.finish([event.event_id],'');await this.memory.finish([event.event_id],'');return{status:'rejected',reason:'consent_revoked'};}
+      if(!this.hasConsent()||version!==this.epoch){await this.queue.finish([event.event_id],'');await this.memory.finish([event.event_id],'');return{status:'rejected',reason:'consent_revoked'};}
       if(!stored){this.snapshot=this.snapshot.filter(e=>e.event_id!==event.event_id);this.error('rejected_overflow');return{status:'rejected',reason:'rejected_overflow'};}
       const status=this.queue.persistent&&!(await this.memory.peek(100)).some(r=>r.event.event_id===event.event_id)?'queued-persistent':'queued-memory';
       const stats=await this.getQueueStatus();if(stats.count>=this.batchSize||stats.bytes>=limits.batchBytes)queueMicrotask(()=>void this.flush());
       return{status,event_id:event.event_id};
     }finally{this.pendingWrites--;}
   }
-  async identify(userId:string){if(!userId||userId.length>256)throw new Error('invalid_user_id');if(!this.consent)return;this.user=userId;this.saveIdentity();return this.track('$identify');}
-  reset(){this.user=undefined;this.anonymous=crypto.randomUUID();if(this.consent)this.saveIdentity();}
-  setConsent(value:boolean){
+  async identify(userId:string){if(!userId||userId.length>256)throw new Error('invalid_user_id');if(!this.hasConsent())return;this.user=userId;this.saveIdentity();return this.track('$identify');}
+  reset(){this.user=undefined;this.anonymous=this.hasConsent()?crypto.randomUUID():'';if(this.consent)this.saveIdentity();}
+  setConsent(value:boolean){return this.changeConsent(value,true);}
+  private changeConsent(value:boolean,publish:boolean){
     const version=++this.epoch;this.consent=false;this.snapshot=[];
-    const change=this.consentChanges.catch(()=>{}).then(async()=>{
-      if(!value){if(this.flight)await this.flight;await this.queue.clear();await this.memory.clear();try{localStorage.removeItem(this.identityKey);}catch{/* optional storage */}this.user=undefined;this.anonymous='';}
+    const prior=this.readConsentMarker();
+    if(!value&&publish)try{localStorage.setItem(this.consentKey,'revoked:'+crypto.randomUUID());}catch{/* cross-tab synchronization unavailable */}
+    const apply=async()=>{
+      if(!value){
+        if(this.flight)await this.flight;
+        // A delayed withdrawal must not erase events from a newer grant.
+        const marker=this.readConsentMarker();
+        if(!marker||marker.startsWith('revoked:')){
+          await this.queue.clear();try{localStorage.removeItem(this.identityKey);}catch{/* optional storage */}
+        }else if(!this.queue.persistent)await this.queue.clear();
+        await this.memory.clear();this.user=undefined;this.anonymous='';
+      }
       if(version!==this.epoch)return;
+      if(value&&publish){
+        // A newer withdrawal in another tab wins over an older queued grant.
+        if(this.readConsentMarker()!==prior)return;
+        if(prior?.startsWith('revoked:'))await this.queue.clear();
+        if(this.readConsentMarker()!==prior)return;
+        try{localStorage.setItem(this.consentKey,prior?.startsWith('revoked:')?'granted:'+prior.slice(8):prior??'granted:initial');}catch{/* local grant still works without web storage */}
+      }
+      this.consentMarker=this.readConsentMarker();
       this.consent=value;if(value){this.loadIdentity();void this.flush();}
+    };
+    const change=this.consentChanges.catch(()=>{}).then(async()=>{
+      if(typeof navigator!=='undefined'&&navigator.locks)await navigator.locks.request(this.consentKey,async()=>{await apply();});else await apply();
     });
     this.consentChanges=change;return change;
   }
@@ -118,7 +151,7 @@ export class Analytics {
   }
   private async send(){
     let confirmed=0;
-    if(!this.consent||this.paused||!this.running)return{confirmed,pending:(await this.getQueueStatus()).count};
+    if(!this.hasConsent()||this.paused||!this.running)return{confirmed,pending:(await this.getQueueStatus()).count};
     if(this.needsRecovery&&!this.pendingWrites&&Date.now()>=this.nextRecovery){
       this.nextRecovery=Date.now()+30000;
       try{await this.queue.recover?.();await this.queue.stats();this.needsRecovery=false;this.lastError=undefined;}catch{this.error('storage_error');}
@@ -143,7 +176,7 @@ export class Analytics {
       const ids=rows.map(r=>r.event.event_id),epoch=this.epoch;
       let retryAt=Date.now()+Math.floor(Math.random()*Math.min(60000,1000*2**Math.min(16,Math.max(...rows.map(r=>r.attempts)))));
       try{
-        if(!this.consent||epoch!==this.epoch)break;
+        if(!this.hasConsent()||epoch!==this.epoch)break;
         const response=await(this.options.fetch||globalThis.fetch)(this.options.endpoint,{method:'POST',headers:{'content-type':'text/plain;charset=UTF-8'},credentials:'omit',body:JSON.stringify(this.envelope(rows.map(r=>r.event))),signal:AbortSignal.timeout(10000)});
         if(response.status===202){
           const b=await response.json() as {accepted_event_ids?:unknown};const ack=b.accepted_event_ids;
@@ -168,7 +201,7 @@ export class Analytics {
     if(!this.pendingWrites)this.snapshot=current;
     return{confirmed,pending:(await this.getQueueStatus()).count};
   }
-  beacon(){if(!this.consent||this.paused||this.hiddenSent||!this.snapshot.length||typeof navigator==='undefined'||!navigator.sendBeacon)return false;this.hiddenSent=true;return navigator.sendBeacon(this.options.endpoint,new Blob([JSON.stringify(this.envelope(this.snapshot))],{type:'text/plain;charset=UTF-8'}));}
+  beacon(){if(!this.hasConsent()||this.paused||this.hiddenSent||!this.snapshot.length||typeof navigator==='undefined'||!navigator.sendBeacon)return false;this.hiddenSent=true;return navigator.sendBeacon(this.options.endpoint,new Blob([JSON.stringify(this.envelope(this.snapshot))],{type:'text/plain;charset=UTF-8'}));}
   destroy(){this.running=false;if(this.timer)clearInterval(this.timer);for(const fn of this.cleanup)fn();this.cleanup=[];}
 }
 export type EventMap=Record<string,Record<string,Json>>;
