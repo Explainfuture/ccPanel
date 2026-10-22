@@ -52,3 +52,15 @@ API 容器内 `/tmp/ccpanel-load-progress.json` 为最近一分钟快照，`/tmp
 服务器证据保存在受限共享目录 `load-baseline-20261023.json` 与 `load-vmstat-baseline-20261023.log`。测试结束后已清理临时公司夹具，再部署新版本；后续版本需单独记录测试条件。
 
 独立生成器复测及资源门槛通过后才能分级增加流量；还需完成异机备份恢复、故障窗口强杀、磁盘满和浏览器矩阵，不能把链路对账通过表述为整套生产验收通过。
+
+## 独立生成器复测流程
+
+使用 `scripts/load-fixture.mjs create` 在 API 容器创建临时公司，将输出直接重定向到权限 600 的私有文件，不在终端展示凭证。通过已校验主机指纹的 SFTP 取到本机，再运行：
+
+```sh
+node scripts/load-check-public.mjs PRIVATE_FIXTURE_JSON PRIVATE_RESULT_JSON 1800
+```
+
+本机经 HTTPS 请求真实接入、事件列表和趋势 API，延迟包含公网往返；它与首轮容器内的延迟不能直接当成同一口径比较。结果包含原始 event_id 列表，不包含密码或写入密钥。将结果回传到当前发布的 scripts/ 受限文件，再用夹具工具的 verify 模式与 PG 逐 ID 对账，最后 cleanup 清理专用公司。服务器另行记录 vmstat、OOM/重启和磁盘。
+
+当前 10 条试跑验证成功，正式 1800 秒测试进行中。采样起始重定向曾修正，最终报告必须说明初始采样缺口。资源门槛仍为待验证状态。
