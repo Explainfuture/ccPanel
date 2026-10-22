@@ -462,3 +462,11 @@ Worker启动和每5秒检查独立PG进度，每条事件在原始数据或DLQ�
 容量窗口封存后，在两个分别创建的空临时数据库执行schema12迁移及真实PG/Hono验证：聚合重复只计一次、迟到重算、相同ID跨公司独立、桶/完成标记失败同回滚、隐私版本即时隐藏、删除用户后重算与空桶/项目擦除、缺原始来源保留重试均通过；邀请并发接受只授予一次、匹配邮箱/CSRF、同公司全部项目可见、A/B角色独立、移除后旧链接拒绝、已有角色与密码保留、过期/撤销/替换及被移除发起人链接失效、列表无令牌均通过，预览无授予副作用。
 
 初次临时验证容器因只读/app挂载下缺少嵌套挂载点而未能创建，清理了该临时库；预先建立空挂载目录后重新执行两套测试成功。没有迁移现行库，schema11/12及新UI仍未部署。两个验证库、验证容器和凭据已清理；现行仍m4-integrity-001/schema10且HTTPS正常。下一步继续资源定位与完整产品缺口，不将隔离PG通过扩大为新版本生产或容量通过。
+
+### 步骤 69：核实专用KVM并应用可回退内存配置
+
+只读检查确认KVM、Red Hat虚拟平台、仅vda磁盘和sr0光驱，根为/dev/vda2，无device-mapper；固件刷新任务已结束。前次容量窗口中apt-daily于21:04:45UTC运行、fwupd刷新于21:13:21运行，存在同机维护干扰；不能据此直接将持续swap全归因于这些任务。后置进程快照中fwupd换出约152.5MiB、Java约124.6MiB，multipathd驻留约26.5MiB，作为配置调整依据。
+
+新增受环境保护的一次性apply/check/rollback脚本，先保存原unit和swappiness到root受限JSON，再停用fwupd刷新timer、停止并屏蔽fwupd和multipathd/socket，swappiness60改10并持久化。保留APT系统更新timer、SSH、fail2ban和遥测；没有更改Kafka/PG/API限额或重启平台，没有清空swap、drop_caches、改WAL/fsync或确认规则。脚本校验磁盘用途和初始状态，拒绝覆盖原记录；回退可处理部分应用状态，按原unit启用/运行状态及内核值恢复，但尚未在现行机执行回退演练。
+
+现行机apply完成，四个目标unit状态符合预期，swappiness10；APT两timer仍active/enabled，SSH/fail2ban/遥测active。原始业务指纹、消费进度与HTTPS均通过。快照可用内存约350MiB、swap已用273MiB，仅为调整后观察，资源门槛仍未通过，下一轮必须固定该配置重新测量；不提高流量。当前运行继续schema10，聚合/邀请仍待部署。远程bash语法与git差异检查通过。

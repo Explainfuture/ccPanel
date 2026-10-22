@@ -20,6 +20,12 @@ Linux 采样器由 scripts/install-host-probe.sh 安装，源码与 systemd 单�
 
 TypeScript 读取器只接受32KiB以内的版本1完整样本，拒绝未知字段、重复磁盘、时间不一致和非法资源计数。CPU为累计tick、swap为累计页，不能直接当作百分比或当前交换速率；需结合两次样本的间隔计算。实际Docker卷使用f_bavail/f_favail，不能把root专用保留空间算作应用可用空间。
 
-API 必须只读挂载 telemetry **目录**，不能只绑定 host.json 文件，否则宿主机原子替换后容器仍会读取旧inode。代码已配置该挂载；运行预览仍待新背压版本的隔离验收与部署。发布脚本在停止旧API/Worker前验证挂载、样本协议/新鲜度与配置，首次部署必须先安装采样器。现有一次性检查工具已改读持续样本，不再临时制造“新鲜”采样来掩盖定时器失效。
+API 必须只读挂载 telemetry **目录**，不能只绑定 host.json 文件，否则宿主机原子替换后容器仍会读取旧inode。当前m4-integrity-001/schema10已启用该挂载及背压保护，聚合/邀请新功能尚未部署。发布脚本在停止旧API/Worker前验证挂载、样本协议/新鲜度与配置，首次部署必须先安装采样器。现有一次性检查工具已改读持续样本，不再临时制造“新鲜”采样来掩盖定时器失效。
 
 新背压代码同时保护普通上报和管理重放，503带Retry-After，Worker继续消费以便追赶。已观测保留缺口写入PG完整性暂停门禁，正常进程重启或重复迁移不会清除；缺失既有门禁行也不自动开放。当前PG门禁不能证明旧备份之后没有新的事故，旧备份恢复仍需核对独立的最新运维事故状态；该恢复集成未完成前不进入生产。单进程预算也不是集群共享限额或逐字节硬容量证明。
+
+## 专用 KVM 试验机的内存配置
+
+scripts/preview-memory-profile.sh只适用于确认独占用途的KVM/vda单盘环境：要求根挂载来自vda、没有device-mapper或其他磁盘、固件刷新任务不在执行，所有目标unit状态均已识别。apply将原swappiness及unit状态保存到受限/opt/ccpanel/shared/memory-profile-before.json后，停用并屏蔽fwupd及multipathd常驻/激活路径，停用固件刷新timer，设置vm.swappiness=10。保留APT系统更新、SSH、fail2ban、宿主机遥测、swap容量与平台数据持久化配置。
+
+仅在这些前提核实后使用`bash scripts/preview-memory-profile.sh apply`，`check`查看状态；需要恢复时执行`rollback`，校验自有sysctl文件后按原状态恢复，并保留审计快照。脚本拒绝覆盖已有原始记录，不用于物理机、SAN/多路径或通用服务器。已完成现行机apply与健康核验，未执行现行机rollback演练。调整属于试验配置，不能替代同版本30分钟复测，也不承诺1GiB服务器生产可用。
