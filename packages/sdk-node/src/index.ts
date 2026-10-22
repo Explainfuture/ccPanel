@@ -1,6 +1,6 @@
 import { mkdir,open,rename,readFile,unlink } from 'node:fs/promises';
 import { dirname,resolve } from 'node:path';
-import { Analytics,type AnalyticsOptions } from '../../sdk-browser/src/index';
+import { Analytics,type AnalyticsOptions,type EventMap,type TypedAnalytics } from '../../sdk-browser/src/index';
 import { MemoryQueue,type QueueRow,type RestoredRow } from '../../sdk-browser/src/queue';
 import { validateEvent,type AnalyticsEvent } from '../../schema/src/index';
 export class FileQueue extends MemoryQueue {
@@ -45,7 +45,10 @@ export class FileQueue extends MemoryQueue {
   override clear(){return this.serial(()=>super.clear(),true);}
   async close(){await this.chain;await this.ready;await unlink(this.lockPath);}
 }
-export function createNodeAnalytics(options:Omit<AnalyticsOptions,'source'|'queue'>&{outboxPath?:string}){
+export type NodeOptions=Omit<AnalyticsOptions,'source'|'queue'>&{outboxPath?:string};
+export function createNodeAnalytics(options:NodeOptions):Analytics&{shutdown():Promise<void>};
+export function createNodeAnalytics<Events extends EventMap>(options:NodeOptions):TypedAnalytics<Events>&{shutdown():Promise<void>};
+export function createNodeAnalytics(options:NodeOptions):unknown{
   const queue=options.outboxPath?new FileQueue(options.outboxPath):new MemoryQueue();
   const analytics=new Analytics({...options,queue,source:'node'});
   return Object.assign(analytics,{async shutdown(){await analytics.flush();analytics.destroy();if(queue instanceof FileQueue)await queue.close();}});

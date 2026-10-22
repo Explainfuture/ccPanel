@@ -10,7 +10,7 @@ export interface AnalyticsEvent {
   schema_version: 1;
 }
 export interface Envelope { write_key: string; project_id?: string; schema_version: 1; events: AnalyticsEvent[] }
-export interface StoredEnvelope { tenant_id: string; project_id: string; received_at: string; event: AnalyticsEvent }
+export interface StoredEnvelope { tenant_id: string; project_id: string; received_at: string; event: AnalyticsEvent; validation?:{registered:boolean;version:number} }
 export const limits = { eventBytes: 16384, batchBytes: 49152, requestBytes: 65536, batchEvents: 20, serverEvents: 100, ttl: 7 * 86400000 } as const;
 export const byteLength = (v: unknown) => new TextEncoder().encode(JSON.stringify(v)).byteLength;
 const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

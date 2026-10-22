@@ -152,4 +152,10 @@ export class Analytics {
   beacon(){if(!this.consent||this.paused||this.hiddenSent||!this.snapshot.length||typeof navigator==='undefined'||!navigator.sendBeacon)return false;this.hiddenSent=true;return navigator.sendBeacon(this.options.endpoint,new Blob([JSON.stringify(this.envelope(this.snapshot))],{type:'text/plain;charset=UTF-8'}));}
   destroy(){this.running=false;if(this.timer)clearInterval(this.timer);for(const fn of this.cleanup)fn();this.cleanup=[];}
 }
-export const createAnalytics=(options:AnalyticsOptions)=>new Analytics(options);
+export type EventMap=Record<string,Record<string,Json>>;
+export type TypedAnalytics<Events extends EventMap>=Omit<Analytics,'track'>&{
+  track<Name extends Extract<keyof Events,string>>(name:Name,...args:{} extends Events[Name]?[properties?:Events[Name]]:[properties:Events[Name]]):Promise<TrackResult>;
+};
+export function createAnalytics(options:AnalyticsOptions):Analytics;
+export function createAnalytics<Events extends EventMap>(options:AnalyticsOptions):TypedAnalytics<Events>;
+export function createAnalytics(options:AnalyticsOptions):unknown{return new Analytics(options);}

@@ -10,6 +10,7 @@ it('rejects oversized batches before any database or Kafka work',async()=>{
   expect(res.status).toBe(413);
 });
 it('rejects invalid protocol and login origins without external services',async()=>{
-  expect((await app.request('/v1/batch',{method:'POST',body:'not json'})).status).toBe(400);
+  const invalid=await app.request('/v1/batch',{method:'POST',body:'not json'});
+  expect(invalid.status).toBe(400);expect(invalid.headers.get('Access-Control-Allow-Origin')).toBe('*');expect(invalid.headers.get('Access-Control-Expose-Headers')).toBe('Retry-After');
   expect((await app.request('/api/auth/login',{method:'POST',headers:{origin:'https://other.invalid'},body:'{}'})).status).toBe(403);
 });

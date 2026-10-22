@@ -22,7 +22,7 @@ export async function persist(record: StoredEnvelope): Promise<'inserted' | 'dup
       const link = await c.query('SELECT user_id FROM identity_links WHERE tenant_id=$1 AND project_id=$2 AND anonymous_id=$3', [record.tenant_id,record.project_id,e.anonymous_id]);
       if (link.rows[0]?.user_id !== e.distinct_id) throw new EventConflict('identity_conflict');
     }
-    await c.query('INSERT INTO events VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)', [record.tenant_id,record.project_id,e.event_id,e.event_name,e.distinct_id,e.anonymous_id || null,e.event_time,record.received_at,JSON.stringify(e.properties),JSON.stringify(e.context),e.schema_version]);
+    await c.query('INSERT INTO events(tenant_id,project_id,event_id,event_name,distinct_id,anonymous_id,event_time,received_at,properties,context,schema_version,registered,project_schema_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)', [record.tenant_id,record.project_id,e.event_id,e.event_name,e.distinct_id,e.anonymous_id || null,e.event_time,record.received_at,JSON.stringify(e.properties),JSON.stringify(e.context),e.schema_version,record.validation?.registered||false,record.validation?.version||0]);
     await c.query('INSERT INTO aggregation_jobs(tenant_id,project_id,event_id) VALUES($1,$2,$3)', [record.tenant_id,record.project_id,e.event_id]);
     await c.query("INSERT INTO ingest_metrics VALUES($1,$2,'inserted',1) ON CONFLICT(project_id,metric) DO UPDATE SET value=ingest_metrics.value+1", [record.tenant_id,record.project_id]);
     await c.query('COMMIT'); return 'inserted';

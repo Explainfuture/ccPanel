@@ -3,6 +3,8 @@ import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { bodyLimit } from "hono/body-limit";
 import { registerReportRoutes } from '../../../packages/server/src/report-routes';
 import { registerBehaviorRoutes } from '../../../packages/server/src/behavior-routes';
+import { registerSchemaRoutes } from '../../../packages/server/src/schema-routes';
+import { checkRequired } from '../../../packages/server/src/project-schema';
 import { projectQueryFlights as queryFlights } from '../../../packages/server/src/query-budget';
 import { randomUUID } from "node:crypto";
 import { pool, query } from "../../../packages/server/src/db";
@@ -63,6 +65,12 @@ export function createApp(deps: AppDeps) {
       deps.ready() ? 200 : 503,
     );
   });
+  app.use('/v1/batch',async(c,next)=>{
+    // Public, cookie-free ingestion errors must be readable by cross-origin SDKs.
+    c.header('Access-Control-Allow-Origin','*');
+    c.header('Access-Control-Expose-Headers','Retry-After');
+    await next();
+  });
   app.options("/v1/batch", (c) => {
     c.header("Access-Control-Allow-Origin", "*");
     c.header("Access-Control-Allow-Methods", "POST");
@@ -117,25 +125,20 @@ export function createApp(deps: AppDeps) {
         "SELECT event_name,required_properties,version FROM event_schemas WHERE tenant_id=$1 AND project_id=$2",
         [key.tenant_id, key.project_id],
       );
+      const schemaMap = new Map(schemas.rows.map(s => [s.event_name,s]));
       const errors: { index: number; code: string }[] = [];
       body.events.forEach((event: unknown, index: number) => {
         let code = validateEvent(event);
         if (!code) {
           const e = event as AnalyticsEvent,
-            schema = schemas.rows.find((s) => s.event_name === e.event_name);
+            schema = schemaMap.get(e.event_name);
           if (
             key.schema_mode === "strict" &&
             !schema &&
             e.event_name !== "$identify"
           )
             code = "unknown_event";
-          if (schema)
-            for (const [name, type] of Object.entries(
-              schema.required_properties,
-            )) {
-              if (typeof e.properties[name] !== type)
-                code = "invalid_required_property";
-            }
+          if (schema) code = checkRequired(e,schema.required_properties);
         }
         if (code) errors.push({ index, code });
       });
@@ -153,6 +156,7 @@ export function createApp(deps: AppDeps) {
           project_id: key.project_id,
           event,
           received_at,
+          validation: {registered:event.event_name==='$identify'||schemaMap.has(event.event_name),version:event.event_name==='$identify'?1:(schemaMap.get(event.event_name)?.version||0)},
         })),
       );
       return c.json(
@@ -483,7 +487,7 @@ export function createApp(deps: AppDeps) {
       user = c.req.query("distinct_id") || null;
     const page = Math.max(0, Math.min(Number(c.req.query("page")) || 0, 1000));
     const rows = await query(
-      `SELECT event_id,event_name,distinct_id,event_time,received_at,properties,context FROM events WHERE tenant_id=$1 AND project_id=$2 AND event_time>=now()-interval '30 days' AND ($3::text IS NULL OR event_name=$3) AND ($4::text IS NULL OR distinct_id=$4) ORDER BY event_time DESC,event_id LIMIT 50 OFFSET $5`,
+        `SELECT event_id,event_name,distinct_id,event_time,received_at,properties,context,registered,project_schema_version FROM events WHERE tenant_id=$1 AND project_id=$2 AND event_time>=now()-interval '30 days' AND ($3::text IS NULL OR event_name=$3) AND ($4::text IS NULL OR distinct_id=$4) ORDER BY event_time DESC,event_id LIMIT 50 OFFSET $5`,
       [c.get("tenantId"), c.req.param("project"), name, user, page * 50],
     );
     return c.json({
@@ -515,5 +519,6 @@ export function createApp(deps: AppDeps) {
   });
   registerReportRoutes(app);
   registerBehaviorRoutes(app);
+  registerSchemaRoutes(app);
   return app;
 }
