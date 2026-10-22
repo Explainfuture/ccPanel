@@ -8,6 +8,9 @@ previous=$(readlink -f /opt/ccpanel/current)
 test ! -e "$release"
 test -f /opt/ccpanel/shared/release.tar.gz
 mkdir -p "$release"
+# Parent operator shells may use umask 077 for private ledger files. The
+# unprivileged runtime must still traverse its code mount; secrets remain 600.
+chmod 755 "$release"
 tar -xzf /opt/ccpanel/shared/release.tar.gz -C "$release"
 # Dependencies are read-only to the containers. Install anew if the runtime lock changes.
 cp -al "$previous/node_modules" "$release/node_modules"
@@ -21,6 +24,7 @@ find "$release/dist" -type f -exec chmod 644 {} +
 chgrp www-data /opt/ccpanel /opt/ccpanel/releases
 chmod 750 /opt/ccpanel /opt/ccpanel/releases
 cd "$release/infra"
+docker compose run --rm -T --no-deps api node -e 'const fs=require("node:fs");for(const file of ["dist/api.mjs","dist/worker.mjs","dist/migrate.mjs","dist/deletion-ledger.mjs"])fs.accessSync(file,fs.constants.R_OK);require("pg");'
 docker compose stop api worker
 docker compose run --rm -T --no-deps api node dist/migrate.mjs
 if ! docker compose run --rm -T --no-deps api node dist/deletion-ledger.mjs check >/dev/null 2>&1; then
