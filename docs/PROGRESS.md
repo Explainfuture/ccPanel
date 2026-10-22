@@ -9,6 +9,7 @@
 ## 当前里程碑
 
 - M1 工程与协议：进行中。
+- M1 SDK：开发预览已打包，尚待真实浏览器、降级恢复和性能矩阵验证。
 - M1 SDK、鉴权、Kafka/PG 闭环：未完成。
 - M2 图表、报表、仪表盘：未完成。
 - M3 身份、漏斗、留存、分群：未完成。
@@ -31,3 +32,9 @@ Docker Compose 启动 Kafka 4.1.2、PostgreSQL 17.7、Node 22 API/Worker，数�
 ### 步骤 01：工程与事件协议
 
 pnpm workspace、严格 TypeScript、Vitest 和共享事件类型；定义单事件/批次字节上限、JSON 安全性、UUID v4、时间窗口和稳定载荷规范化。拒绝 SDK 自报公司归属，归属只从服务端凭证推导。验证：pnpm install --frozen-lockfile、pnpm typecheck、pnpm test（3 项协议测试）、pnpm build 全部通过。pnpm 12 使用 allowBuilds 显式放行 esbuild 构建脚本，依赖精确版本写入锁文件。
+
+### 步骤 04：SDK 本地队列与打包
+
+Browser SDK：IndexedDB 原子容量检查/租约、多触发批量、精确确认删除、限流退避、身份快照、隐私过滤、授权撤回、hidden/pagehide beacon（不删除待发记录）；Node SDK：单进程文件 outbox，fsync + 原子替换，排他写锁和进程退出恢复。pnpm 打包包含浏览器/Node ESM 与 TypeScript 声明，没有发布 npm。
+
+本地验证：17 项测试覆盖协议、权限边界、跨实例队列竞争、确认校验、Retry-After、beacon 不删除、重开恢复原 ID、文件 outbox 重启与排他锁。SDK gzip 约 4.8/5.6 KB。尚未完成真实浏览器关闭矩阵、性能基准和 IndexedDB 恢复后的内存迁移，均继续跟踪，不宣称完整稳定版。

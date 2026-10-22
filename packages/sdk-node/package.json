@@ -1,0 +1,1 @@
+{"name":"@ccpanel/sdk-node","version":"0.1.0","type":"module","files":["dist"],"exports":{".":{"types":"./dist/types/sdk-node/src/index.d.ts","import":"./dist/index.js"}},"sideEffects":false}

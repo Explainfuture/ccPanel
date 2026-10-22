@@ -8,3 +8,4 @@ if (existsSync('apps/web/vite.config.ts')) {
   const { build: buildWeb } = await import('vite');
   await buildWeb({ configFile: 'apps/web/vite.config.ts' });
 }
+if (existsSync('packages/sdk-browser/src/index.ts')) await import('./build-sdk.mjs');
