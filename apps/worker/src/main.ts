@@ -3,6 +3,7 @@ import { persist, EventConflict } from '../../../packages/server/src/consume';
 import { validateEvent, type StoredEnvelope } from '../../../packages/schema/src/index';
 import { query, pool } from '../../../packages/server/src/db';
 import { digest } from '../../../packages/server/src/security';
+import { discardDeletedDeadLetter } from '../../../packages/server/src/privacy';
 await ensureTopics();
 const consumer = kafka.consumer({ groupId: 'ccpanel-writer-v1', sessionTimeout: 30000 });
 const producer = kafka.producer({ idempotent: true, maxInFlightRequests: 1 });
@@ -32,6 +33,7 @@ await consumer.run({ autoCommit: false, eachBatchAutoResolve: false, eachBatch: 
       }
       if (!isRunning() || isStale()) break;
     }
+    if(reason&&await discardDeletedDeadLetter(record))reason=undefined;
     if (reason) {
       const id = digest(`${batch.topic}:${batch.partition}:${message.offset}`);
       const dead = { id, reason, source: { topic: batch.topic, partition: batch.partition, offset: message.offset }, record, raw:message.value?.toString()||null, processor_version: 1 };

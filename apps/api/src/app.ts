@@ -6,6 +6,8 @@ import { registerBehaviorRoutes } from '../../../packages/server/src/behavior-ro
 import { registerSchemaRoutes } from '../../../packages/server/src/schema-routes';
 import { registerUserRoutes } from '../../../packages/server/src/user-routes';
 import { registerQueryJobs } from '../../../packages/server/src/query-jobs';
+import { registerDeletions } from '../../../packages/server/src/deletion-service';
+import { lockProjectPrivacy } from '../../../packages/server/src/privacy';
 import { checkRequired } from '../../../packages/server/src/project-schema';
 import { projectQueryFlights as queryFlights } from '../../../packages/server/src/query-budget';
 import { randomUUID } from "node:crypto";
@@ -462,8 +464,11 @@ export function createApp(deps: AppDeps) {
     if (!allowed(c, ["admin"])) return c.json({ error: "forbidden" }, 403);
     const key = "ccp_" + token(),
       id = randomUUID();
-    await query(
-      "INSERT INTO write_keys(id,tenant_id,project_id,key_hash,label) VALUES($1,$2,$3,$4,$5)",
+    const db=await pool.connect();
+    try{
+    await db.query('BEGIN');await lockProjectPrivacy(db,c.req.param('project')!);
+    const inserted=await db.query(
+      "INSERT INTO write_keys(id,tenant_id,project_id,key_hash,label) SELECT $1,$2,$3,$4,$5 WHERE NOT EXISTS(SELECT 1 FROM deletion_barriers WHERE tenant_id=$2 AND project_id=$3 AND identity_hash='*') RETURNING id",
       [
         id,
         c.get("tenantId"),
@@ -472,6 +477,8 @@ export function createApp(deps: AppDeps) {
         "SDK 写入凭证",
       ],
     );
+    await db.query('COMMIT');if(!inserted.rowCount)return c.json({error:'project_deleted'},409);
+    }catch(e){await db.query('ROLLBACK');throw e;}finally{db.release();}
     return c.json({ id, write_key: key }, 201);
   });
   app.delete(prefix + "/keys/:key", async (c) => {
@@ -524,5 +531,6 @@ export function createApp(deps: AppDeps) {
   registerSchemaRoutes(app);
   registerUserRoutes(app);
   registerQueryJobs(app);
+  registerDeletions(app);
   return app;
 }

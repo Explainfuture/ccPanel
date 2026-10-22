@@ -26,6 +26,8 @@ export async function migrate() {
       CREATE INDEX IF NOT EXISTS query_jobs_queue ON query_jobs(created_at) WHERE status IN ('queued','running');
       CREATE TABLE IF NOT EXISTS deletion_jobs(id uuid PRIMARY KEY,tenant_id uuid NOT NULL,project_id uuid NOT NULL,user_id uuid NOT NULL REFERENCES users(id),scope text NOT NULL CHECK(scope IN ('user','project')),subject_hash text,status text NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','completed','failed')),requested_at timestamptz NOT NULL DEFAULT clock_timestamp(),blocked_before timestamptz NOT NULL DEFAULT clock_timestamp()+interval '5 minutes',stream_expires_at timestamptz NOT NULL DEFAULT clock_timestamp()+interval '45 days',removed_events bigint NOT NULL DEFAULT 0,error text,finished_at timestamptz,FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
       CREATE TABLE IF NOT EXISTS deletion_barriers(tenant_id uuid NOT NULL,project_id uuid NOT NULL,identity_hash text NOT NULL,deletion_job_id uuid NOT NULL REFERENCES deletion_jobs(id),requested_at timestamptz NOT NULL,blocked_before timestamptz NOT NULL,PRIMARY KEY(project_id,identity_hash),FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
+      CREATE INDEX IF NOT EXISTS deletion_jobs_queue ON deletion_jobs(requested_at) WHERE status IN ('queued','running');
+      CREATE INDEX IF NOT EXISTS deletion_barriers_job ON deletion_barriers(project_id,deletion_job_id,identity_hash);
       ALTER TABLE projects ADD COLUMN IF NOT EXISTS privacy_epoch integer NOT NULL DEFAULT 0;
       ALTER TABLE query_jobs ADD COLUMN IF NOT EXISTS privacy_epoch integer NOT NULL DEFAULT 0;
       ALTER TABLE events ADD COLUMN IF NOT EXISTS registered boolean NOT NULL DEFAULT false;

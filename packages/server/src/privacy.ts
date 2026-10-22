@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { pool } from "./db";
 import { digest } from "./security";
 import type { StoredEnvelope } from "../../schema/src/index";
 
@@ -9,6 +10,8 @@ export const identityHash = (
 ) => digest(tenant + ":" + project + ":" + identity);
 export const identityHashSql = (alias: string, column = "distinct_id") =>
   `encode(sha256(convert_to(${alias}.tenant_id::text||':'||${alias}.project_id::text||':'||${alias}.${column},'UTF8')),'hex')`;
+export const eventBarrierPredicate = (event = "e", link = "l", barrier = "b") =>
+  `(${barrier}.identity_hash='*' OR (${barrier}.identity_hash IN (${identityHashSql(event)},${identityHashSql(event, "anonymous_id")},${identityHashSql(link, "user_id")}) AND (${event}.event_time<=${barrier}.blocked_before OR ${event}.received_at<=${barrier}.requested_at)))`;
 export async function lockProjectPrivacy(
   db: PoolClient,
   project: string,
@@ -71,7 +74,18 @@ export async function suppressedByDeletion(
           "UPDATE query_jobs SET status='cancelled',result=NULL,finished_at=now() WHERE tenant_id=$1 AND project_id=$2",
           [record.tenant_id, record.project_id],
         );
-        await db.query('INSERT INTO audit_logs(tenant_id,action,details) VALUES($1,$2,$3)',[record.tenant_id,'deletion_alias_discovered',JSON.stringify({project_id:record.project_id,deletion_job_id:barrier.deletion_job_id,identity_hash:anonymousHash})]);
+        await db.query(
+          "INSERT INTO audit_logs(tenant_id,action,details) VALUES($1,$2,$3)",
+          [
+            record.tenant_id,
+            "deletion_alias_discovered",
+            JSON.stringify({
+              project_id: record.project_id,
+              deletion_job_id: barrier.deletion_job_id,
+              identity_hash: anonymousHash,
+            }),
+          ],
+        );
       }
     }
   }
@@ -101,4 +115,52 @@ export async function suppressedByDeletion(
     ],
   );
   return !!found.rowCount;
+}
+
+// Poison payloads bypass persist(), but must not create a fresh DLQ copy of a
+// known deleted identity/project. Invalid unscoped JSON cannot be attributed;
+// it remains subject to the restricted global DLQ retention boundary.
+export async function discardDeletedDeadLetter(input: unknown) {
+  if (!input || typeof input !== "object") return false;
+  const r = input as Record<string, unknown>,
+    uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (
+    typeof r.tenant_id !== "string" ||
+    typeof r.project_id !== "string" ||
+    !uuid.test(r.tenant_id) ||
+    !uuid.test(r.project_id)
+  )
+    return false;
+  const e =
+    r.event && typeof r.event === "object"
+      ? (r.event as Record<string, unknown>)
+      : {};
+  const identities = [e.distinct_id, e.anonymous_id].filter(
+    (v): v is string =>
+      typeof v === "string" && v.length > 0 && v.length <= 256,
+  );
+  const hashes = identities.map((id) =>
+    identityHash(r.tenant_id as string, r.project_id as string, id),
+  );
+  const db = await pool.connect();
+  try {
+    await db.query("BEGIN");
+    await lockProjectPrivacy(db, r.project_id);
+    const found = await db.query(
+      "SELECT 1 FROM deletion_barriers b WHERE b.tenant_id=$1 AND b.project_id=$2 AND (b.identity_hash='*' OR b.identity_hash=ANY($3::text[]) OR b.identity_hash IN (SELECT encode(sha256(convert_to($1::text||':'||$2::text||':'||user_id,'UTF8')),'hex') FROM identity_links WHERE tenant_id=$1 AND project_id=$2 AND anonymous_id=ANY($4::text[]))) LIMIT 1",
+      [r.tenant_id, r.project_id, hashes, identities],
+    );
+    if (found.rowCount)
+      await db.query(
+        "INSERT INTO ingest_metrics VALUES($1,$2,'deletion_suppressed',1) ON CONFLICT(project_id,metric) DO UPDATE SET value=ingest_metrics.value+1",
+        [r.tenant_id, r.project_id],
+      );
+    await db.query("COMMIT");
+    return !!found.rowCount;
+  } catch (e) {
+    await db.query("ROLLBACK");
+    throw e;
+  } finally {
+    db.release();
+  }
 }
