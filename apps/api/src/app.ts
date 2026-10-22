@@ -8,6 +8,7 @@ import { registerUserRoutes } from '../../../packages/server/src/user-routes';
 import { registerQueryJobs } from '../../../packages/server/src/query-jobs';
 import { registerDeletions } from '../../../packages/server/src/deletion-service';
 import { registerReplayRoutes } from '../../../packages/server/src/dlq-replay';
+import { registerInvitationAcceptance,registerCompanyInvitations,lockMembership,membershipAdmin } from '../../../packages/server/src/invitations';
 import { IngestionPaused,type AdmissionStatus } from '../../../packages/server/src/ingest-admission';
 import { lockProjectPrivacy } from '../../../packages/server/src/privacy';
 import { checkRequired } from '../../../packages/server/src/project-schema';
@@ -258,6 +259,7 @@ export function createApp(deps: AppDeps) {
       csrf_token: digest(getCookie(c, "ccpanel_session")! + ":csrf"),
     });
   });
+  registerInvitationAcceptance(app,rate);
   app.post("/api/auth/logout", async (c) => {
     await query("DELETE FROM sessions WHERE token_hash=$1", [
       digest(getCookie(c, "ccpanel_session")!),
@@ -287,6 +289,7 @@ export function createApp(deps: AppDeps) {
       ).rows,
     }),
   );
+  registerCompanyInvitations(app,rate);
   app.post("/api/tenants/:tenant/projects", async (c) => {
     if (!allowed(c, ["admin"])) return c.json({ error: "forbidden" }, 403);
     const b = await c.req.json();
@@ -342,12 +345,14 @@ export function createApp(deps: AppDeps) {
     const existing = await query("SELECT id FROM users WHERE email=$1", [
       b.email.toLowerCase(),
     ]);
-    // Existing accounts must prove consent before joining another company; invitation acceptance is a later step.
+    // Existing accounts join through their own authenticated invitation acceptance.
     if (existing.rowCount)
       return c.json({ error: "account_requires_invitation_acceptance" }, 409);
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      await lockMembership(client,c.get('tenantId'));
+      if(!await membershipAdmin(client,c.get('tenantId'),c.get('userId'))){await client.query('ROLLBACK');return c.json({error:'forbidden'},403);}
       const id = randomUUID();
       await client.query("INSERT INTO users VALUES($1,$2,$3)", [
         id,
@@ -383,11 +388,15 @@ export function createApp(deps: AppDeps) {
       return c.json({ error: "not_found" }, 404);
     if (c.req.param("user") === c.get("userId"))
       return c.json({ error: "cannot_remove_self" }, 400);
-    await query(
-      "DELETE FROM tenant_memberships WHERE tenant_id=$1 AND user_id=$2",
-      [c.get("tenantId"), c.req.param("user")],
-    );
-    return c.json({ ok: true });
+    const db=await pool.connect();
+    try{
+      await db.query('BEGIN');await lockMembership(db,c.get('tenantId'));
+      if(!await membershipAdmin(db,c.get('tenantId'),c.get('userId'))){await db.query('ROLLBACK');return c.json({error:'forbidden'},403);}
+      await db.query('DELETE FROM tenant_memberships WHERE tenant_id=$1 AND user_id=$2',[c.get('tenantId'),c.req.param('user')]);
+      await db.query('UPDATE tenant_invitations SET revoked_at=clock_timestamp() WHERE tenant_id=$1 AND accepted_at IS NULL AND revoked_at IS NULL AND (created_by=$2 OR email=(SELECT email FROM users WHERE id=$2))',[c.get('tenantId'),c.req.param('user')]);
+      await db.query("INSERT INTO audit_logs(tenant_id,user_id,action,details) VALUES($1,$2,'member_removed',$3)",[c.get('tenantId'),c.get('userId'),JSON.stringify({user_id:c.req.param('user')})]);
+      await db.query('COMMIT');return c.json({ok:true});
+    }catch(error){await db.query('ROLLBACK');throw error;}finally{db.release();}
   });
   app.use("/api/tenants/:tenant/projects/:project/*", async (c, next) => {
     const id = c.req.param("project");
