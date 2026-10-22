@@ -49,13 +49,36 @@ export async function retainNext(db:PoolClient):Promise<'empty'|'completed'> {
   }catch(error){await db.query('ROLLBACK');throw error;}
 }
 
+export async function expireDeadLetters(db:PoolClient):Promise<number>{
+  await db.query('BEGIN');
+  try{
+    await db.query("SET LOCAL statement_timeout='3s'");await db.query("SET LOCAL lock_timeout='200ms'");
+    if(!(await db.query('SELECT pg_try_advisory_xact_lock(169202636) AS held')).rows[0].held){await db.query('ROLLBACK');return 0;}
+    const active=`NOT EXISTS(SELECT 1 FROM replay_items i JOIN replay_jobs j ON j.project_id=i.project_id AND j.id=i.job_id WHERE i.project_id=d.project_id AND i.record_id=d.id AND j.status IN ('queued','running'))`;
+    const scope=(await db.query(`SELECT tenant_id,project_id FROM dlq_records d WHERE created_at<CURRENT_TIMESTAMP-interval '14 days' AND ${active} ORDER BY created_at,id LIMIT 1`)).rows[0];
+    if(!scope){await db.query('COMMIT');return 0;}
+    // Replay admission and publishing share this privacy lock. Recheck active
+    // tasks AFTER acquiring it so newly committed requests retain their source.
+    if(scope.project_id)await lockProjectPrivacy(db,scope.project_id,true);
+    const removed=await db.query(`DELETE FROM dlq_records d USING (
+      SELECT d.id FROM dlq_records d WHERE tenant_id IS NOT DISTINCT FROM $1::uuid AND project_id IS NOT DISTINCT FROM $2::uuid
+        AND created_at<CURRENT_TIMESTAMP-interval '14 days' AND ${active} ORDER BY created_at,id LIMIT 100 FOR UPDATE OF d SKIP LOCKED
+    ) ids WHERE d.id=ids.id`,[scope.tenant_id,scope.project_id]);
+    const count=removed.rowCount??0;
+    if(count&&scope.tenant_id&&scope.project_id)await db.query(`INSERT INTO ingest_metrics(tenant_id,project_id,metric,value)
+      SELECT $1,$2,'retention_dlq_expired',$3 FROM projects WHERE tenant_id=$1 AND id=$2
+      ON CONFLICT(project_id,metric) DO UPDATE SET value=ingest_metrics.value+EXCLUDED.value`,[scope.tenant_id,scope.project_id,count]);
+    await db.query('COMMIT');return count;
+  }catch(error){await db.query('ROLLBACK');throw error;}
+}
+
 export function startRetention(){
   // Enable only after the upgrade's original-data reconciliation is frozen.
   if(process.env.RETENTION_ENABLED!=='true')return()=>{};
   let stopped=false,busy=false;
   const timer=setInterval(async()=>{
     if(stopped||busy)return;busy=true;let db:PoolClient|undefined;
-    try{db=await pool.connect();await retainNext(db);}
+    try{db=await pool.connect();await retainNext(db);await expireDeadLetters(db);}
     catch{console.error(JSON.stringify({code:'retention_retry'}));}
     finally{db?.release();busy=false;}
   },5000);

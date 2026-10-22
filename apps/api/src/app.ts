@@ -545,7 +545,7 @@ export function createApp(deps: AppDeps) {
     return c.json({
       records: (
         await query(
-          "SELECT id,reason,created_at FROM dlq_records WHERE tenant_id=$1 AND project_id=$2 ORDER BY created_at DESC LIMIT 50",
+          "SELECT id,reason,created_at FROM dlq_records WHERE tenant_id=$1 AND project_id=$2 AND created_at>=CURRENT_TIMESTAMP-interval '14 days' ORDER BY created_at DESC LIMIT 50",
           [c.get("tenantId"), c.req.param("project")],
         )
       ).rows,

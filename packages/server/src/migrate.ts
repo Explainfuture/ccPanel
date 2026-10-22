@@ -90,6 +90,7 @@ export async function migrate() {
       CREATE INDEX IF NOT EXISTS dedup_retention_time ON event_dedup(created_at);
       CREATE INDEX IF NOT EXISTS buckets_retention_time ON event_count_buckets(bucket_start);
       CREATE INDEX IF NOT EXISTS replay_items_event ON replay_items(project_id,event_id);
+      CREATE INDEX IF NOT EXISTS dlq_retention_time ON dlq_records(created_at);
       CREATE INDEX IF NOT EXISTS events_scope_time ON events(tenant_id,project_id,event_time DESC);
       CREATE INDEX IF NOT EXISTS events_user_time ON events(tenant_id,project_id,distinct_id,event_time DESC);
       CREATE INDEX IF NOT EXISTS events_scope_event ON events(tenant_id,project_id,event_id);

@@ -33,7 +33,7 @@ export function registerReplayRoutes(app:Hono<Env>){
       const counts=(await db.query("SELECT count(*)::int AS total,count(*) FILTER(WHERE project_id=$1)::int AS project FROM replay_jobs WHERE status IN ('queued','running')",[project])).rows[0];
       if(counts.total>=100||counts.project>=5){await db.query('ROLLBACK');return c.json({error:'replay_queue_full'},429);}
       await lockProjectPrivacy(db,project);
-      const rows=await db.query('SELECT id,reason,payload FROM dlq_records WHERE tenant_id=$1 AND project_id=$2 AND id=ANY($3::text[]) ORDER BY id',[tenant,project,body.record_ids]);
+      const rows=await db.query("SELECT id,reason,payload FROM dlq_records WHERE tenant_id=$1 AND project_id=$2 AND id=ANY($3::text[]) AND created_at>=CURRENT_TIMESTAMP-interval '14 days' ORDER BY id",[tenant,project,body.record_ids]);
       if(rows.rowCount!==body.record_ids.length){await db.query('ROLLBACK');return c.json({error:'not_found'},404);}
       const candidates=[];
       for(const row of rows.rows){
