@@ -1,5 +1,7 @@
 # 架构草案 v1（待确认）
 
+图片预览见 [视觉草图](architecture-v1-visual-draft.png)，由内置 imagegen 根据 [提示词](architecture-image-prompt.txt) 生成。图片存在两处绘图偏差：202 返回线应从 Kafka 确认经 Ingest 返回 SDK，而不是从 Consumer 返回；Kafka 按用户键哈希分区，不按时间分区，时间分区属于 PostgreSQL。其余流程亦以本文 Mermaid 和文字为准，图片不得单独作为实施规格。
+
 ## 数据接入与分析流程
 
 ```mermaid
