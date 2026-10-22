@@ -12,8 +12,9 @@ import { readHostTelemetry } from '../../../packages/server/src/host-telemetry';
 import { readKafkaPressure } from '../../../packages/server/src/kafka-pressure';
 import { refreshIngestPressure } from '../../../packages/server/src/ingest-runtime';
 import { consumerGroup } from '../../../packages/server/src/kafka';
+import { assertTopicCreationSafe,inspectConsumerProgress,pauseForProgress,ConsumerProgressError } from '../../../packages/server/src/consumer-progress';
 const releaseRecoveryLease=await holdRecoveryLease();
-await ensureTopics();
+await assertTopicCreationSafe({topic:eventsTopic,group:consumerGroup},await ensureTopics());
 const producer=kafka.producer({idempotent:true,maxInFlightRequests:1});
 await producer.connect();
 let connected=true;
@@ -32,9 +33,12 @@ const checkPressure=async()=>{
       },
       readHost:()=>readHostTelemetry(process.env.HOST_TELEMETRY_PATH||'/telemetry/host.json'),
       readKafka:async disks=>{try{const value=await readKafkaPressure(admin,eventsTopic,consumerGroup,policy,disks);connected=true;return value;}catch(error){connected=false;throw error;}},
+      validateProgress:async snapshot=>{
+        try{const plan=await inspectConsumerProgress({topic:eventsTopic,group:consumerGroup},snapshot.partitions,()=>admin.fetchTopicOffsets(eventsTopic));for(const p of snapshot.partitions)p.high=plan.positions.find(value=>value.partition===p.partition)!.high;}
+        catch(error){if(error instanceof ConsumerProgressError)await pauseForProgress({topic:eventsTopic,group:consumerGroup},error);throw error;}
+      },
       persistGap:async(reason,snapshot)=>{
-        const updated=await pool.query("UPDATE ingest_integrity_gate SET blocked=true,reason=COALESCE(reason,$1),detected_at=COALESCE(detected_at,clock_timestamp()),details=CASE WHEN blocked THEN details ELSE $2::jsonb END WHERE id=true RETURNING id",[reason,JSON.stringify({topic:eventsTopic,group:consumerGroup,partitions:snapshot.partitions})]);
-        if(updated.rowCount!==1)throw new Error('integrity_control_missing');
+        await pauseForProgress({topic:eventsTopic,group:consumerGroup},new ConsumerProgressError(reason,'pressure_retention_gap',{partitions:snapshot.partitions}));
       },
     });
     const signature=JSON.stringify({allowed:status.allowed,reason:status.reason});

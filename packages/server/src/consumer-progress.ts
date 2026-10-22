@@ -1,10 +1,12 @@
 import { pool } from './db';
 import { storageSafeText } from '../../schema/src/index';
 import { recoveryLock } from './recovery-gate';
+import type { TopicCreationObservation } from './kafka';
 
 export interface ConsumerStream {topic:string;group:string}
 export interface ConsumerPosition {partition:number;low:string;high:string;committed:string|null}
 export interface ProgressRow {partition:number;next_offset:string}
+export type RefreshProgressHigh=()=>Promise<{partition:number;high:string}[]>;
 export class ConsumerProgressError extends Error {
   readonly retriable=false;
   constructor(public reason:'retained_offset_gap'|'consumer_offset_unknown',public kind:string,public details:Record<string,unknown>={}){super(kind);this.name='ConsumerProgressError';}
@@ -41,6 +43,23 @@ export function progressPlan(positions:ConsumerPosition[],knownCount:number|null
   }
   return {initialize,partitionCount:sorted.length,create:knownCount===null};
 }
+// Commits are sampled before the PG read, but a busy worker may advance PG
+// beyond the earlier Kafka high watermark. Re-read only that upper bound after
+// the fixed PG snapshot; retain the original low to avoid mixing a later expiry
+// with an earlier checkpoint. The next probe / per-message check sees new gaps.
+export async function refreshProgressHigh(positions:ConsumerPosition[],rows:ProgressRow[],refresh?:RefreshProgressHigh){
+  const result=positions.map(p=>({...p}));
+  if(!rows.some(row=>{const p=result.find(p=>p.partition===row.partition);return p&&progressOffset(row.next_offset)>progressOffset(p.high);} )||!refresh)return result;
+  const values=await refresh(),seen=new Set<number>();
+  if(values.length!==result.length)return fail('invalid_progress_topology');
+  for(const value of values){
+    const p=result.find(p=>p.partition===value.partition);
+    if(!p||seen.has(value.partition))return fail('invalid_progress_topology');seen.add(value.partition);
+    if(progressOffset(value.high)<progressOffset(p.high))return fail('broker_history_regressed',{partition:p.partition,previous_high:p.high,observed_high:value.high});
+    p.high=value.high;
+  }
+  return result;
+}
 function validStream(stream:ConsumerStream){
   if(!/^[A-Za-z0-9._-]{1,249}$/.test(stream.topic)||['.','..'].includes(stream.topic)||!/^[A-Za-z0-9._-]{1,128}$/.test(stream.group))return fail('invalid_progress_stream');
 }
@@ -52,7 +71,27 @@ async function pauseUsing(run:Run,stream:ConsumerStream,error:ConsumerProgressEr
   if(result.rowCount!==1&&(await run('SELECT id FROM ingest_integrity_gate WHERE id=true AND blocked',[])).rowCount!==1)throw new Error('integrity_control_missing');
 }
 export async function pauseForProgress(stream:ConsumerStream,error:ConsumerProgressError){return pauseUsing((sql,params)=>pool.query(sql,params),stream,error);}
-export async function ensureConsumerProgress(stream:ConsumerStream,positions:ConsumerPosition[],operatorReason?:string){
+export async function assertConsumerIntegrity(){
+  const row=(await pool.query('SELECT blocked,reason FROM ingest_integrity_gate WHERE id=true')).rows[0];
+  if(!row||row.blocked)return fail('integrity_paused',{},row?.reason==='retained_offset_gap'?'retained_offset_gap':'consumer_offset_unknown');
+}
+export async function inspectConsumerProgress(stream:ConsumerStream,positions:ConsumerPosition[],refresh?:RefreshProgressHigh){
+  validStream(stream);
+  // One MVCC statement cannot see the stream before initialization and its
+  // partitions after initialization as two separate reads could.
+  const joined=(await pool.query('SELECT s.partition_count,p.partition_id AS partition,p.next_offset::text FROM consumer_streams s LEFT JOIN consumer_progress p ON p.topic=s.topic AND p.group_id=s.group_id WHERE s.topic=$1 AND s.group_id=$2',[stream.topic,stream.group])).rows;
+  const rows=joined.filter(r=>r.partition!==null).map(r=>({partition:r.partition,next_offset:r.next_offset}));
+  const adjusted=await refreshProgressHigh(positions,rows,refresh);
+  return {...progressPlan(adjusted,joined[0]?.partition_count??null,rows),positions:adjusted};
+}
+export async function assertTopicCreationSafe(stream:ConsumerStream,created:TopicCreationObservation){
+  if(!created.changed)return;validStream(stream);
+  if((await pool.query('SELECT 1 FROM consumer_streams WHERE topic=$1 AND group_id=$2 AND initialized_at<to_timestamp($3::double precision/1000.0)',[stream.topic,stream.group,created.observedAt])).rowCount){
+    const error=new ConsumerProgressError('consumer_offset_unknown','topic_recreated_with_history');
+    await pauseForProgress(stream,error);throw error;
+  }
+}
+export async function ensureConsumerProgress(stream:ConsumerStream,positions:ConsumerPosition[],operatorReason?:string,refresh?:RefreshProgressHigh){
   validStream(stream);
   if(operatorReason!==undefined&&(operatorReason.trim().length<5||operatorReason.length>500||!storageSafeText(operatorReason)))throw new Error('invalid_progress_reason');
   if(operatorReason!==undefined&&process.env.CCPANEL_OFFLINE_RESTORE!=='true')throw new Error('offline_progress_bootstrap_required');
@@ -63,7 +102,8 @@ export async function ensureConsumerProgress(stream:ConsumerStream,positions:Con
     await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',['ccpanel:consumer-progress:'+stream.group+':'+stream.topic]);
     const state=(await db.query('SELECT partition_count FROM consumer_streams WHERE topic=$1 AND group_id=$2',[stream.topic,stream.group])).rows[0];
     const rows=await db.query('SELECT partition_id AS partition,next_offset::text FROM consumer_progress WHERE topic=$1 AND group_id=$2',[stream.topic,stream.group]);
-    const plan=progressPlan(positions,state?.partition_count??null,rows.rows,operatorReason!==undefined);
+    const adjusted=await refreshProgressHigh(positions,rows.rows,refresh);
+    const plan=progressPlan(adjusted,state?.partition_count??null,rows.rows,operatorReason!==undefined);
     if(plan.create)await db.query('INSERT INTO consumer_streams(topic,group_id,partition_count) VALUES($1,$2,$3)',[stream.topic,stream.group,plan.partitionCount]);
     for(const row of plan.initialize)await db.query('INSERT INTO consumer_progress(topic,group_id,partition_id,next_offset) VALUES($1,$2,$3,$4)',[stream.topic,stream.group,row.partition,row.next_offset]);
     if(plan.partitionCount!==state?.partition_count)await db.query('UPDATE consumer_streams SET partition_count=$3 WHERE topic=$1 AND group_id=$2',[stream.topic,stream.group,plan.partitionCount]);

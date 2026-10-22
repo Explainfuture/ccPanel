@@ -17,6 +17,7 @@ try{
   const status=await refreshIngestPressure(new IngestAdmission(),{
     readControl:read,readHost:async()=>host,
     readKafka:async disks=>({startedAt:Date.now(),partitions:[{partition:0,low:'10',high:'10',committed:'10',ageBoundary:'10'}],disks}),
+    validateProgress:async()=>{},
     persistGap:async()=>{throw new Error('existing pause must not be rewritten');},
   });
   assert.equal(status.allowed,false);assert.equal(status.reason,'retained_offset_gap');

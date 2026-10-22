@@ -6,7 +6,7 @@ import { persist } from '../packages/server/src/consume';
 import { indexDeadLetter } from '../packages/server/src/dead-letter';
 import { digest } from '../packages/server/src/security';
 import { recoveryLock } from '../packages/server/src/recovery-gate';
-import { ensureConsumerProgress,withConsumerProgress,ConsumerProgressError } from '../packages/server/src/consumer-progress';
+import { ensureConsumerProgress,inspectConsumerProgress,assertTopicCreationSafe,withConsumerProgress,ConsumerProgressError } from '../packages/server/src/consumer-progress';
 import type { StoredEnvelope } from '../packages/schema/src/index';
 const stream={topic:'progress-fixture',group:'progress-fixture-writer'};
 try{
@@ -39,6 +39,10 @@ try{
   const dead={id:digest('progress-fixture:0:2'),reason:'invalid_json',source:{topic:stream.topic,partition:0,offset:'2'},tenant_id:tenant,project_id:project,identity_hashes:[],raw_base64:Buffer.from('invalid synthetic message').toString('base64'),processor_version:2 as const};
   await withConsumerProgress(stream,0,'2',async()=>{await indexDeadLetter(dead,undefined);return true;});
   assert.equal(await next(),'3');assert.equal(await count('dlq_records'),1);
+  const observed=await inspectConsumerProgress(stream,[{partition:0,low:'0',high:'2',committed:'2'}],async()=>[{partition:0,high:'3'}]);
+  assert.equal(observed.positions[0]?.high,'3','a newer PG snapshot refreshes the earlier upper bound');
+  await assertTopicCreationSafe(stream,{changed:true,observedAt:0});
+  assert.equal((await pool.query('SELECT blocked FROM ingest_integrity_gate WHERE id=true')).rows[0].blocked,false,'concurrent new stream is not classified as historical recreation');
   let processed=false;
   await assert.rejects(()=>withConsumerProgress(stream,0,'4',async()=>{processed=true;return true;}),e=>e instanceof ConsumerProgressError&&e.kind==='consumer_progress_jump');
   assert.equal(processed,false);assert.equal(await next(),'3');
@@ -53,5 +57,6 @@ try{
   await ensureConsumerProgress(legacy,positions,'Trusted temporary legacy baseline');
   assert.equal((await pool.query('SELECT next_offset::text FROM consumer_progress WHERE topic=$1',[legacy.topic])).rows[0].next_offset,'10');
   assert.equal((await pool.query('SELECT blocked FROM ingest_integrity_gate WHERE id=true')).rows[0].blocked,true,'bootstrap is not an incident acknowledgement');
+  await assert.rejects(()=>assertTopicCreationSafe(stream,{changed:true,observedAt:Date.now()+1000}),e=>e instanceof ConsumerProgressError&&e.kind==='topic_recreated_with_history');
   console.log(JSON.stringify({passed:true,raw_before_checkpoint:true,checkpoint_failure_replays_once:true,concurrent_replay_once:true,dlq_index_before_progress:true,gap_stops_callback:true,incident_persisted_once:true,online_baseline_rejected:true,raw_events:2,aggregation_jobs:2,dlq_records:1,next_offset:'3'}));
 }finally{await pool.end();}

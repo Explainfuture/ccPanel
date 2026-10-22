@@ -1,5 +1,5 @@
-import { expect,it } from 'vitest';
-import { ConsumerProgressError,progressOffset,progressPlan } from '../packages/server/src/consumer-progress';
+import { expect,it,vi } from 'vitest';
+import { ConsumerProgressError,progressOffset,progressPlan,refreshProgressHigh } from '../packages/server/src/consumer-progress';
 it('starts a truly new retained stream at zero but requires explicit legacy baseline',()=>{
   expect(progressPlan([{partition:0,low:'0',high:'3',committed:null}],null,[]).initialize).toEqual([{partition:0,next_offset:'0'}]);
   expect(()=>progressPlan([{partition:0,low:'0',high:'10',committed:'10'}],null,[])).toThrow('progress_bootstrap_required');
@@ -25,4 +25,12 @@ it('preserves exact 64-bit positions and rejects truncation or malformed topolog
 it('only initializes genuinely appended partitions while preserving existing proof',()=>{
   const positions=[{partition:1,low:'0',high:'1',committed:null},{partition:0,low:'0',high:'5',committed:'5'}];
   expect(progressPlan(positions,1,[{partition:0,next_offset:'5'}]).initialize).toEqual([{partition:1,next_offset:'0'}]);
+});
+it('refreshes a stale high watermark without mixing a later retention boundary with the fixed PG checkpoint',async()=>{
+  const positions=[{partition:0,low:'0',high:'10',committed:'9'}],rows=[{partition:0,next_offset:'12'}];
+  const refresh=vi.fn(async()=>[{partition:0,high:'20',low:'15'}]);const adjusted=await refreshProgressHigh(positions,rows,refresh);
+  expect(adjusted[0]).toEqual({partition:0,low:'0',high:'20',committed:'9'});expect(positions[0]?.high).toBe('10');expect(()=>progressPlan(adjusted,1,rows)).not.toThrow();
+});
+it('does not turn a real high-watermark regression into healthy progress',async()=>{
+  await expect(refreshProgressHigh([{partition:0,low:'0',high:'10',committed:'9'}],[{partition:0,next_offset:'12'}],async()=>[{partition:0,high:'8'}])).rejects.toThrow('broker_history_regressed');
 });

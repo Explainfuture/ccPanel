@@ -6,8 +6,19 @@ import { digest } from '../../../packages/server/src/security';
 import { discardDeletedDeadLetter,identityHash } from '../../../packages/server/src/privacy';
 import { holdRecoveryLease } from '../../../packages/server/src/recovery-gate';
 import { indexDeadLetter,type DeadLetter } from '../../../packages/server/src/dead-letter';
+import { assertConsumerIntegrity,assertTopicCreationSafe,ensureConsumerProgress,withConsumerProgress,ConsumerProgressError } from '../../../packages/server/src/consumer-progress';
+import { readKafkaPressure } from '../../../packages/server/src/kafka-pressure';
+import { defaultPressurePolicy } from '../../../packages/server/src/ingest-pressure';
 const releaseRecoveryLease=await holdRecoveryLease();
-await ensureTopics();
+const stream={topic:eventsTopic,group:consumerGroup};
+await assertTopicCreationSafe(stream,await ensureTopics());
+const progressAdmin=kafka.admin();await progressAdmin.connect();
+const verifyProgress=async()=>{
+  await assertConsumerIntegrity();
+  const positions=await readKafkaPressure(progressAdmin,eventsTopic,consumerGroup,defaultPressurePolicy,[]);
+  await ensureConsumerProgress(stream,positions.partitions,undefined,()=>progressAdmin.fetchTopicOffsets(eventsTopic));
+};
+await verifyProgress();
 const consumer = kafka.consumer({ groupId: consumerGroup, sessionTimeout: 30000 });
 const producer = kafka.producer({ idempotent: true, maxInFlightRequests: 1 });
 consumer.on(consumer.events.CRASH, ({ payload }) => {
@@ -17,6 +28,7 @@ await producer.connect(); await consumer.connect(); await consumer.subscribe({ t
 await consumer.run({ autoCommit: false, eachBatchAutoResolve: false, eachBatch: async ({ batch, resolveOffset, heartbeat, isRunning, isStale }) => {
   for (const message of batch.messages) {
     if (!isRunning() || isStale()) break;
+    const complete=await withConsumerProgress(stream,batch.partition,message.offset,async()=>{
     let record: StoredEnvelope | undefined;
     let reason: string | undefined;
     try {
@@ -34,7 +46,7 @@ await consumer.run({ autoCommit: false, eachBatchAutoResolve: false, eachBatch: 
           await new Promise(resolve=>setTimeout(resolve,2000));
         }
       }
-      if (!isRunning() || isStale()) break;
+      if (!isRunning() || isStale()) return false;
     }
     if(reason&&await discardDeletedDeadLetter(record))reason=undefined;
     if (reason) {
@@ -48,10 +60,21 @@ await consumer.run({ autoCommit: false, eachBatchAutoResolve: false, eachBatch: 
       // acknowledgement precedes the offset; a failed index write retries.
       await indexDeadLetter(dead,record);
     }
+    return true;
+    });
+    if(!complete||!isRunning()||isStale())break;
     resolveOffset(message.offset);
     await consumer.commitOffsets([{ topic: batch.topic, partition: batch.partition, offset: (BigInt(message.offset) + 1n).toString() }]);
     await heartbeat();
   }
 } });
 console.log(JSON.stringify({ code: 'worker_ready' }));
-for (const signal of ['SIGTERM','SIGINT'] as const) process.once(signal, async () => { await consumer.disconnect(); await producer.disconnect();await releaseRecoveryLease();await pool.end(); process.exit(0); });
+let checking=false;
+const progressTimer=setInterval(async()=>{
+  if(checking)return;checking=true;
+  try{await verifyProgress();}
+  catch(error){console.error(JSON.stringify({code:error instanceof ConsumerProgressError?'consumer_progress_halted':'consumer_progress_probe_failed',kind:error instanceof ConsumerProgressError?error.kind:undefined}));if(error instanceof ConsumerProgressError)process.exit(1);}
+  finally{checking=false;}
+},5000);
+progressTimer.unref();
+for (const signal of ['SIGTERM','SIGINT'] as const) process.once(signal, async () => { clearInterval(progressTimer);await consumer.disconnect(); await producer.disconnect();await progressAdmin.disconnect();await releaseRecoveryLease();await pool.end(); process.exit(0); });
