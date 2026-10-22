@@ -31,6 +31,7 @@ import {
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 const AnalysisExplorer = lazy(() => import('./AnalysisExplorer'));
+const BehaviorExplorer = lazy(() => import('./BehaviorExplorer'));
 import { api, ApiError, setCsrf } from "./api";
 import {
   createAnalytics,
@@ -586,6 +587,7 @@ export default function App() {
             { id: "overview", label: "概览", icon: BarChart3 },
             { id: "events", label: "事件探索", icon: Activity },
             { id: "analysis", label: "分析与报表", icon: BarChart3 },
+            { id: "behavior", label: "漏斗与留存", icon: Layers3 },
             { id: "connect", label: "数据接入", icon: Code2 },
             { id: "members", label: "公司成员", icon: Users },
           ].map((n) => (
@@ -665,6 +667,7 @@ export default function App() {
                     overview: "数据概览",
                     events: "事件探索",
                     analysis: "分析与报表",
+                    behavior: "理解用户旅程",
                     connect: "连接你的数据",
                     members: "公司成员",
                   }[tab]
@@ -676,6 +679,7 @@ export default function App() {
                     overview: "从真实行为出发，看见产品正在发生的变化。",
                     events: "每一条事件，都是理解用户的线索。",
                     analysis: "组合指标与属性，保存公司共享的分析视图。",
+                    behavior: "从转化到回访，探索关联用户的真实行为。",
                     connect: "安装 SDK，让业务行为进入你的分析工作台。",
                     members: "同一公司的成员，共享全部项目与分析数据。",
                   }[tab]
@@ -919,6 +923,7 @@ export default function App() {
                 </>
               ) : null}
               {tab === 'analysis' && project ? <Suspense fallback={<div className="chart-loading">正在打开分析工作台…</div>}><AnalysisExplorer key={prefix} prefix={prefix} canEdit={tenant.role !== 'viewer'} /></Suspense> : null}
+              {tab === 'behavior' && project ? <Suspense fallback={<div className="chart-loading">正在打开行为分析…</div>}><BehaviorExplorer key={prefix} prefix={prefix}/></Suspense> : null}
               {tab === "events" && project ? (
                 <section className="panel">
                   <div className="panel-heading">
