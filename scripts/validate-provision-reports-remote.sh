@@ -24,6 +24,7 @@ case "${CCPANEL_VALIDATION_SUITE:-all}" in
   report-edit) suites=report-edit;;
   query-export) suites=query-export;;
   retention) [[ "$version" = 17 ]]; suites=retention;;
+  partitions) [[ "$version" = 17 ]]; suites=partitions;;
   *) echo 'Unsupported isolated validation suite' >&2;exit 1;;
 esac
 # The parent /app source mount is read-only. Docker needs the nested mount
