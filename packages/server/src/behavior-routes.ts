@@ -49,13 +49,13 @@ export async function behaviorQuery(
   const limit = asyncMode ? 10000 : 5000,
     bytes = asyncMode ? 6 * 1024 * 1024 : 4 * 1024 * 1024;
   const budget = await run(
-    `SELECT count(*)::int AS count,COALESCE(sum(octet_length(e.properties::text)+1024),0)::float8 AS bytes FROM events e WHERE ${where}`,
+    `SELECT count(*)::int AS count,COALESCE(sum(octet_length(e.properties::text)+1024),0)::float8 AS bytes FROM visible_events e WHERE ${where}`,
     values,
   );
   if (budget.rows[0].count > limit || budget.rows[0].bytes > bytes)
     throw new QueryBudgetExceeded("query_requires_narrower_range");
   const rows = await run(
-    `SELECT e.event_id AS id,COALESCE(l.user_id,e.distinct_id) AS "user",e.event_name AS name,e.event_time AS time,e.properties FROM events e LEFT JOIN identity_links l ON l.tenant_id=e.tenant_id AND l.project_id=e.project_id AND l.anonymous_id=e.distinct_id WHERE ${where} ORDER BY e.event_time,e.event_id LIMIT ${limit + 1}`,
+    `SELECT e.event_id AS id,COALESCE(l.user_id,e.distinct_id) AS "user",e.event_name AS name,e.event_time AS time,e.properties FROM visible_events e LEFT JOIN identity_links l ON l.tenant_id=e.tenant_id AND l.project_id=e.project_id AND l.anonymous_id=e.distinct_id WHERE ${where} ORDER BY e.event_time,e.event_id LIMIT ${limit + 1}`,
     values,
   );
   if (

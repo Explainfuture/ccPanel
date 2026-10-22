@@ -30,6 +30,20 @@ export async function migrate() {
       ALTER TABLE query_jobs ADD COLUMN IF NOT EXISTS privacy_epoch integer NOT NULL DEFAULT 0;
       ALTER TABLE events ADD COLUMN IF NOT EXISTS registered boolean NOT NULL DEFAULT false;
       ALTER TABLE events ADD COLUMN IF NOT EXISTS project_schema_version integer NOT NULL DEFAULT 0;
+      CREATE OR REPLACE VIEW visible_events WITH (security_barrier=true) AS
+        SELECT e.* FROM events e
+        LEFT JOIN identity_links l ON l.tenant_id=e.tenant_id AND l.project_id=e.project_id AND l.anonymous_id=e.distinct_id
+        WHERE NOT EXISTS (
+          SELECT 1 FROM deletion_barriers b WHERE b.tenant_id=e.tenant_id AND b.project_id=e.project_id AND (
+            b.identity_hash='*' OR (
+              b.identity_hash IN (
+                encode(sha256(convert_to(e.tenant_id::text||':'||e.project_id::text||':'||e.distinct_id,'UTF8')),'hex'),
+                encode(sha256(convert_to(e.tenant_id::text||':'||e.project_id::text||':'||e.anonymous_id,'UTF8')),'hex'),
+                encode(sha256(convert_to(e.tenant_id::text||':'||e.project_id::text||':'||l.user_id,'UTF8')),'hex')
+              ) AND (e.event_time<=b.blocked_before OR e.received_at<=b.requested_at)
+            )
+          )
+        );
       CREATE INDEX IF NOT EXISTS events_scope_time ON events(tenant_id,project_id,event_time DESC);
       CREATE INDEX IF NOT EXISTS events_user_time ON events(tenant_id,project_id,distinct_id,event_time DESC);
       INSERT INTO schema_migrations(version) VALUES(1) ON CONFLICT DO NOTHING;

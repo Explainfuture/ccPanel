@@ -43,7 +43,7 @@ export function registerQueryJobs(app: Hono<Env>) {
       }
       const id = randomUUID();
       await db.query(
-        "INSERT INTO query_jobs(id,tenant_id,project_id,user_id,spec) VALUES($1,$2,$3,$4,$5)",
+        "INSERT INTO query_jobs(id,tenant_id,project_id,user_id,spec,privacy_epoch) SELECT $1,$2,$3,$4,$5,p.privacy_epoch FROM projects p WHERE p.tenant_id=$2 AND p.id=$3",
         [
           id,
           c.get("tenantId"),
@@ -65,7 +65,7 @@ export function registerQueryJobs(app: Hono<Env>) {
     c.json({
       jobs: (
         await query(
-          "SELECT id,spec->>'kind' AS kind,status,error,created_at,started_at,finished_at,expires_at FROM query_jobs WHERE tenant_id=$1 AND project_id=$2 AND expires_at>now() ORDER BY created_at DESC LIMIT 50",
+          "SELECT id,spec->>'kind' AS kind,status,error,created_at,started_at,finished_at,expires_at FROM query_jobs WHERE tenant_id=$1 AND project_id=$2 AND expires_at>now() AND privacy_epoch=(SELECT privacy_epoch FROM projects WHERE tenant_id=$1 AND id=$2) ORDER BY created_at DESC LIMIT 50",
           [c.get("tenantId"), c.req.param("project")],
         )
       ).rows,
@@ -75,7 +75,7 @@ export function registerQueryJobs(app: Hono<Env>) {
     const id = c.req.param("job")!;
     if (!validId(id)) return c.json({ error: "not_found" }, 404);
     const found = await query(
-      "SELECT id,status,spec,result,error,created_at,started_at,finished_at,expires_at FROM query_jobs WHERE tenant_id=$1 AND project_id=$2 AND id=$3 AND expires_at>now()",
+      "SELECT id,status,spec,result,error,created_at,started_at,finished_at,expires_at FROM query_jobs WHERE tenant_id=$1 AND project_id=$2 AND id=$3 AND expires_at>now() AND privacy_epoch=(SELECT privacy_epoch FROM projects WHERE tenant_id=$1 AND id=$2)",
       [c.get("tenantId"), c.req.param("project"), id],
     );
     return found.rowCount
@@ -129,6 +129,10 @@ export function startQueryJobs() {
       if (!job || projectQueryFlights.has(job.project_id)) return;
       project = job.project_id;
       projectQueryFlights.add(project!);
+      const epoch=await db.query('SELECT privacy_epoch FROM projects WHERE tenant_id=$1 AND id=$2',[job.tenant_id,job.project_id]);
+      if(epoch.rows[0]?.privacy_epoch!==job.privacy_epoch){
+        await db.query("UPDATE query_jobs SET status='cancelled',result=NULL,error='privacy_changed',finished_at=now() WHERE id=$1",[job.id]);return;
+      }
       const allowed = await db.query(
         "SELECT 1 FROM tenant_memberships m JOIN projects p ON p.tenant_id=m.tenant_id WHERE m.tenant_id=$1 AND m.user_id=$2 AND p.id=$3",
         [job.tenant_id, job.user_id, job.project_id],
@@ -183,11 +187,11 @@ export function startQueryJobs() {
           throw new QueryBudgetExceeded("query_result_too_large");
         await db.query("COMMIT");
         await db.query(
-          "UPDATE query_jobs SET status='succeeded',result=$2,finished_at=now() WHERE id=$1 AND status='running' AND EXISTS(SELECT 1 FROM tenant_memberships WHERE tenant_id=$3 AND user_id=$4)",
+          "UPDATE query_jobs SET status='succeeded',result=$2,finished_at=now() WHERE id=$1 AND status='running' AND privacy_epoch=(SELECT privacy_epoch FROM projects WHERE tenant_id=$3 AND id=query_jobs.project_id) AND EXISTS(SELECT 1 FROM tenant_memberships WHERE tenant_id=$3 AND user_id=$4)",
           [job.id, encoded, job.tenant_id, job.user_id],
         );
         await db.query(
-          "UPDATE query_jobs SET status='failed',error='membership_revoked',finished_at=now() WHERE id=$1 AND status='running'",
+          "UPDATE query_jobs SET status='failed',result=NULL,error=CASE WHEN privacy_epoch<>(SELECT privacy_epoch FROM projects WHERE tenant_id=query_jobs.tenant_id AND id=query_jobs.project_id) THEN 'privacy_changed' ELSE 'membership_revoked' END,finished_at=now() WHERE id=$1 AND status='running'",
           [job.id],
         );
       } catch (e) {

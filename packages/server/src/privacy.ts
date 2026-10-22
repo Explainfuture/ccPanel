@@ -60,7 +60,7 @@ export async function suppressedByDeletion(
       // transaction cannot finish against an incomplete alias set concurrently.
       if (changed.rowCount) {
         await db.query(
-          "UPDATE deletion_jobs SET status='queued',finished_at=NULL,error=NULL WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+          "UPDATE deletion_jobs SET status='queued',finished_at=NULL,error=NULL,stream_expires_at=GREATEST(stream_expires_at,clock_timestamp()+interval '45 days') WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
           [record.tenant_id, record.project_id, barrier.deletion_job_id],
         );
         await db.query(
@@ -71,6 +71,7 @@ export async function suppressedByDeletion(
           "UPDATE query_jobs SET status='cancelled',result=NULL,finished_at=now() WHERE tenant_id=$1 AND project_id=$2",
           [record.tenant_id, record.project_id],
         );
+        await db.query('INSERT INTO audit_logs(tenant_id,action,details) VALUES($1,$2,$3)',[record.tenant_id,'deletion_alias_discovered',JSON.stringify({project_id:record.project_id,deletion_job_id:barrier.deletion_job_id,identity_hash:anonymousHash})]);
       }
     }
   }

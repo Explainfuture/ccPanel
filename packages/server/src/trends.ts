@@ -12,7 +12,7 @@ export async function trends(tenantId:string,projectId:string,spec:TrendSpec,run
     const numeric=`CASE WHEN jsonb_typeof(e.properties->${param})='number' THEN (e.properties->>${param})::numeric END`;
     metric=`${spec.metric}(${numeric})::float8`;excluded=`count(*) FILTER(WHERE jsonb_typeof(e.properties->${param}) IS DISTINCT FROM 'number')::int`;
   }
-  const joins=`FROM events e JOIN projects p ON p.id=e.project_id AND p.tenant_id=e.tenant_id LEFT JOIN identity_links l ON l.project_id=e.project_id AND l.tenant_id=e.tenant_id AND l.anonymous_id=e.distinct_id WHERE ${predicates.join(' AND ')}`;
+  const joins=`FROM visible_events e JOIN projects p ON p.id=e.project_id AND p.tenant_id=e.tenant_id LEFT JOIN identity_links l ON l.project_id=e.project_id AND l.tenant_id=e.tenant_id AND l.anonymous_id=e.distinct_id WHERE ${predicates.join(' AND ')}`;
   const grouping=spec.group_by.map(k=>{values.push(k);const param='$'+values.length;return`jsonb_build_object('present',e.properties ? ${param},'value',e.properties->${param})`;});
   const groups=grouping.length?`jsonb_build_array(${grouping.join(',')})`:`'[]'::jsonb`;
   const base=values.slice(0,values.length-grouping.length);

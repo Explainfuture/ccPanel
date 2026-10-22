@@ -423,15 +423,15 @@ export function createApp(deps: AppDeps) {
       ];
       const [summary, series, names] = await Promise.all([
         query(
-          `SELECT count(*)::int AS events,count(DISTINCT COALESCE(l.user_id,e.distinct_id))::int AS users,max(e.received_at) AS latest_received_at FROM events e LEFT JOIN identity_links l ON l.tenant_id=e.tenant_id AND l.project_id=e.project_id AND l.anonymous_id=e.distinct_id WHERE e.tenant_id=$1 AND e.project_id=$2 AND e.event_time >= $3 AND e.event_time < $4 AND ($5::text IS NULL OR e.event_name=$5) AND e.event_name<>'$identify'`,
+          `SELECT count(*)::int AS events,count(DISTINCT COALESCE(l.user_id,e.distinct_id))::int AS users,max(e.received_at) AS latest_received_at FROM visible_events e LEFT JOIN identity_links l ON l.tenant_id=e.tenant_id AND l.project_id=e.project_id AND l.anonymous_id=e.distinct_id WHERE e.tenant_id=$1 AND e.project_id=$2 AND e.event_time >= $3 AND e.event_time < $4 AND ($5::text IS NULL OR e.event_name=$5) AND e.event_name<>'$identify'`,
           params,
         ),
         query(
-          `SELECT to_char(date_trunc('day',e.event_time AT TIME ZONE p.timezone),'YYYY-MM-DD') AS day,count(*)::int AS events,count(DISTINCT COALESCE(l.user_id,e.distinct_id))::int AS users FROM events e JOIN projects p ON p.tenant_id=e.tenant_id AND p.id=e.project_id LEFT JOIN identity_links l ON l.tenant_id=e.tenant_id AND l.project_id=e.project_id AND l.anonymous_id=e.distinct_id WHERE e.tenant_id=$1 AND e.project_id=$2 AND e.event_time >= $3 AND e.event_time < $4 AND ($5::text IS NULL OR e.event_name=$5) AND e.event_name<>'$identify' GROUP BY 1 ORDER BY 1`,
+          `SELECT to_char(date_trunc('day',e.event_time AT TIME ZONE p.timezone),'YYYY-MM-DD') AS day,count(*)::int AS events,count(DISTINCT COALESCE(l.user_id,e.distinct_id))::int AS users FROM visible_events e JOIN projects p ON p.tenant_id=e.tenant_id AND p.id=e.project_id LEFT JOIN identity_links l ON l.tenant_id=e.tenant_id AND l.project_id=e.project_id AND l.anonymous_id=e.distinct_id WHERE e.tenant_id=$1 AND e.project_id=$2 AND e.event_time >= $3 AND e.event_time < $4 AND ($5::text IS NULL OR e.event_name=$5) AND e.event_name<>'$identify' GROUP BY 1 ORDER BY 1`,
           params,
         ),
         query(
-          `SELECT event_name,count(*)::int AS count FROM events WHERE tenant_id=$1 AND project_id=$2 AND event_time >= $3 AND event_time < $4 AND event_name<>'$identify' GROUP BY event_name ORDER BY count(*) DESC LIMIT 20`,
+          `SELECT event_name,count(*)::int AS count FROM visible_events WHERE tenant_id=$1 AND project_id=$2 AND event_time >= $3 AND event_time < $4 AND event_name<>'$identify' GROUP BY event_name ORDER BY count(*) DESC LIMIT 20`,
           params.slice(0, 4),
         ),
       ]);
@@ -489,7 +489,7 @@ export function createApp(deps: AppDeps) {
       user = c.req.query("distinct_id") || null;
     const page = Math.max(0, Math.min(Number(c.req.query("page")) || 0, 1000));
     const rows = await query(
-        `SELECT event_id,event_name,distinct_id,event_time,received_at,properties,context,registered,project_schema_version FROM events WHERE tenant_id=$1 AND project_id=$2 AND event_time>=now()-interval '30 days' AND ($3::text IS NULL OR event_name=$3) AND ($4::text IS NULL OR distinct_id=$4) ORDER BY event_time DESC,event_id LIMIT 50 OFFSET $5`,
+        `SELECT event_id,event_name,distinct_id,event_time,received_at,properties,context,registered,project_schema_version FROM visible_events WHERE tenant_id=$1 AND project_id=$2 AND event_time>=now()-interval '30 days' AND ($3::text IS NULL OR event_name=$3) AND ($4::text IS NULL OR distinct_id=$4) ORDER BY event_time DESC,event_id LIMIT 50 OFFSET $5`,
       [c.get("tenantId"), c.req.param("project"), name, user, page * 50],
     );
     return c.json({
