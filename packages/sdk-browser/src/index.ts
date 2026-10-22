@@ -4,6 +4,7 @@ export type { AnalyticsEvent,Json } from '../../schema/src/index';
 export interface AnalyticsOptions {
   endpoint:string;projectId:string;writeKey:string;consent:boolean;
   flushInterval?:number;batchSize?:number;queue?:Queue;fetch?:typeof globalThis.fetch;
+  propertyAllowlist?:Readonly<Record<string,readonly string[]>>;
   onError?:(code:string,details?:{event_ids:string[]})=>void;source?:'browser'|'node';
 }
 export interface TrackResult{status:'queued-persistent'|'queued-memory'|'rejected';event_id?:string;reason?:string}
@@ -21,6 +22,7 @@ export class Analytics {
   private batchSize:number;private running=true;private pendingWrites=0;
   private needsRecovery=false;private nextRecovery=0;
   private consentChanges:Promise<void>=Promise.resolve();
+  private allowedProperties:Map<string,Set<string>>|undefined;
   private cleanup:(()=>void)[]=[];
   constructor(private options:AnalyticsOptions){
     const url=new URL(options.endpoint);
@@ -29,6 +31,15 @@ export class Analytics {
     this.batchSize=options.batchSize??limits.batchEvents;
     if(!Number.isInteger(this.batchSize)||this.batchSize<1||this.batchSize>100)throw new Error('invalid_batch_size');
     if(options.flushInterval!==undefined&&options.flushInterval<100)throw new Error('invalid_flush_interval');
+    if(options.propertyAllowlist!==undefined){
+      const list=options.propertyAllowlist;
+      if(!list||typeof list!=='object'||Array.isArray(list)||![Object.prototype,null].includes(Object.getPrototypeOf(list))||Object.keys(list).length>1000)throw new Error('invalid_property_allowlist');
+      this.allowedProperties=new Map();
+      for(const[name,keys]of Object.entries(list)){
+        if(!name||name.length>128||!Array.isArray(keys)||keys.length>100||!keys.every(k=>typeof k==='string'&&k.length>0&&k.length<=128))throw new Error('invalid_property_allowlist');
+        this.allowedProperties.set(name,new Set(keys));
+      }
+    }
     this.consent=options.consent;
     this.identityKey=`ccpanel:identity:${url.origin}${url.pathname}:${options.projectId}`;
     this.queue=options.queue??(typeof indexedDB!=='undefined'?new IndexedQueue(this.identityKey+':queue'):this.memory);
@@ -56,6 +67,14 @@ export class Analytics {
     // Freeze the payload before the first await so identity changes and caller mutation cannot rewrite it.
     let event:AnalyticsEvent;
     try{
+      if(this.allowedProperties){
+        if(!properties||typeof properties!=='object'||Array.isArray(properties)||Object.getPrototypeOf(properties)!==Object.prototype)throw new Error('invalid_properties');
+        const allow=this.allowedProperties.get(name);
+        // Read only approved own fields; unknown event names have no approved
+        // properties. Constructor copies configuration so later mutation cannot
+        // silently expand collection. Sensitive-key filtering still applies.
+        properties=Object.fromEntries(Object.keys(properties).filter(k=>allow?.has(k)).map(k=>[k,properties[k]!]));
+      }
       const context:Record<string,Json>={sdk:'ccpanel',version:'0.1.0',source:this.options.source||'browser'};
       if(typeof location!=='undefined')context.page=location.pathname;
       event={event_id:crypto.randomUUID(),event_name:name,distinct_id:this.user||this.anonymous,anonymous_id:this.anonymous,event_time:new Date().toISOString(),properties,context,schema_version:1};

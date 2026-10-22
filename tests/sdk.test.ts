@@ -10,6 +10,16 @@ function client(queue:Queue=new MemoryQueue(),send:typeof fetch=async()=>new Res
   const c=new Analytics({endpoint:'https://example.invalid/v1/batch',projectId:'project-a',writeKey:'test',consent:true,queue,fetch:send,flushInterval:60000});clients.push(c);return c;
 }
 describe('persistent and bounded delivery',()=>{
+  it('allowlists event properties before reading unapproved fields and freezes configuration',async()=>{
+    const keys=['button','metadata','password'],allowlist={click:keys},queue=new MemoryQueue();
+    const c=new Analytics({endpoint:'https://example.invalid/v1/batch',projectId:'allowlist',writeKey:'test',consent:true,queue,flushInterval:60000,propertyAllowlist:allowlist,fetch:async()=>new Response('',{status:503})});clients.push(c);await c.flush();
+    keys.push('unexpected');const readSecret=vi.fn(()=>{throw new Error('must not read unapproved fields');});
+    const properties={button:'buy',metadata:{email:'sensitive',color:'blue'},password:'sensitive',unexpected:'no'};
+    Object.defineProperty(properties,'unapproved',{enumerable:true,get:readSecret});
+    expect((await c.track('click',properties)).status).toBe('queued-memory');
+    await c.track('unknown_event',{button:'no'});
+    const rows=await queue.peek(20);expect(rows[0]!.event.properties).toEqual({button:'buy',metadata:{color:'blue'}});expect(rows[1]!.event.properties).toEqual({});expect(readSecret).not.toHaveBeenCalled();
+  });
   it('leases across browser instances and recovers after expiry without deleting a newer lease',async()=>{
     const name='test-'+crypto.randomUUID(),a=new IndexedQueue(name),b=new IndexedQueue(name);const e=event();
     expect(await a.add(e,10,10000)).toBe(true);
