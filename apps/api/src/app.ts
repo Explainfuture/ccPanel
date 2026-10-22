@@ -7,6 +7,7 @@ import {InvalidQuery} from '../../../packages/server/src/query-spec';
 import { registerBehaviorRoutes } from '../../../packages/server/src/behavior-routes';
 import { registerSchemaRoutes } from '../../../packages/server/src/schema-routes';
 import { registerUserRoutes } from '../../../packages/server/src/user-routes';
+import {registerQueryExports} from '../../../packages/server/src/query-export';
 import { registerQueryJobs } from '../../../packages/server/src/query-jobs';
 import { registerDeletions } from '../../../packages/server/src/deletion-service';
 import { registerReplayRoutes } from '../../../packages/server/src/dlq-replay';
@@ -555,6 +556,7 @@ export function createApp(deps: AppDeps) {
   registerSchemaRoutes(app);
   registerUserRoutes(app);
   registerQueryJobs(app);
+  registerQueryExports(app,rate);
   registerDeletions(app);
   registerReplayRoutes(app);
   return app;

@@ -76,7 +76,7 @@ export function registerQueryJobs(app: Hono<Env>) {
     c.json({
       jobs: (
         await query(
-          "SELECT id,spec->>'kind' AS kind,status,error,timezone,report_id,report_version,created_at,started_at,finished_at,expires_at FROM query_jobs WHERE tenant_id=$1 AND project_id=$2 AND expires_at>now() AND privacy_epoch=(SELECT privacy_epoch FROM projects WHERE tenant_id=$1 AND id=$2) ORDER BY created_at DESC LIMIT 50",
+          "SELECT id,spec->>'kind' AS kind,status,error,timezone,report_id,report_version,created_at,started_at,finished_at,expires_at FROM query_jobs WHERE tenant_id=$1 AND project_id=$2 AND expires_at>now() AND privacy_epoch=(SELECT privacy_epoch FROM projects WHERE tenant_id=$1 AND id=$2) AND EXISTS(SELECT 1 FROM tenant_memberships m WHERE m.tenant_id=query_jobs.tenant_id AND m.user_id=query_jobs.user_id) ORDER BY created_at DESC LIMIT 50",
           [c.get("tenantId"), c.req.param("project")],
         )
       ).rows,
@@ -86,7 +86,7 @@ export function registerQueryJobs(app: Hono<Env>) {
     const id = c.req.param("job")!;
     if (!validId(id)) return c.json({ error: "not_found" }, 404);
     const found = await query(
-      "SELECT id,status,spec,result,error,timezone,report_id,report_version,created_at,started_at,finished_at,expires_at FROM query_jobs WHERE tenant_id=$1 AND project_id=$2 AND id=$3 AND expires_at>now() AND privacy_epoch=(SELECT privacy_epoch FROM projects WHERE tenant_id=$1 AND id=$2)",
+      "SELECT id,status,spec,result,error,timezone,report_id,report_version,created_at,started_at,finished_at,expires_at FROM query_jobs WHERE tenant_id=$1 AND project_id=$2 AND id=$3 AND expires_at>now() AND privacy_epoch=(SELECT privacy_epoch FROM projects WHERE tenant_id=$1 AND id=$2) AND EXISTS(SELECT 1 FROM tenant_memberships m WHERE m.tenant_id=query_jobs.tenant_id AND m.user_id=query_jobs.user_id)",
       [c.get("tenantId"), c.req.param("project"), id],
     );
     return found.rowCount
