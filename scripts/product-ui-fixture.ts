@@ -39,6 +39,20 @@ try{
         await db.query('DELETE FROM sessions WHERE user_id=ANY($1::uuid[])',[users]);await db.query('DELETE FROM users WHERE id=ANY($1::uuid[])',[users]);await db.query('DELETE FROM tenants WHERE id=ANY($1::uuid[])',[tenants]);await db.query('COMMIT');
         console.log('Synthetic product UI companies and accounts cleaned');
       }catch(error){await db.query('ROLLBACK');throw error;}finally{db.release();}
+    }else if(mode==='verify-analysis'){
+      assert.ok(Array.isArray(f.event_ids)&&f.event_ids.length===4&&new Set(f.event_ids).size===4);
+      const counts=(await pool.query(`SELECT
+        (SELECT count(*)::int FROM events WHERE tenant_id=$1) AS events,
+        (SELECT count(*)::int FROM events WHERE tenant_id=$1 AND event_id=ANY($2::uuid[])) AS matched_ids,
+        (SELECT count(*)::int FROM aggregation_jobs WHERE tenant_id=$1 AND processed_at IS NOT NULL) AS processed,
+        (SELECT count(DISTINCT spec->>'kind')::int FROM reports WHERE tenant_id=$1 AND version>=2) AS edited_kinds,
+        (SELECT count(*)::int FROM dashboards WHERE tenant_id=$1 AND columns=2 AND range_days=7) AS dashboards,
+        (SELECT count(*)::int FROM query_jobs WHERE tenant_id=$1 AND status='succeeded' AND report_version>=2) AS completed,
+        (SELECT count(*)::int FROM audit_logs WHERE tenant_id=$1 AND action='query_export_prepared') AS exports,
+        (SELECT count(*)::int FROM dlq_records WHERE tenant_id=$1) AS dlq`,[f.tenant,f.event_ids])).rows[0];
+      for(const name of ['events','matched_ids','processed','edited_kinds'])assert.equal(counts[name],4,name);
+      assert.equal(counts.dashboards,1);assert.ok(counts.completed>=1);assert.ok(counts.exports>=2);assert.equal(counts.dlq,0);
+      console.log(JSON.stringify({passed:true,...counts}));
     }else if(mode==='verify'){
       const memberships=(await pool.query('SELECT tenant_id,role FROM tenant_memberships WHERE user_id=$1',[f.target.id])).rows;
       assert.equal(memberships.find(r=>r.tenant_id===f.tenant)?.role,'analyst');assert.equal(memberships.find(r=>r.tenant_id===f.foreign_tenant)?.role,'viewer');
