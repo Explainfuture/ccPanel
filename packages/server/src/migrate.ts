@@ -30,6 +30,10 @@ export async function migrate() {
       CREATE INDEX IF NOT EXISTS deletion_barriers_job ON deletion_barriers(project_id,deletion_job_id,identity_hash);
       ALTER TABLE projects ADD COLUMN IF NOT EXISTS privacy_epoch integer NOT NULL DEFAULT 0;
       ALTER TABLE query_jobs ADD COLUMN IF NOT EXISTS privacy_epoch integer NOT NULL DEFAULT 0;
+      ALTER TABLE deletion_jobs ALTER COLUMN user_id DROP NOT NULL;
+      CREATE TABLE IF NOT EXISTS recovery_gate(id boolean PRIMARY KEY DEFAULT true CHECK(id),blocked boolean NOT NULL DEFAULT true,ledger_exported_at timestamptz,updated_at timestamptz NOT NULL DEFAULT clock_timestamp());
+      INSERT INTO recovery_gate(id) VALUES(true) ON CONFLICT DO NOTHING;
+      CREATE TABLE IF NOT EXISTS recovery_import_scopes(ledger_hash text NOT NULL,tenant_id uuid NOT NULL,project_id uuid NOT NULL,PRIMARY KEY(ledger_hash,tenant_id,project_id),FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
       ALTER TABLE events ADD COLUMN IF NOT EXISTS registered boolean NOT NULL DEFAULT false;
       ALTER TABLE events ADD COLUMN IF NOT EXISTS project_schema_version integer NOT NULL DEFAULT 0;
       CREATE OR REPLACE VIEW visible_events WITH (security_barrier=true) AS
@@ -53,6 +57,7 @@ export async function migrate() {
       INSERT INTO schema_migrations(version) VALUES(3) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(4) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(5) ON CONFLICT DO NOTHING;
+      INSERT INTO schema_migrations(version) VALUES(6) ON CONFLICT DO NOTHING;
     `);
     const now = new Date();
     for (let i = -2; i <= 2; i++) {

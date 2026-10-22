@@ -11,7 +11,7 @@ mkdir -m 700 "$dir"
 complete=false
 trap 'if [ "$complete" != true ]; then echo "Incomplete backup retained for inspection: $dir" >&2; fi' EXIT
 docker compose exec -T postgres psql -X -U ccpanel -d ccpanel -At -v ON_ERROR_STOP=1 <../scripts/backup-fingerprint.sql >"$dir/before.jsonl"
-docker compose exec -T postgres pg_dump -U ccpanel -d ccpanel --format=custom --no-owner --no-acl >"$dir/database.dump"
+docker compose exec -T postgres pg_dump -U ccpanel -d ccpanel --format=custom --no-owner --no-acl --exclude-table-data=public.recovery_gate --exclude-table-data=public.recovery_import_scopes >"$dir/database.dump"
 docker compose exec -T postgres psql -X -U ccpanel -d ccpanel -At -v ON_ERROR_STOP=1 <../scripts/backup-fingerprint.sql >"$dir/fingerprint.jsonl"
 # The dump is always internally consistent. This first recovery drill additionally
 # requires stable source rows so exact before/after fingerprints can be compared.

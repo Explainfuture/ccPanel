@@ -17,7 +17,7 @@ docker compose stop postgres
 docker compose up -d --no-deps worker
 sleep 8
 test "$(docker inspect -f '{{.State.Running}}' "$(docker compose ps -aq postgres)")" = false
-docker compose logs --since 15s worker | grep -q database_write_retry
+docker compose logs --since 15s worker | grep -Eq 'database_write_retry|recovery_lease_lost'
 run noadvance
 docker compose up -d --wait postgres
 run wait 2

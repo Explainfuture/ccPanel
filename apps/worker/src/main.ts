@@ -4,6 +4,8 @@ import { validateEvent, type StoredEnvelope } from '../../../packages/schema/src
 import { query, pool } from '../../../packages/server/src/db';
 import { digest } from '../../../packages/server/src/security';
 import { discardDeletedDeadLetter,identityHash } from '../../../packages/server/src/privacy';
+import { holdRecoveryLease } from '../../../packages/server/src/recovery-gate';
+const releaseRecoveryLease=await holdRecoveryLease();
 await ensureTopics();
 const consumer = kafka.consumer({ groupId: 'ccpanel-writer-v1', sessionTimeout: 30000 });
 const producer = kafka.producer({ idempotent: true, maxInFlightRequests: 1 });
@@ -51,4 +53,4 @@ await consumer.run({ autoCommit: false, eachBatchAutoResolve: false, eachBatch: 
   }
 } });
 console.log(JSON.stringify({ code: 'worker_ready' }));
-for (const signal of ['SIGTERM','SIGINT'] as const) process.once(signal, async () => { await consumer.disconnect(); await producer.disconnect(); await pool.end(); process.exit(0); });
+for (const signal of ['SIGTERM','SIGINT'] as const) process.once(signal, async () => { await consumer.disconnect(); await producer.disconnect();await releaseRecoveryLease();await pool.end(); process.exit(0); });

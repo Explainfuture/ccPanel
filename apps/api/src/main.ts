@@ -4,6 +4,8 @@ import { kafka, ensureTopics, eventsTopic } from '../../../packages/server/src/k
 import { pool } from '../../../packages/server/src/db';
 import { startQueryJobs } from '../../../packages/server/src/query-jobs';
 import { startDeletions } from '../../../packages/server/src/deletion-service';
+import { holdRecoveryLease } from '../../../packages/server/src/recovery-gate';
+const releaseRecoveryLease=await holdRecoveryLease();
 await ensureTopics();
 const producer=kafka.producer({idempotent:true,maxInFlightRequests:1});
 await producer.connect();
@@ -24,4 +26,4 @@ const server=serve({fetch:app.fetch,port:Number(process.env.PORT||3000),hostname
 console.log(JSON.stringify({code:'api_ready'}));
 const stopJobs=startQueryJobs();
 const stopDeletions=startDeletions();
-for(const signal of ['SIGTERM','SIGINT'] as const) process.once(signal,()=>{stopJobs();stopDeletions();clearInterval(probe);server.close(async()=>{await admin.disconnect();await producer.disconnect();await pool.end();process.exit(0);});});
+for(const signal of ['SIGTERM','SIGINT'] as const) process.once(signal,()=>{stopJobs();stopDeletions();clearInterval(probe);server.close(async()=>{await admin.disconnect();await producer.disconnect();await releaseRecoveryLease();await pool.end();process.exit(0);});});

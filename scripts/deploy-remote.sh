@@ -21,7 +21,13 @@ find "$release/dist" -type f -exec chmod 644 {} +
 chgrp www-data /opt/ccpanel /opt/ccpanel/releases
 chmod 750 /opt/ccpanel /opt/ccpanel/releases
 cd "$release/infra"
+docker compose stop api worker
 docker compose run --rm -T --no-deps api node dist/migrate.mjs
+if ! docker compose run --rm -T --no-deps api node dist/deletion-ledger.mjs check >/dev/null 2>&1; then
+  : "${CCPANEL_RECOVERY_LEDGER:?Recovery gate closed; provide a fresh trusted source ledger, never an export from an old restored DB.}"
+  test -s "$CCPANEL_RECOVERY_LEDGER"
+  docker compose run --rm -T --no-deps -e CCPANEL_OFFLINE_RESTORE=true api node dist/deletion-ledger.mjs apply <"$CCPANEL_RECOVERY_LEDGER"
+fi
 docker compose up -d api worker
 healthy=false
 for attempt in $(seq 1 30); do
