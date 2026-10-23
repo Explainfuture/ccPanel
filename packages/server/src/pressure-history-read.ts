@@ -7,9 +7,9 @@ export async function queryPressureHistory(db:PoolClient){
   const data=(await db.query(`SELECT
     COALESCE((SELECT jsonb_agg(to_jsonb(s) ORDER BY rule) FROM
       (SELECT rule,state_at_assessment,reason,instance_id,started_at,assessed_at,recorded_at,state_since,revision::text,signal_expires_at,policy_hash,payload_hash,evidence FROM pressure_signal_states) s),'[]'::jsonb) AS states,
-    COALESCE((SELECT jsonb_agg(to_jsonb(h) ORDER BY assessed_at DESC,id DESC) FROM
+    COALESCE((SELECT jsonb_agg(to_jsonb(h) ORDER BY assessed_at DESC,id::bigint DESC) FROM
       (SELECT id::text,rule,state_at_assessment,reason,instance_id,started_at,assessed_at,recorded_at,state_since,revision::text,signal_expires_at,policy_hash,payload_hash,evidence,change_kind
-       FROM pressure_signal_history WHERE assessed_at>=CURRENT_TIMESTAMP-interval '14 days' AND assessed_at<=CURRENT_TIMESTAMP ORDER BY assessed_at DESC,id DESC LIMIT 50) h),'[]'::jsonb) AS transitions`)).rows[0];
+       FROM pressure_signal_history WHERE assessed_at>=CURRENT_TIMESTAMP-interval '14 days' AND assessed_at<=CURRENT_TIMESTAMP ORDER BY assessed_at DESC,pressure_signal_history.id DESC LIMIT 50) h),'[]'::jsonb) AS transitions`)).rows[0];
   const now=(await db.query('SELECT clock_timestamp() AS at')).rows[0].at as Date;
   type Row={rule:string;state_at_assessment:string;reason:string;instance_id:string;started_at:string;assessed_at:string;recorded_at:string;state_since:string;revision:string;signal_expires_at:string|null;policy_hash:string;payload_hash:string;evidence:{signal:unknown;policy:unknown};id?:string;change_kind?:string};
   const states=data.states as Row[],transitions=data.transitions as Row[];
