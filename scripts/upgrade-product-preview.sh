@@ -5,7 +5,7 @@ umask 077
 mode=${1:?prepare or apply}
 source_schema=${CCPANEL_SOURCE_SCHEMA:-10}
 target_schema=${CCPANEL_TARGET_SCHEMA:-15}
-case "$source_schema:$target_schema" in 10:15|15:16|16:17|17:17|17:18|18:18|18:19|19:19|19:20|20:20|20:21|21:21) ;; *) echo 'Unsupported trusted upgrade pair' >&2;exit 1;; esac
+case "$source_schema:$target_schema" in 10:15|15:16|16:17|17:17|17:18|18:18|18:19|19:19|19:20|20:20|20:21|21:21|21:22|22:22) ;; *) echo 'Unsupported trusted upgrade pair' >&2;exit 1;; esac
 # A trusted live upgrade must retain its already-open gate and durable cursor.
 unset CCPANEL_PROGRESS_BOOTSTRAP_REASON CCPANEL_RECOVERY_LEDGER
 : "${CCPANEL_RELEASE:?Set a new release name}"
@@ -107,6 +107,11 @@ PY
   if [ "$source_schema:$target_schema" = 20:21 ]; then
     if [ "$(docker compose exec -T postgres psql -X -U ccpanel -d ccpanel -Atqc 'SELECT (SELECT count(*) FROM pressure_signal_states)+(SELECT count(*) FROM pressure_signal_history)')" != 0 ]; then
       docker compose stop api worker;echo 'Unexpected pressure collection before reconciliation; services stopped for inspection' >&2;exit 1
+    fi
+  fi
+  if [ "$source_schema:$target_schema" = 21:22 ]; then
+    if [ "$(docker compose exec -T postgres psql -X -U ccpanel -d ccpanel -Atqc 'SELECT (SELECT count(*) FROM dlq_alert_states)+(SELECT count(*) FROM dlq_alert_history)')" != 0 ]; then
+      docker compose stop api worker;echo 'Unexpected DLQ collection before reconciliation; services stopped for inspection' >&2;exit 1
     fi
   fi
   if [ "$source_schema:$target_schema" = 19:20 ]; then

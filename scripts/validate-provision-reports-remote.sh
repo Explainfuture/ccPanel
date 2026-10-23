@@ -16,7 +16,7 @@ assert meta['loadFinishedAt']<=time.time()*1000
 assert hashlib.sha256((root/'samples-finished.jsonl').read_bytes()).hexdigest()==meta['samplesSha256']
 PY
 version=${CCPANEL_VALIDATION_VERSION:-16}
-[[ "$version" =~ ^(15|16|17|18|19|20|21)$ ]]
+[[ "$version" =~ ^(15|16|17|18|19|20|21|22)$ ]]
 bootstrap_version=$version
 stage="/opt/ccpanel/shared/validation-v$version"
 case "${CCPANEL_VALIDATION_SUITE:-all}" in
@@ -30,9 +30,11 @@ case "${CCPANEL_VALIDATION_SUITE:-all}" in
   operational-history) [[ "$version" -ge 18 ]]; suites=operational-history;;
   project-retention) [[ "$version" -ge 20 ]]; suites=project-retention;;
   retention-recovery) [[ "$version" -ge 20 ]]; suites=retention-recovery;;
-  pressure-alerts) [[ "$version" = 21 ]]; suites=pressure-alerts;;
-  pressure-persistence) [[ "$version" = 21 ]]; suites=pressure-persistence;bootstrap_version=20;;
-  schema-upgrade) [[ "$version" = 21 ]]; suites=schema-upgrade;bootstrap_version=19;;
+  pressure-alerts) [[ "$version" -ge 21 ]]; suites=pressure-alerts;;
+  pressure-persistence) [[ "$version" -ge 21 ]]; suites=pressure-persistence;bootstrap_version=20;;
+  schema-upgrade) [[ "$version" -ge 21 ]]; suites=schema-upgrade;bootstrap_version=19;;
+  dlq-health) [[ "$version" = 22 ]]; suites=dlq-health;;
+  dlq-persistence) [[ "$version" = 22 ]]; suites=dlq-persistence;bootstrap_version=21;;
   *) echo 'Unsupported isolated validation suite' >&2;exit 1;;
 esac
 # The parent /app source mount is read-only. Docker needs the nested mount

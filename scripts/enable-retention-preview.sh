@@ -15,7 +15,7 @@ upgrade=$(realpath -e "${CCPANEL_UPGRADE_DIR:?Set verified trusted upgrade evide
 [[ "$upgrade" =~ ^/opt/ccpanel/shared/product-upgrade\.[A-Za-z0-9]{6}$ ]]
 test "$(cat "$upgrade/target-release.txt")" = "$CCPANEL_EXPECTED_RELEASE"
 schema=$(cat "$upgrade/target-schema.txt")
-[[ "$schema" = 17 || "$schema" = 18 || "$schema" = 19 || "$schema" = 20 || "$schema" = 21 ]]
+[[ "$schema" = 17 || "$schema" = 18 || "$schema" = 19 || "$schema" = 20 || "$schema" = 21 || "$schema" = 22 ]]
 test -s "$upgrade/backup-verified.json"
 cmp "$upgrade/before.jsonl" "$upgrade/after.jsonl"
 cd /opt/ccpanel/current/infra
