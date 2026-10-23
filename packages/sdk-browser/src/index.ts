@@ -74,6 +74,11 @@ export class Analytics {
   }
   private saveIdentity(){if(!this.hasConsent())return;try{if(typeof localStorage!=='undefined')localStorage.setItem(this.identityKey,JSON.stringify({anonymous:this.anonymous,user:this.user}));}catch{this.error('identity_storage_error');}}
   async track(name:string,properties:Record<string,Json>={}):Promise<TrackResult>{
+    return this.trackWithIdentity(name,properties,this.user||this.anonymous,this.anonymous);
+  }
+  // Snapshot caller-provided identities without mutating the instance identity.
+  // Node request handlers use this path so concurrent users cannot overwrite it.
+  protected async trackWithIdentity(name:string,properties:Record<string,Json>,distinctId:string,anonymousId?:string):Promise<TrackResult>{
     if(!this.hasConsent()||!this.running)return{status:'rejected',reason:'consent_required'};
     const version=this.epoch;
     // Freeze the payload before the first await so identity changes and caller mutation cannot rewrite it.
@@ -89,8 +94,8 @@ export class Analytics {
       }
       const context:Record<string,Json>={sdk:'ccpanel',version:'0.1.0',source:this.options.source||'browser'};
       if(typeof location!=='undefined')context.page=location.pathname;
-      event={event_id:crypto.randomUUID(),event_name:name,distinct_id:this.user||this.anonymous,anonymous_id:this.anonymous,event_time:new Date().toISOString(),properties,context,schema_version:1};
-      const invalid=validateEvent(event);if(invalid){this.error(invalid);return{status:'rejected',reason:invalid};}
+      event={event_id:crypto.randomUUID(),event_name:name,distinct_id:distinctId,anonymous_id:anonymousId,event_time:new Date().toISOString(),properties,context,schema_version:1};
+      const invalid=validateEvent(event)||(name==='$identify'&&!anonymousId?'missing_anonymous_id':undefined);if(invalid){this.error(invalid);return{status:'rejected',reason:invalid};}
       event=JSON.parse(JSON.stringify(event));
       // Default privacy filter applies recursively without touching the caller's object.
       const scrub=(v:Json):Json=>Array.isArray(v)?v.map(scrub):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).filter(([k])=>!sensitive.test(k)).map(([k,x])=>[k,scrub(x)])):v;

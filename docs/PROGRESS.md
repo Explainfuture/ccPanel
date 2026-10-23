@@ -758,3 +758,9 @@ Chrome生产构建模拟Kafka保护允许/处理16满载，页面正确暂停并
 143项单测、类型/构建、独立产物检查本地通过；Chrome真实IndexedDB生命周期通过，80秒性能对照1200条持久、同步p95/p99=0.5/0.7ms，入队3.5/6.5ms、无诊断/长任务/剩余队列，详见SDK-PERFORMANCE含测试条件。SDK大小5882/6845字节，运行hash不同于旧产物所以确实重测，未假称字节相同。新CI打包与PG结果待本分支。浏览器及静态服务已关闭；当前公网仍m4-retention-002，无本次SDK/步骤104–106功能部署，npm未发布。Node共享实例的有状态identify不适合作多用户并发身份切换，每事件独立身份接口仍待补，未用示例承诺该能力。
 
 步骤107 CI补充：Actions39881174615（07de214）verify/postgres均success，143项单测及5套真实PG控制器通过；Linux/Node22真实pnpm打包后的仓库外消费者检查输出passed:true，NodeNext无DOM、Browser Bundler/NodeNext、严格负例、实际模块导入/Node持久队列/稳定ID确认/关闭释放锁均执行成功。同步preview/integration和草稿PR1。SDK未发布到npm，公网仍m4-retention-002。当前Node状态化身份的并发多用户能力仍待补齐。
+
+### 步骤108：Node SDK每事件身份（未发布部署）
+
+新增trackFor(distinctId,eventName,properties)，请求调用同步快照身份及属性，复用既有授权、过滤、校验、队列、重试路径，不更改实例identify状态。显式用户事件不携带服务器实例的匿名ID，不能把多个请求用户隐式合并；需要匿名身份关联时仍须独立、明确的关联流程。用户ID须由业务鉴权上下文提供，SDK不验证业务身份，也不能切换凭证绑定的公司。
+
+新增并发A/B用户与legacy混用、调用后对象变更、敏感属性过滤、503后文件重开原ID原载荷确认、无效ID/关联及撤回授权测试。145项单测、类型/构建通过；真实pnpm包的仓库外严格类型负例及两个用户持久队列运行通过。Chrome155真实IndexedDB生命周期通过；80秒测试1200条全部持久，同步p95/p99=0.4/0.6ms，入队3.3/4.5ms，无长任务、诊断、内存降级或剩余队列。网络stub，不能代表Kafka或公网吞吐。Browser/Node gzip5926/6916字节。浏览器与静态服务已关闭。CI待本分支，公网仍m4-retention-002；容量Swap门槛及其他生产发布要求仍未全部通过。

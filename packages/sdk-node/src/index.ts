@@ -1,8 +1,8 @@
 import { mkdir,open,rename,readFile,unlink } from 'node:fs/promises';
 import { dirname,resolve } from 'node:path';
-import { Analytics,type AnalyticsOptions,type EventMap,type TypedAnalytics } from '../../sdk-browser/src/index.js';
+import { Analytics,type AnalyticsOptions,type EventMap,type TypedAnalytics,type TrackResult } from '../../sdk-browser/src/index.js';
 import { MemoryQueue,type QueueRow,type RestoredRow } from '../../sdk-browser/src/queue.js';
-import { validateEvent,type AnalyticsEvent } from '../../schema/src/index.js';
+import { validateEvent,type AnalyticsEvent,type Json } from '../../schema/src/index.js';
 export class FileQueue extends MemoryQueue {
   override readonly persistent=true;
   private path:string;private ready:Promise<void>|undefined;private chain:Promise<unknown>=Promise.resolve();
@@ -71,10 +71,18 @@ export class FileQueue extends MemoryQueue {
   }
 }
 export type NodeOptions=Omit<AnalyticsOptions,'source'|'queue'>&{outboxPath?:string};
-export function createNodeAnalytics(options:NodeOptions):Analytics&{shutdown():Promise<void>};
-export function createNodeAnalytics<Events extends EventMap>(options:NodeOptions):TypedAnalytics<Events>&{shutdown():Promise<void>};
+class NodeAnalytics extends Analytics{
+  trackFor(distinctId:string,name:string,properties:Record<string,Json>={}){return this.trackWithIdentity(name,properties,distinctId);}
+}
+export type NodeClient=Analytics&{trackFor(distinctId:string,name:string,properties?:Record<string,Json>):Promise<TrackResult>;shutdown():Promise<void>};
+export type TypedNodeClient<Events extends EventMap>=TypedAnalytics<Events>&{
+  trackFor<Name extends Extract<keyof Events,string>>(distinctId:string,name:Name,...args:{} extends Events[Name]?[properties?:Events[Name]]:[properties:Events[Name]]):Promise<TrackResult>;
+  shutdown():Promise<void>;
+};
+export function createNodeAnalytics(options:NodeOptions):NodeClient;
+export function createNodeAnalytics<Events extends EventMap>(options:NodeOptions):TypedNodeClient<Events>;
 export function createNodeAnalytics(options:NodeOptions):unknown{
   const queue=options.outboxPath?new FileQueue(options.outboxPath):new MemoryQueue();
-  const analytics=new Analytics({...options,queue,source:'node'});
+  const analytics=new NodeAnalytics({...options,queue,source:'node'});
   return Object.assign(analytics,{async shutdown(){try{await analytics.flush();}finally{analytics.destroy();if(queue instanceof FileQueue)await queue.close();}}});
 }

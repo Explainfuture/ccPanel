@@ -51,3 +51,9 @@ SDK以接入端点及项目隔离一个不含用户信息的本地授权标记�
 check-packed-sdks.py验证真实pnpm tarballs：有界解包到OS临时目录且确认不在仓库下，NodeNext无DOM、Browser Bundler/NodeNext有DOM均strict/skipLibCheck=false；错误事件/属性/缺必填属性负例必须产生编译错误。SDK模块只从消费者node_modules加载，编译器/Node开发类型复用工作区已安装版本，不作注册表依赖安装。实际包名导入、Node文件队列持久入队/稳定ID确认清空/shutdown释放锁通过，Browser ESM在Node的无事件导入仅smoke，不冒充浏览器验收。加入CI打包检查。
 
 Chrome155/Windows/20逻辑处理器/浏览器报告16GiB，实际IndexedDB跨页撤回与关闭重开流程passed；最终SDK gzip Browser5882/Node6845字节，大小相同但运行产物hash改变，故重新测量。1200条20EPS均持久入队，同步p95/p99=0.5/0.7ms，入队完成3.5/6.5ms，长任务/诊断/内存降级/最终队列0，全程可见。网络仍stub。基线阶段并行进行过类型/单测工作，未做整机静默隔离；只作为该工作站主动阶段绝对成本观察，不从新版/旧版差值作因果性能结论，设备/浏览器矩阵仍未齐全。
+
+## 步骤108：服务端并发用户身份
+
+Node trackFor对每个调用快照显式distinct_id，不改变共享实例身份，也不携带实例匿名ID；普通track/identify保持原语义。真实文件队列验证同时上报A/B及legacy用户、属性快照与过滤、503后重开相同ID/载荷并确认清空。真实pnpm消费者新增泛型负例及双用户持久队列验证，NodeNext无DOM编译通过。
+
+共享采集代码变化后重测Chrome155/Windows（20逻辑处理器、浏览器报告16GiB）：10秒基线、10秒空闲、60秒20EPS，1200条全部持久；同步p95/p99=0.4/0.6ms，持久完成3.3/4.5ms，无长任务、诊断、内存降级、最终待发或页面可见性变化。基线期间未执行构建/单测，但未控制整机后台负载，不能作跨版本因果比较。IndexedDB跨页撤回与关闭重开验收通过。Browser gzip5926、Node6916字节。HTTP202内存stub，仍非Kafka/公网性能或跨设备矩阵结论。
