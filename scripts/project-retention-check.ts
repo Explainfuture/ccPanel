@@ -61,7 +61,8 @@ try{
   await pool.query("INSERT INTO sessions VALUES($1,$2,$3,now()+interval '1 hour')",[digest(secret),admin,digest(csrf)]);
   await pool.query("INSERT INTO write_keys(id,tenant_id,project_id,key_hash,label) VALUES($1,$2,$3,$4,'synthetic retention check')",[randomUUID(),tenant,project,digest(key)]);
   let published=0;
-  const app=createApp({ready:()=>true,publish:async records=>{published+=records.length;}});
+  // Explicit synthetic open admission; no broker/disk sampler runs in this suite.
+  const app=createApp({ready:()=>true,admissionStatus:()=>({allowed:true,reason:null,integrityReason:null,retryAfterSeconds:0,totalLagMessages:'0',maxLagMessages:'0',remainingMessages:256,reservedMessages:0,unknownMessages:0,pendingRequests:0,reservationCount:0}),publish:async records=>{published+=records.length;}});
   const root=`/api/tenants/${tenant}/projects/${project}`,headers={cookie:`ccpanel_session=${secret}`,origin,'content-type':'application/json','x-csrf-token':csrf};
   const replay=async(r:StoredEnvelope)=>{
     const id=digest(randomUUID());
