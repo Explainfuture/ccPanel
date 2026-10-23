@@ -23,6 +23,7 @@ jobs:
       - run: bash -n scripts/worker-commit-kill-remote.sh && node --check scripts/worker-commit-kill-check.mjs
       - run: bash -n scripts/checkpoint-window-remote.sh && node --check scripts/checkpoint-window-check.mjs
       - run: python3 scripts/check-upgrade-guards.py
+      - run: python3 scripts/check-retired-drills.py
       - run: python3 scripts/check-schema21-upgrade.py
       - run: python3 scripts/check-schema21-activation.py
       - run: python3 scripts/check-schema22-postmigration.py

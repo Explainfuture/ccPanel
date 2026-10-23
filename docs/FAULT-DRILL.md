@@ -61,3 +61,17 @@ EXIT/TERM/INT有恢复启动保护；失败时保留fixture和日志便于检查
 首轮GlpWmb通过后，补充显式总aggregation_jobs=2断言，用新资源n0ffhQ复核最终脚本通过。最终raw/dedup/jobs/processed/桶贡献各2、duplicates1、DLQ0、精确原event_id集合；PG/Kafka/source分区0均2，空分区PG0/Kafka-1如实记录未消费。全程是实际PG/Worker/Kafka/代理和真实SIGKILL，不用sleep猜测server是否已COMMIT。
 
 服务暂停期间主库44个public关系（含恢复控制表）指纹同，临时topics/group/DB/env/ledger清理；随后原服务ready。主库raw2/dedup3/DLQ0、位点总15618、临时DB0、仍013。安全结果双方保存。结合195，当前构建的三个指定提交/进度边界均有本机实测，但仅限合成事件、PG/Kafka持续可用和该单机配置；不等于宿主机断电、磁盘持久性、多副本容灾、容量或无中断保证。代理仅支持本次私网明文PG协议路径，不用于生产或外部流量。
+
+
+## 历史演练入口停用（步骤197）
+
+以下仓库入口依赖早期 staged-*-v10，实现保留在 Git 历史。现入口在读取运行环境和调用外部工具前，以状态码64退出并给出指引：
+
+| 历史入口 | 当前指引 |
+| --- | --- |
+| commit-crash-check-remote.sh | worker-commit-kill-remote.sh（步骤195） |
+| checkpoint-live-check-remote.sh | checkpoint-window-remote.sh（步骤196） |
+| pressure-live-check-remote.sh | CAPACITY.md；没有此历史演练的当前等价入口 |
+| retention-live-check-remote.sh | 本文已有保留策略证据；没有此历史演练的当前等价入口 |
+
+check-retired-drills.py 在空PATH下执行四个入口，要求退出64、无标准输出且错误指引匹配；Linux CI和VPS独立临时目录验证该行为。本次仅更新仓库及后续发布源，没有覆盖当前不可变013发布目录；013归档内旧入口仍可能存在，运维请使用本节指引及194–196新控制器。此防误用检查不增加业务故障或容量通过项。
