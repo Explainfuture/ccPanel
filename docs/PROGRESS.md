@@ -1365,4 +1365,8 @@ fix/170-load-abort-evidence的0fc3c2c增加fsync/原子manifest、排他输出�
 
 数据报告器检查确认集合并拒绝aborted；资源CLI及远程finalizer也拒绝完整导出。旧证据不重写，167仍缺原清单/未通过。实际finalizer Python段以aborted输入执行，返回拒绝且未产生完整快照；这不是整个shell/Docker控制流验证，CI另外做bash语法。
 
-本地217测试/类型检查及真实Windows子进程验证通过：正常与故障会计、控制文件停止、超大控制保守停止、实际SIGKILL后清单覆盖已尝试ID、旧命名空间拒绝重启。preload在每次模拟HTTP发送时实际读取落盘manifest验证ID先存在；不是仅比较实现的内存数组。信号测试在Windows明确标为未执行，Linux SIGINT/SIGTERM待CI；所有网络为synthetic fetch、没有VPS或账号访问。使用/边界见CAPACITY步骤170，本轮没有重新压测或改变服务器配置。
+本地217测试/类型检查及真实Windows子进程验证通过：正常与故障会计、控制文件停止、超大控制保守停止、实际SIGKILL后清单覆盖已尝试ID、旧命名空间拒绝重启。preload在每次模拟HTTP发送时实际读取落盘manifest验证ID先存在；不是仅比较实现的内存数组。信号测试在Windows明确标为未执行，Linux SIGINT/SIGTERM待CI；所有网络为synthetic fetch、没有VPS或账号访问。使用/边界见CAPACITY步骤170，本轮未重新压测，应用及资源配置不变；shared导出工具更新另外记录。
+
+步骤170最终验证：0323242的[Actions39940730998](https://github.com/Explainfuture/ccPanel/actions/runs/39940730998)完整通过217测试/15PG及既有主机/构建/打包检查；实际CLI日志posix_sigint_sigterm_checked=true，两种信号、控制文件和强杀均执行通过。Windows仅对控制文件/强杀作实际证明，不假称POSIX信号经过Windows验证。
+
+服务器只同步shared/capacity-finalize-remote.sh，SHA256 `6851cee5c3065caa6a2057ef56eee1744556556fc1679581de17002da23f514b`，旧版保留在shared/validation-capacity170。校验哈希、bash语法及真正Linux Python段的aborted输入拒绝/无完整快照；不是完整shell/Docker导出正向演练。无新容量unit或测试流量，应用仍m4-durability-011/schema22，raw2/dedup3/DLQ0、位点总15607，四服务running/restart0/OOMfalse、HTTPS ready。容量旧结论不变，趋势三视图源码仍待发布。
