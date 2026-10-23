@@ -7,6 +7,7 @@ const labels={dlq_pending:'待处理来源',dlq_retention_risk:'保留窗口风�
 const categories={unresolved:'未解决',replaying:'等待重放回执',resolved:'有成功回执',suppressed:'隐私抑制'};
 const reasons:Record<string,string>={missing_snapshot:'尚无采样',invalid_snapshot:'采样未通过校验',future_sample:'采样时间位于未来',stale_sample:'采样已过期',future_record:'存在未来时间的来源，无法可靠判断',retained_pending:'仍有未解决或等待回执的来源',no_retained_pending:'未发现保留的待处理来源',below_retention_warning:'待处理来源尚未达到保留预警线',retention_window_near:'最老待处理来源已达到12天',retention_window_exceeded:'最老待处理来源已达到或超过14天'};
 const count=(v:string|null)=>v===null?'未确认':new Intl.NumberFormat('zh-CN').format(BigInt(v));
+export {labels as dlqLabels,reasons as dlqReasons};
 export default function DlqHealthPanel({prefix}:{prefix:string}){
   const [request,setRequest]=useState(0),[data,setData]=useState<DlqHealth|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[requestedAt,setRequestedAt]=useState(0),[clock,setClock]=useState(0);
   useEffect(()=>{
@@ -27,6 +28,6 @@ export default function DlqHealthPanel({prefix}:{prefix:string}){
     <div className="panel-body"><p role="status" className="muted">{busy?'正在读取 DLQ 风险…':data?'评估于 '+new Date(data.computed_at).toLocaleString('zh-CN'):'手动读取，不自动轮询。'}</p>{error?<p role="alert" className="error">{error}</p>:null}<p className="fine-print">重放请求或发布不等于成功；等待回执仍属待处理。12天开始提示保留风险，14天以上仍在索引内的来源继续提示。</p></div>
     {data?<>{data.categories?<section className="summary-strip dlq-health-counts">{Object.entries(categories).map(([key,label])=><div key={key}><span>{label}</span><strong>{count(data.categories![key as keyof typeof categories])}</strong></div>)}</section>:null}
       <div className="table-scroll" tabIndex={0} aria-label="DLQ 风险明细，可横向滚动"><table><thead><tr><th>规则</th><th>当前状态</th><th>读取时依据</th><th>待处理来源数</th><th>最老来源年龄</th></tr></thead><tbody>{data.signals.map(s=><tr key={s.rule}><td>{labels[s.rule]}</td><td><span role="status" className={expired(s)||s.state==='unknown'?'text-amber-700':s.state==='firing'?'text-red-700':'text-emerald-700'}>{expired(s)?'已过期，当前未知':s.state==='unknown'?'未知':s.state==='firing'?'触发':'未触发'}</span></td><td>{reasons[s.reason]}</td><td>{count(s.pending_records)}</td><td>{s.oldest_pending_age_seconds===null?'未确认':count(s.oldest_pending_age_seconds)+' 秒'}</td></tr>)}</tbody></table></div>
-      <div className="panel-body"><p className="fine-print">计数和年龄表示读取时证据，90秒后当前状态未知，页面计时包含网络等待。来源记录数不等于唯一事件数；未触发不证明事件已修复或 Kafka DLQ 完整。</p><p className="fine-print">此处含无公司归属和已过期但尚未物理清理的索引记录；不会返回载荷或公司标识。尚未提供 DLQ 风险持久历史和外部通知。窄屏可横向滚动。</p></div></>:null}
+      <div className="panel-body"><p className="fine-print">计数和年龄表示读取时证据，90秒后当前状态未知，页面计时包含网络等待。来源记录数不等于唯一事件数；未触发不证明事件已修复或 Kafka DLQ 完整。</p><p className="fine-print">此处含无公司归属和已过期但尚未物理清理的索引记录；不会返回载荷或公司标识。下方可手动读取保留的变化，外部通知仍待接入。窄屏可横向滚动。</p></div></>:null}
   </section>;
 }

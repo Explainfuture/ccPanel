@@ -10,6 +10,7 @@ import OperationalAlertsPanel from './OperationalAlertsPanel';
 import PressureSignalsPanel from './PressureSignalsPanel';
 import PressureHistoryPanel from './PressureHistoryPanel';
 import DlqHealthPanel from './DlqHealthPanel';
+import DlqAlertHistoryPanel from './DlqAlertHistoryPanel';
 import type {PressureAlerts} from '../../../packages/server/src/pressure-alerts';
 import type {AdmissionStatus} from '../../../packages/server/src/ingest-admission';
 type Metric={metric:string;value:string};
@@ -73,5 +74,6 @@ export default function DeliveryMonitor({prefix,canManage,canObservePlatform=fal
     {canObservePlatform&&!platformError&&!error?<OperationalAlertsPanel key={prefix+':operational-alerts'} prefix={prefix}/>:null}
     {canObservePlatform&&!platformError&&!error?<PressureHistoryPanel key={prefix+':pressure-history'} prefix={prefix}/>:null}
     {canObservePlatform&&!platformError&&!error?<DlqHealthPanel key={prefix+':dlq-health'} prefix={prefix}/>:null}
+    {canObservePlatform&&!platformError&&!error?<DlqAlertHistoryPanel key={prefix+':dlq-alert-history'} prefix={prefix}/>:null}
   </>;
 }
