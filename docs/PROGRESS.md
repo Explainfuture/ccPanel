@@ -1194,3 +1194,15 @@ b338ecb把既有API压力缓存接到30秒operational采样，同池/单在途�
 本地194单测/53文件、类型/构建通过。初版CI39915790338成功；最终0d6fe0e的CI39915956307全部success：194单测、构建/SDK/CLI/Python及13套真实PG。实际调度证明API采集落三状态/三历史、回调一次、Worker回调不执行、关闭采集回调不执行、连接池关闭；真实HTTP证明双资格/跨公司/no-store、空历史unavailable、旧firing保留但当前unknown、新证据fresh、部分状态invalid/current unknown、9007199254740993计数与revision精确、50上限数值排序、撤销运维资格403及共享12次预算。
 
 采样30秒大于Kafka默认源TTL15秒，持久视图允许未知/gap，不能冒充连续监测；14天还受5000容量上限。前端历史、外部通知与schema21受控升级/恢复/线上验证未完成。未访问或修改VPS，线上仍m4-recovery-008/schema20，可信部署工具不放开21。资源门槛、自动异机最新状态同步和其他PRD缺口继续未完成。
+
+### 步骤156：压力历史页面与调度验收修正（未部署）
+
+dd83001新增手动压力历史和严格前端响应校验，69f8f86新增两项单测；当时状态/当前状态分开、请求开始单调计时扣网络等待、本地到期及visibility校正，畸形/失权/限流/错误清数据。普通admin无面板/请求，父平台或项目读取失败卸载，项目prefix键隔离，表格可聚焦横向滚动。196单测/54文件、类型与构建通过；初次类型检查发现row守卫丢失额外字段类型，提交前已修正。
+
+Playwright CLI Chrome合成API验证手动无自动请求、精确大整数修订、自然过期但历史firing保留、2秒响应延迟不刷新有效期、畸形/403/429/503清数据、父平台失败卸载、普通admin不请求及1280/390布局全部true；截图已查看。关闭首轮Vite时发现已有历史/告警与新增历史同prefix导致React duplicate key警告，705c66d给三者独立项目key，重跑全部交互并加入console检查，no_duplicate_keys=true。浏览器pressure156/pressure156b与Vite均关闭，证据.local/pressure156-*。
+
+复查步骤155的后续文档提交CI39916316169及集成39916326439，真实PG调度专项失败：新增API/Worker同相位try-lock采集，原45秒测试强制Worker首tick成功，无此运行时公平保证。生产设计仍是busy跳过/无积压。cc63293先允许两个真实周期，代码审查发现仍隐含公平轮换假设；a1a1a1d改为Worker/API分别独立真实30秒窗口并各要求样本、API三压力状态/历史、回调一次、Worker/disabled不读回调和池关闭，保留先前显式busy-lock断言。总观察约31+30+30秒，仍使用120秒子进程上限、不改生产间隔/参数、不通过重跑掩盖原断言问题。步骤155的39915956307成功记录仍是该具体运行证据，不代表后续每次运行都成功。
+
+schema21受控升级、隔离恢复及线上验证仍待完成，VPS未访问/改动，当前仍m4-recovery-008/schema20。外部通知、资源门槛、持续异机最新状态同步与其他PRD缺口继续未完成。最终CI结果另列。
+
+步骤156最终a1a1a1d的CI39917192289全部success：196单测、类型/构建/打包消费者/CLI/Python以及13套真实PG。日志明确scheduled_api_pressure、pressure_callback_once、disabled_pressure_not_read、collector_pool_closed及压力HTTP50数值排序/双资格/过期、schema20→21迁移和历史原子性全部true。修改后的真实调度验收保留约91秒观察，不修改生产参数。源码/浏览器证据与服务器发布分列；同步集成分支/草稿PR。
