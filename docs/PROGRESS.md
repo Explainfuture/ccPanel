@@ -908,3 +908,5 @@ Node语法检查通过。尚未执行本轮数据库对账；须原始生成器7
 原ingest-status请求复用host_resources，无新增fetch/监听器/轮询，组件随已有延迟加载的投递监控模块加载。仅canObservePlatform可见；展示采样时间/年龄、可用/总内存、Swap存量、load、CPU五区间、Swap速率及两个用途磁盘/节点余量。BigInt二进制单位截取两位并保留原字节data/title，未知不填0；清楚说明并非容器RSS、瞬时速率或容量通过，同盘余量不相加。沿用现有视觉规范并应用React性能指南（复用请求、类型导入、formatter提升，无多余memo依赖）。
 
 类型/生产构建通过。Chrome mock验证322MiB/1GiB/128MiB及原始字节、70%/4KiB秒/0B秒、首帧不伪造0、stale/invalid/unavailable清除、普通admin/viewer无资源面板、桌面和390px截图已查看/无文档溢出，表格可横滚。浏览器及本地服务关闭，CI待本分支，未部署。VPS原负载71955仍live，25分钟确认1500、错误0；当前固定版本容量测量不含124–125源码改动。
+
+步骤125 CI补充：Actions39890446035（bc00e20）success，156项单测、构建及6套真实PG控制器通过。同步preview/integration/草稿PR1；资源UI及缓存仍未部署。原容量窗口临近结束，下一步优先观察原生成器71955终态并冻结/对账，不将此CI代替运行证据。
