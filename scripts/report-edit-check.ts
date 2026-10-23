@@ -22,6 +22,9 @@ try{
   const intake=new IntakeMetrics();intake.observe({status:202,events:2,durationMs:9});let intakeReads=0;
   const app=createApp({maxIntakeInFlight:2,ready:()=>true,intakeStatus:()=>{intakeReads++;return intake.snapshot();},publish:async()=>{throw new Error('unexpected_publish');}}),root=`/api/tenants/${a}/projects/${project}`,other=`/api/tenants/${b}/projects/${otherProject}`;
   const req=(user:string,path:string,body?:unknown,method=body?'POST':'GET')=>app.request(path,{method,headers:headers.get(user),...(body?{body:JSON.stringify(body)}:{})});
+  assert.equal((await req(admin,root+'/ingest-status')).status,403);assert.equal(intakeReads,0);assert.equal((await (await req(admin,'/api/me')).json()).platform_operator,false);
+  await pool.query('INSERT INTO platform_operators(user_id) VALUES($1)',[admin]);
+  assert.equal((await (await req(admin,'/api/me')).json()).platform_operator,true);
   const telemetry=await req(admin,root+'/ingest-status');assert.equal(telemetry.status,200);const telemetryBody=await telemetry.json();assert.equal(telemetryBody.intake.scope,'api_instance_aggregate');assert.equal(telemetryBody.intake.responses[0].known_events,'2');
   assert.deepEqual(telemetryBody.processing,{in_flight:0,max_in_flight:2,at_capacity:false});
   for(const actor of [viewer,analyst])assert.equal((await req(actor,root+'/ingest-status')).status,403);
@@ -57,6 +60,8 @@ try{
   await pool.query('DELETE FROM query_jobs WHERE id=ANY($1::uuid[])',[statusIds]);
   const emptyStatus=await (await req(admin,root+'/query-status')).json();for(const row of emptyStatus.states){assert.equal(row.count,'0');assert.equal(row.oldest_age_seconds,null);}
   for(const id of [a,b,project,otherProject])assert.ok(!JSON.stringify(telemetryBody).includes(id));
+  await pool.query('UPDATE platform_operators SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=$1',[admin]);assert.equal((await req(admin,root+'/ingest-status')).status,403);assert.equal(intakeReads,1);assert.equal((await (await req(admin,'/api/me')).json()).platform_operator,false);
+  await pool.query('DELETE FROM platform_operators WHERE user_id=$1',[admin]);
   const day=Math.floor(Date.now()/86400000)*86400000,first=day-86400000-1800000;
   const range={from:new Date(day-3*86400000).toISOString(),to:new Date(day).toISOString()};
   const trend={kind:'trend',...range,event_name:'view',metric:'count',filters:[],group_by:[]};

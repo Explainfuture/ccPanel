@@ -285,6 +285,7 @@ export function createApp(deps: AppDeps) {
     return c.json({
       user: u.rows[0],
       tenants: t.rows,
+      platform_operator: (await query('SELECT 1 FROM platform_operators WHERE user_id=$1 AND revoked_at IS NULL',[c.get('userId')])).rowCount===1,
       csrf_token: digest(getCookie(c, "ccpanel_session")! + ":csrf"),
     });
   });
@@ -560,8 +561,9 @@ export function createApp(deps: AppDeps) {
       ).rows,
     }),
   );
-  app.get(prefix+'/ingest-status',c=>{
+  app.get(prefix+'/ingest-status',async c=>{
     if(!allowed(c,['admin']))return c.json({error:'forbidden'},403);
+    if(!(await query('SELECT 1 FROM platform_operators WHERE user_id=$1 AND revoked_at IS NULL',[c.get('userId')])).rowCount)return c.json({error:'forbidden'},403);
     return c.json({scope:'platform_aggregate',computed_at:new Date().toISOString(),admission:deps.admissionStatus?.()??null,intake:deps.intakeStatus?.()??null,processing:{in_flight:intakeInFlight,max_in_flight:maxIntakeInFlight,at_capacity:intakeInFlight>=maxIntakeInFlight}});
   });
   app.get(prefix+'/query-status',async c=>c.json(await readQueryStatus(c.get('tenantId'),c.req.param('project')!)));
