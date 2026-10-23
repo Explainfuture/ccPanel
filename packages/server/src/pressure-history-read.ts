@@ -18,7 +18,10 @@ export async function queryPressureHistory(db:PoolClient){
   try{
     if(!valid)throw 0;const first=states[0]!;
     if(states.some(s=>s.instance_id!==first.instance_id||s.started_at!==first.started_at||s.assessed_at!==first.assessed_at||s.recorded_at!==first.recorded_at||s.payload_hash!==first.payload_hash||s.policy_hash!==first.policy_hash||JSON.stringify(s.evidence.policy)!==JSON.stringify(first.evidence.policy)||Date.parse(s.recorded_at)>now.getTime()))throw 0;
-    const parsed=parsePressureObservation({instance_id:first.instance_id,started_at:iso(first.started_at),assessment:{scope:'platform_pressure',computed_at:iso(first.assessed_at),signals:states.map(s=>s.evidence.signal),policy:first.evidence.policy}},now.getTime());
+    // The parser's seven-day admission window belongs to writes. Stored evidence
+    // can remain after collection stops; its source expiry still makes it unknown.
+    if(Date.parse(first.assessed_at)>now.getTime())throw 0;
+    const parsed=parsePressureObservation({instance_id:first.instance_id,started_at:iso(first.started_at),assessment:{scope:'platform_pressure',computed_at:iso(first.assessed_at),signals:states.map(s=>s.evidence.signal),policy:first.evidence.policy}},Date.parse(first.assessed_at));
     if(parsed.payload_hash!==first.payload_hash||parsed.policy_hash!==first.policy_hash)throw 0;
   }catch{valid=false;}
   const present=(s:Row)=>({...(s.id?{id:s.id,change_kind:s.change_kind}:{}),rule:s.rule,state_at_assessment:s.state_at_assessment,reason:s.reason,instance_id:s.instance_id,started_at:iso(s.started_at),assessed_at:iso(s.assessed_at),recorded_at:iso(s.recorded_at),state_since:iso(s.state_since),revision:String(s.revision),signal_expires_at:s.signal_expires_at===null?null:iso(s.signal_expires_at),signal:s.evidence.signal,policy:s.evidence.policy});

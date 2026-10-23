@@ -14,6 +14,7 @@ async function query(states:unknown[],now:number){let calls=0;const db={query:as
 it('keeps independent source expiry and historical state, with exact string revisions',async()=>{
   const rows=fixture(),boundary=await query(rows,at+15000);expect(boundary.persistence_state).toBe('fresh');expect(boundary.states.every(s=>s.current_state==='clear')).toBe(true);expect(boundary.states[0]!.revision).toBe('9007199254740993');
   const expired=await query(rows,at+15001);expect(expired.persistence_state).toBe('expired');expect(expired.states.find(s=>s.rule==='kafka_backlog')!.current_state).toBe('unknown');expect(expired.states.find(s=>s.rule==='storage_headroom')!.current_state).toBe('clear');expect(expired.states.every(s=>s.state_at_assessment==='clear')).toBe(true);
+  const stopped=await query(rows,at+8*86400000);expect(stopped.persistence_state).toBe('expired');expect(stopped.states.every(s=>s.current_state==='unknown')).toBe(true);
 });
 it('treats absent, incomplete, mismatched and future evidence conservatively',async()=>{
   expect((await query([],at)).persistence_state).toBe('unavailable');
