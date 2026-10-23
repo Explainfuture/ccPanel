@@ -1518,3 +1518,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 本机运行passed：flushElapsedMs10003、请求1、保留原ID未确认行1、真实子进程正常退出、未强杀。25秒看门狗仅作为失败终止，未触发。临时HTTP和子进程终态已确认，测试目录按受限文件列表与空目录方式清理。
 - 纳入CI verify步骤；不将受控慢磁盘单测替代此次真实网络/时钟证据，也不将本次扩展为OS磁盘永久挂起或事件循环阻塞验证。未改SDK产品源码/VPS012，没有新容量窗口。
 - CI Actions39951997545 verify/postgres全部success（243项测试、15套真实PG及既有检查）。Linux真实子进程验收实测flushElapsedMs10001、请求1、原ID未确认文件行保留、正常退出/未强杀/锁释放，详见verify任务日志；与Windows本机10003ms分别记录。
+
+### 步骤 191：超时后的真实跨进程恢复
+
+- 扩展190真实进程验收：首进程超时/持久保留/自然退出后，依据文件next_attempt_at用真实时钟等待；新建第二个独立Node进程，接收端恢复202，新进程无track自动读原outbox。对比两次完整事件、确认后磁盘rows空、锁释放及两进程均自然退出。
+- 本机passed：首flush10003ms、initial_requests1/recovery_requests1，两次HTTP完整事件相同、原ID保持、202后文件清空，无看门狗强杀。fixture仍为合成本机HTTP，无fetch/时钟mock，不等同Kafka/PG去重或VPS容量。
+- 沿用已接入CI的真实验收步骤，未改SDK产品源码或VPS012；完整容量/设备等门槛保持。
