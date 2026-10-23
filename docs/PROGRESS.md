@@ -1300,3 +1300,5 @@ Encrypted dump and v2 ledger remain on both ends with the key separately on the 
 最终独立演练 `/opt/ccpanel/shared/dlq-ack-failure.bh7J1x` 退出0：broker拒收1次，Worker停止；间隔两次快照PG分区0位点0、Kafka两分区未提交(-1)、源分区0高位2、DLQ高位0、原始/去重/索引0。同分区正常消息未越过毒事件。恢复测试DLQ上限并启动新Worker后，分区0 PG/Kafka提交/高位2，分区1 PG0/Kafka未提交/高位0；正常原始和去重1、DLQ索引1、DLQ高位1，精确来源及event_id匹配。该项是消息拒收后的新进程恢复，不是独立broker网络故障或同进程重试证明。
 
 暂停期间主数据库44个public关系完全相同（包含recovery_gate和recovery_import_scopes），整体指纹SHA256 `1db8f2cca943c18b167596c39fdf68d29df19401f31f144a577840e2124f0ac4`；测试日志SHA256 `489c26e33ddbe6d38db3b714f2d76356e549034e5f2000c249d353289aff0d40`。临时数据库/全部本演练前缀topics/groups均0，临时凭证及清单删除。原库schema22/raw2/dedup3/DLQ0/operators0，主业务位点仍7184/7232。采集与清理两进程均true，四容器运行/restart0/OOMfalse、HTTPS ready；曾主动stop/start，不能宣称服务连续或替代容量门槛。剩余独立broker故障、瞬时事务和真实设备/外部备份通知等仍待完成。
+
+步骤164修正版 `83df171` 的 [Actions39932005942](https://github.com/Explainfuture/ccPanel/actions/runs/39932005942) 已通过206项单测、15套PG、72个主机工具mock、类型/构建/打包消费者检查及新增演练入口语法检查。真实Kafka拒收证据来自上述VPS演练，不将CI语法检查表述为真实broker测试。
