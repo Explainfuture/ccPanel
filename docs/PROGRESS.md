@@ -1022,3 +1022,11 @@ public CLI记录接入尝试/成功/失败/尝试事件数及UTF-8请求体字�
 真实SDK双用户入队/确认、原ID重复、异步趋势2成功，SQL raw/dedup/job精确集合各2、processed/bucket2、DLQ0，集合SHA5a996b350d050ac9e63e5e7f07fc8679442006156ee531edf5955bfbef26f506。临时平台资格HTTPS读取4即时clear、4持久fresh、8变化及字符串revision/id、两来源历史/no-store通过；初始新进程基线等待后得到真实30秒区间。线上Chrome告警三表、1280/390px完整截图已查看、无文档横溢；撤权后清除旧表、父失败卸载、重载隐藏均通过，浏览器关闭。
 
 清理测试公司/账号/会话、资格/平台审计及业务数据后，所有原关系除预期consumer_progress和新增operational_samples外完全一致；按received_at保留前140条原监控记录的原列hash单独一致。PG位点p0=6259/p1=6310，总12569，预期+4且来源check通过；raw2/dedup3/DLQ0、临时DB/合成公司/平台资格0。两进程采集/保留true，恢复/完整性门禁open、HTTPS ready，当前四容器running/restart0/OOMfalse（升级中有计划重建）。UTC04:03采样API76/Worker74、4告警clear/历史8；可用306MiB、Swap存量206MiB，四个2秒区间si/so0仅短样本，不是新容量通过。加密备份保留，临时明文/ledger/fixture/私有浏览器日志两端已清理。完整新容量、外部通知/其他规则、持续异机同步等继续。
+
+### 步骤139：schema19监控开启的固定容量窗口（仍运行）
+
+预检m4-alerts-006/schema19、raw2/dedup3/DLQ0/测试公司0、两进程采集/保留true、门禁open/消费来源检查/HTTPS ready。先保留原关系指纹capacity-alerts139-before.jsonl，再以只读共享采样工具启动一次独立窗口。边界配置证明v2新增固定采集/保留枚举，44b0548的CI39898546951 success（166单测/构建/CLI/8套PG）；实机配置读取也验证两进程enabled，不修改应用版本、服务参数或门禁。
+
+采样器ccpanel-capacity-20261023040704.service，证据capacity-integrity.HfanpA，标签schema19-monitor-on-v1，首帧及两个新鲜基线通过。下载独立fixture后启动唯一原生成器会话58941，目标1800秒1EPS/10秒趋势；含实际查询/字节账本的脚本SHA见CAPACITY。首次60秒进度61生成/60确认/1在途/7尚未可见、错误0，query6均成功/跳过0，尝试请求体均1073.5字节；p95是中途读数，不能报最终通过。
+
+已通过write_stdin确认58941仍live，服务器原采样器active/running、17帧/elapsed160001ms/末帧无错，未重开。当前仍有合成测试公司/凭证用于原负载，不能提前清理或部署；终态后必须冻结资源边界/配置与数据结果，再做精确集合证明及清理。新版本最终容量/资源结论仍待完整窗口，本轮没有生产通过结论。

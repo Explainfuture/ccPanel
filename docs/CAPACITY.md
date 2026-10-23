@@ -216,3 +216,11 @@ public load CLI新增workload字段：接入尝试/202且回执匹配的成功�
 查询另记机会、真正启动、成功、失败、因上一请求未结束而跳过的次数；开始时一次，随后约10秒一次，包含排空阶段。结束前等待在途请求，最终attempts=successes+failures，opportunities=attempts+skipped_busy。进度文件可能在途，不能要求当时终态等式。query_schedule_coverage要求至少一个机会且无busy跳过，passed另要求该覆盖及至少一次成功；不能将跳过的机会算作已施加查询负载。没有放宽既有事件/延迟/资源条件。
 
 真实CLI的独立合成fetch验收覆盖非ASCII UTF-8逐次请求体字节、接入503后的重试、慢查询跨过下一机会及应失败的覆盖判断。它不访问VPS，不证明服务器性能。旧容量结果没有这些字段，不回填查询次数或均值；m4-history-005尚未完成完整新负载窗口。
+
+## 步骤139：schema19新窗口（运行中，未验收）
+
+固定m4-alerts-006/schema19，label=schema19-monitor-on-v1，证据capacity-integrity.HfanpA，采样器ccpanel-capacity-20261023040704.service。新配置边界证明v2增加API/Worker持久采集/保留的固定枚举开关，不导出环境变量；实机基线两进程均enabled。应用产物/容器身份/限额等仍在边界核对。首帧及设置后两帧新鲜基线通过，新版30秒等待逻辑实际运行成功，没有重开采样器。
+
+原始负载工具会话58941，目标1EPS×1800秒，使用含实际查询和请求体字节账本的CLI，源码SHA256 44d0c0fccdd995da38a7630b77fc70be7f1962a070c581840b17380a46798831。首分钟generated61/ack60，另1在途、pending可见7、错误0；实际query6/成功6/跳过0，已尝试请求体总66557/平均1073.5字节（该帧仍有在途，不当最终总数）。接入/可见/查询p95约611ms/5.249s/678ms，仅中途读数。
+
+截至UTC04:09后核对，原生成器仍live；原采样器ActiveState=active/SubState=running，17帧、最后elapsed160001ms、无错误。systemd的Result=success/ExecMainStatus0在active期间不表示结束。尚无1800事件集合证明、冻结资源报告或容量结论；保持原版本与配置，不以进度文件代替进程状态，不盲目重启。后续必须观察原58941终态、同一采样器覆盖边界后冻结，再独立PG集合对账/清理，不能用旧版本通过项替代。
