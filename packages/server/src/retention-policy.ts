@@ -1,4 +1,4 @@
-// Pure transition contract used by the internal writer; no public write route yet.
+// Pure transition contract shared by the transactional writer and policy API.
 const day=86400000;
 export const retentionLimits={raw_min_days:1,raw_max_days:30,dedup_days:45,dlq_days:14,sdk_queue_days:7} as const;
 export type RetentionPolicy={raw_days:number;version:number;floor:string|null};
