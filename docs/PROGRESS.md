@@ -1457,3 +1457,4 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 对照 PRD 凭证不在 URL、队列按 endpoint/project 隔离，拒绝带用户信息/查询串/片段或非字符串的 endpoint，解析错误统一 invalid_endpoint，正常 URL 规范化。保持已有 HTTPS/loopback 开发例外，不改变服务端协议。
 - 复制初始化配置，防止调用方修改 endpoint/project/writeKey 对象让新请求与既有队列归属错位；合法密钥通过 updateWriteKey 更新。初始化项目/凭证及换钥补齐运行时字符串校验，不执行隐式强制转换。
 - 236 项测试、typecheck、build、两个 pnpm tarball 仓库外验证通过。新增两入口非法 URL 无定时器创建、非法运行时凭证、URL 规范化、配置变更不会改目标/项目、显式换钥仍生效。传输 stub，未替换 VPS 012；不将此前浏览器/线上验收挪作新版证明。
+- CI Actions 39947748888 verify/postgres 均成功，236 项测试、15 套真实 PG 及既有打包/部署保护检查通过。配置对象变更和换钥由源码用例验证；仓库外 tarball 检查覆盖导入、类型与持久队列运行，未声称该新用例本身在 tarball 上执行。
