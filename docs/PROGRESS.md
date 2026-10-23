@@ -894,3 +894,9 @@ Node语法检查通过。尚未执行本轮数据库对账；须原始生成器7
 首次CI39889089113前5套通过，第6套失败于测试假定每个aggregateNext仅处理一条；实际算法按同小时桶一次完成多条，第二次empty正常。修正第二次允许已空或另一桶完成（兼容事件跨小时边界），最终验证器仍强制processed2、bucket_events2及所有精确ID，未放松对账标准，未改业务算法。待新CI。
 
 步骤123 CI补充：Actions39889230924（c51a4d9）verify/postgres均success，153项单测及6套真实PG控制器通过；实际capacity_event_set_proof输出exact_ids、equal_count_wrong_raw_rejected、equal_count_wrong_job_rejected、invalid_requested_set_rejected均true。证明器已在隔离真实PG验证，但VPS当前1800秒窗口仍在运行，不能据此声明本轮1800事件已对账。保持原始71955和同一采样服务，13分钟进度确认780、错误0；后续继续等待终态/冻结窗口再执行本轮SQL证明与资源判定。
+
+### 步骤124：平台宿主机资源缓存API（未部署）
+
+复用现有host采样提供host_resources（CPU区间、内存/Swap占用、Swap字节速率、磁盘/文件节点余量），按平台运维权限隔离。大计数差使用BigInt，首帧/重复/过期/间隔/重置明确处理，未知不填0；数据拷贝隔离，监控内部失败不影响既有压力探测。无额外文件读取/PG写入，无进程/路径/业务数据；详见OBSERVABILITY。
+
+类型检查及3项专项测试通过（大于JS安全整数计数精确差、重复帧、输入/输出变更隔离、空文件节点分母、stale/gap/reset/failure/future/invalid/同时间冲突/回退）。真实PG控制器新增普通admin/撤销平台资格不调用资源快照、平台授权后可读host_aggregate且无基线明确unavailable，待CI。没有构建/部署到VPS，不改变正在运行的71955负载及采样器；界面、持久监控和本版容量仍待完成。

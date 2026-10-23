@@ -13,6 +13,7 @@ import { registerDeletions } from '../../../packages/server/src/deletion-service
 import { registerReplayRoutes } from '../../../packages/server/src/dlq-replay';
 import {readDeadLetterSummary} from '../../../packages/server/src/dlq-summary';
 import {readQueryStatus} from '../../../packages/server/src/query-status';
+import type {HostResourceStatus} from '../../../packages/server/src/host-resource-status';
 import { registerInvitationAcceptance,registerCompanyInvitations,lockMembership,membershipAdmin } from '../../../packages/server/src/invitations';
 import { IngestionPaused,type AdmissionStatus } from '../../../packages/server/src/ingest-admission';
 import { lockProjectPrivacy } from '../../../packages/server/src/privacy';
@@ -42,6 +43,7 @@ export interface AppDeps {
   admissionStatus?:()=>AdmissionStatus;
   observeIntake?:(value:IntakeObservation)=>void|Promise<void>;
   intakeStatus?:()=>ReturnType<IntakeMetrics['snapshot']>;
+  hostResourceStatus?:()=>ReturnType<HostResourceStatus['snapshot']>;
   maxIntakeInFlight?:number;
 }
 const validId = (s: string | undefined) =>
@@ -564,7 +566,7 @@ export function createApp(deps: AppDeps) {
   app.get(prefix+'/ingest-status',async c=>{
     if(!allowed(c,['admin']))return c.json({error:'forbidden'},403);
     if(!(await query('SELECT 1 FROM platform_operators WHERE user_id=$1 AND revoked_at IS NULL',[c.get('userId')])).rowCount)return c.json({error:'forbidden'},403);
-    return c.json({scope:'platform_aggregate',computed_at:new Date().toISOString(),admission:deps.admissionStatus?.()??null,intake:deps.intakeStatus?.()??null,processing:{in_flight:intakeInFlight,max_in_flight:maxIntakeInFlight,at_capacity:intakeInFlight>=maxIntakeInFlight}});
+    return c.json({scope:'platform_aggregate',computed_at:new Date().toISOString(),admission:deps.admissionStatus?.()??null,intake:deps.intakeStatus?.()??null,host_resources:deps.hostResourceStatus?.()??null,processing:{in_flight:intakeInFlight,max_in_flight:maxIntakeInFlight,at_capacity:intakeInFlight>=maxIntakeInFlight}});
   });
   app.get(prefix+'/query-status',async c=>c.json(await readQueryStatus(c.get('tenantId'),c.req.param('project')!)));
   app.get(prefix+'/dlq-summary',async c=>{
