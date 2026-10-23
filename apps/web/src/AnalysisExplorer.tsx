@@ -11,6 +11,7 @@ import { api, ApiError } from "./api";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import DashboardWorkspace from "./DashboardWorkspace";
+import TrendSeriesView from "./TrendSeriesView";
 import type {Dashboard} from "./DashboardEditor";
 import ReportEditor from "./ReportEditor";
 import { BehaviorResultView, type BehaviorResult } from "./BehaviorExplorer";
@@ -65,7 +66,6 @@ function ResultView({result}:{result:Result}) {
   return <>{result.saved_report ? <p className="fine-print panel-body">报表版本 {result.saved_report.version} · {result.saved_report.timezone}</p> : null}{"summary" in result ? <TrendResultView result={result} /> : <BehaviorResultView result={result} />}</>;
 }
 function TrendResultView({ result }: { result: TrendResult }) {
-  const max = Math.max(1, ...result.series.map((r) => Math.abs(r.value || 0)));
   return (
     <div className="query-result">
       <DataCoverageNotice coverage={result.data_coverage}/>
@@ -87,26 +87,7 @@ function TrendResultView({ result }: { result: TrendResult }) {
         {new Date(result.spec.from).toLocaleString("zh-CN")} 至{" "}
         {new Date(result.spec.to).toLocaleString("zh-CN")} · 左闭右开
       </div>
-      <div className="query-bars">
-        {result.series.length ? (
-          result.series.map((row) => (
-            <div key={row.day}>
-              <time>{row.day}</time>
-              <span className="query-bar-track">
-                <span
-                  style={{
-                    width: `${(Math.abs(row.value || 0) / max) * 100}%`,
-                    background: (row.value || 0) < 0 ? "#c37a67" : undefined,
-                  }}
-                />
-              </span>
-              <strong>{format(row.value)}</strong>
-            </div>
-          ))
-        ) : (
-          <p className="empty-inline">当前条件下没有事件。</p>
-        )}
-      </div>
+      <TrendSeriesView series={result.series}/>
       {result.spec.group_by.length ? (
         <div className="table-scroll">
           <table>
