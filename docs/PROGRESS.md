@@ -824,3 +824,5 @@ Worker主路径包装persist、DLQ发布、DLQ索引及Kafka checkpoint，固定
 复现旧SDK在异步存储停顿时会先积累未完成track，原队列容量在add内部不足以限制这些调用。新增同步pending条数/序列化事件字节预算：主持久队列1000/5MiB、主内存100/512KiB，与已存队列独立；满额明确rejected_pending_overflow及onError，不无限等名额。条数满时不读取properties，事件验证/隐私快照后核对字节、写前预留，finally释放含队列满、撤回及故障内存缓冲路径；失败不加入退出snapshot。getQueueStatus提供pending_writes/bytes及上限，不能与已存统计相加当独立事件或RSS上限。Node trackFor共用保护。
 
 两项回归修复前实际失败（读到了不应读取的属性、90份大载荷全部进入慢add），修复后153项单测、类型/构建、实际pnpm消费者通过。测试覆盖内存100、持久1000、独立字节上限、拒绝回调、存储完成/已存满额/存储故障后预留释放、撤回无复活。Chrome实际IndexedDB授权/跨页/关闭重开通过；20EPS80秒基准1200条持久、同步p95/p99=0.5/0.6ms、入队3.3/4.1ms，pending/队列/诊断/长任务/降级均0、全程可见，HTTP202 stub。gzip Browser6029/Node7022字节。浏览器/静态服务已关闭，CI待本分支，公网仍m4-observability-003；尚无本步VPS部署或新容量结论。
+
+步骤115 CI补充：Actions39885696236（0d3b2e8）verify/postgres均success，153项完整单测、类型/构建、实际pnpm包消费者、真实Node进程崩溃队列检查及5套PG控制器通过。同步preview/integration与草稿PR1。当前VPS仍上一版，单SDK有界性与工作站20EPS证据不代表单机服务容量验收。
