@@ -16,7 +16,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
-      - run: test "$(cat dist/schema-version.txt)" = 19
+      - run: test "$(cat dist/schema-version.txt)" = 20
       - run: bash -n scripts/upgrade-product-preview.sh scripts/enable-retention-preview.sh scripts/validate-provision-reports-remote.sh scripts/enable-operational-collection-preview.sh
       - run: python3 scripts/check-operational-collection-env.py
       - run: python3 scripts/check-capacity-preservation.py

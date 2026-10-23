@@ -1,5 +1,5 @@
 import { pool } from './db';
-export const schemaVersion=19;
+export const schemaVersion=20;
 export async function migrate() {
   const c = await pool.connect();
   try {
@@ -18,6 +18,10 @@ export async function migrate() {
       CREATE TABLE IF NOT EXISTS platform_audit(id bigserial PRIMARY KEY,operator_id uuid NOT NULL REFERENCES platform_operators(user_id),tenant_id uuid REFERENCES tenants(id),action text NOT NULL,details jsonb NOT NULL DEFAULT '{}',created_at timestamptz NOT NULL DEFAULT clock_timestamp());
       CREATE TABLE IF NOT EXISTS sessions(token_hash text PRIMARY KEY,user_id uuid NOT NULL REFERENCES users(id),csrf_hash text NOT NULL, expires_at timestamptz NOT NULL);
       CREATE TABLE IF NOT EXISTS projects(id uuid PRIMARY KEY,tenant_id uuid NOT NULL REFERENCES tenants(id),name text NOT NULL,timezone text NOT NULL DEFAULT 'Asia/Shanghai',origins text[] NOT NULL DEFAULT '{}',schema_mode text NOT NULL DEFAULT 'loose' CHECK(schema_mode IN ('loose','strict')),created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(tenant_id,id));
+      ALTER TABLE projects ADD COLUMN IF NOT EXISTS retention_days smallint NOT NULL DEFAULT 30 CHECK(retention_days BETWEEN 1 AND 30);
+      ALTER TABLE projects ADD COLUMN IF NOT EXISTS retention_version integer NOT NULL DEFAULT 1 CHECK(retention_version>0);
+      ALTER TABLE projects ADD COLUMN IF NOT EXISTS retention_floor timestamptz;
+      CREATE OR REPLACE FUNCTION project_retention_cutoff(days integer,floor timestamptz) RETURNS timestamptz LANGUAGE sql STABLE PARALLEL SAFE AS 'SELECT GREATEST(COALESCE(floor,''-infinity''::timestamptz),CURRENT_TIMESTAMP-days*interval ''1 day'')';
       CREATE TABLE IF NOT EXISTS write_keys(id uuid PRIMARY KEY,tenant_id uuid NOT NULL,project_id uuid NOT NULL,key_hash text UNIQUE NOT NULL,label text NOT NULL,revoked_at timestamptz,FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
       CREATE TABLE IF NOT EXISTS event_schemas(tenant_id uuid NOT NULL,project_id uuid NOT NULL,event_name text NOT NULL,required_properties jsonb NOT NULL DEFAULT '{}',version integer NOT NULL DEFAULT 1,PRIMARY KEY(project_id,event_name),FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
       CREATE TABLE IF NOT EXISTS event_dedup(tenant_id uuid NOT NULL,project_id uuid NOT NULL,event_id uuid NOT NULL,payload_hash text NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(project_id,event_id),FOREIGN KEY(tenant_id,project_id) REFERENCES projects(tenant_id,id));
@@ -72,8 +76,9 @@ export async function migrate() {
       ALTER TABLE events ADD COLUMN IF NOT EXISTS project_schema_version integer NOT NULL DEFAULT 0;
       CREATE OR REPLACE VIEW visible_events WITH (security_barrier=true) AS
         SELECT e.* FROM events e
+        JOIN projects p ON p.tenant_id=e.tenant_id AND p.id=e.project_id
         LEFT JOIN identity_links l ON l.tenant_id=e.tenant_id AND l.project_id=e.project_id AND l.anonymous_id=e.distinct_id
-        WHERE e.event_time>=CURRENT_TIMESTAMP-interval '30 days' AND NOT EXISTS (
+        WHERE e.event_time>=project_retention_cutoff(p.retention_days,p.retention_floor) AND NOT EXISTS (
           SELECT 1 FROM deletion_barriers b WHERE b.tenant_id=e.tenant_id AND b.project_id=e.project_id AND (
             b.identity_hash='*' OR (
               b.identity_hash IN (
@@ -86,7 +91,7 @@ export async function migrate() {
         );
       CREATE OR REPLACE VIEW visible_event_count_buckets WITH (security_barrier=true) AS
         SELECT b.* FROM event_count_buckets b JOIN projects p ON p.tenant_id=b.tenant_id AND p.id=b.project_id AND p.privacy_epoch=b.privacy_epoch
-        WHERE b.bucket_start>=CURRENT_TIMESTAMP-interval '30 days' AND NOT EXISTS(SELECT 1 FROM deletion_barriers d WHERE d.tenant_id=b.tenant_id AND d.project_id=b.project_id AND d.identity_hash='*');
+        WHERE b.bucket_start>=project_retention_cutoff(p.retention_days,p.retention_floor) AND NOT EXISTS(SELECT 1 FROM deletion_barriers d WHERE d.tenant_id=b.tenant_id AND d.project_id=b.project_id AND d.identity_hash='*');
       CREATE INDEX IF NOT EXISTS events_retention_time ON events(event_time);
       CREATE INDEX IF NOT EXISTS dedup_retention_time ON event_dedup(created_at);
       CREATE INDEX IF NOT EXISTS buckets_retention_time ON event_count_buckets(bucket_start);
@@ -117,6 +122,7 @@ export async function migrate() {
         UNIQUE(rule,revision),CHECK(state_since<=evaluated_at));
       CREATE INDEX IF NOT EXISTS operational_alert_history_time ON operational_alert_history(evaluated_at,id);
       INSERT INTO schema_migrations(version) VALUES(19) ON CONFLICT DO NOTHING;
+      INSERT INTO schema_migrations(version) VALUES(20) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(18) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(1) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(2) ON CONFLICT DO NOTHING;

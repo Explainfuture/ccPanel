@@ -29,5 +29,6 @@ export async function trends(tenantId:string,projectId:string,spec:TrendSpec,run
     const result=await run(`SELECT ${metric} AS value,${excluded} AS excluded ${joins} AND NOT (${groups}=ANY($${excluding}::jsonb[]))`,[...values,byGroup.rows.slice(0,20).map(r=>JSON.stringify(r.dimensions))]);
     other=result.rows[0];
   }
-  return{spec,summary:summary.rows[0],series:series.rows,groups:byGroup.rows.slice(0,20),other,groups_truncated:byGroup.rows.length>20,computed_at:new Date().toISOString(),data_coverage:dataCoverage(spec)};
+  const retention=(await run('SELECT project_retention_cutoff(retention_days,retention_floor) AS cutoff,CURRENT_TIMESTAMP AS at FROM projects WHERE tenant_id=$1 AND id=$2',[tenantId,projectId])).rows[0];
+  return{spec,summary:summary.rows[0],series:series.rows,groups:byGroup.rows.slice(0,20),other,groups_truncated:byGroup.rows.length>20,computed_at:new Date().toISOString(),data_coverage:dataCoverage(spec,retention.at.getTime(),retention.cutoff.getTime())};
 }

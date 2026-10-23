@@ -4,7 +4,7 @@ import {createApp} from '../apps/api/src/app';
 import type {IntakeObservation} from '../packages/server/src/intake-metrics';
 import type {AdmissionStatus} from '../packages/server/src/ingest-admission';
 vi.mock('../packages/server/src/db',()=>({pool:{},query:vi.fn(async(sql:string)=>{
-  if(sql.includes('FROM write_keys k'))return {rows:[{tenant_id:'00000000-0000-4000-8000-000000000001',project_id:'00000000-0000-4000-8000-000000000002',origins:['https://allowed.invalid'],schema_mode:'loose'}]};
+  if(sql.includes('FROM write_keys k'))return {rows:[{tenant_id:'00000000-0000-4000-8000-000000000001',project_id:'00000000-0000-4000-8000-000000000002',origins:['https://allowed.invalid'],schema_mode:'loose',retention_cutoff:new Date(0)}]};
   if(sql.includes('FROM event_schemas'))return {rows:[]};throw new Error('unexpected_query');
 })}));
 afterEach(()=>vi.restoreAllMocks());

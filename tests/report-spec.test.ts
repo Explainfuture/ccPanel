@@ -29,9 +29,9 @@ it('normalizes dashboard references and rejects duplicate UUID casing or foreign
 });
 it('binds a saved timezone only to the daily-series query without adding unused parameters',async()=>{
   const calls:{sql:string;values:unknown[]}[]=[];
-  const run=(async(sql:string,values:unknown[])=>{calls.push({sql,values});return{rows:[]};}) as unknown as typeof query;
+  const run=(async(sql:string,values:unknown[])=>{calls.push({sql,values});return{rows:sql.includes('project_retention_cutoff')?[{at:new Date(),cutoff:new Date(Date.now()-30*86400000)}]:[]};}) as unknown as typeof query;
   await trends('company','project',{kind:'trend',...range(),metric:'sum',property:'price',filters:[{key:'plan',op:'eq',value:'paid'}],group_by:['country']},run,'UTC');
-  expect(calls).toHaveLength(3);
+  expect(calls).toHaveLength(4);
   for(const call of calls){const parameters=[...call.sql.matchAll(/\$(\d+)/g)].map(m=>Number(m[1]));expect(Math.max(...parameters)).toBe(call.values.length);}
   const series=calls.find(c=>c.sql.includes('date_trunc'))!;expect(series.values.at(-1)).toBe('UTC');expect(series.sql).not.toContain("TIME ZONE 'UTC'");expect(calls.filter(c=>c.values.includes('UTC'))).toHaveLength(1);
 });

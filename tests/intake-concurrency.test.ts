@@ -8,7 +8,7 @@ import {query} from '../packages/server/src/db';
 import type {AdmissionStatus} from '../packages/server/src/ingest-admission';
 vi.mock('../packages/server/src/db',()=>({pool:{},query:vi.fn()}));
 afterEach(()=>{vi.restoreAllMocks();vi.resetAllMocks();});
-const key={tenant_id:randomUUID(),project_id:randomUUID(),origins:[],schema_mode:'loose'};
+const key={tenant_id:randomUUID(),project_id:randomUUID(),origins:[],schema_mode:'loose',retention_cutoff:new Date(0)};
 const open:AdmissionStatus={allowed:true,reason:null,integrityReason:null,retryAfterSeconds:0,totalLagMessages:'0',maxLagMessages:'0',remainingMessages:256,reservedMessages:0,unknownMessages:0,pendingRequests:0,reservationCount:0};
 const body=()=>JSON.stringify({write_key:'test',schema_version:1,events:[{event_id:randomUUID(),event_name:'click',distinct_id:'user',event_time:new Date().toISOString(),properties:{},context:{},schema_version:1}]});
 it('rejects excess requests before body access and PG while existing authentication is pending',async()=>{

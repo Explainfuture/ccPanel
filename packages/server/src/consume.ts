@@ -12,9 +12,9 @@ export async function persist(record: StoredEnvelope): Promise<'inserted' | 'dup
   try {
     await c.query('BEGIN');
     await lockProjectPrivacy(c,record.project_id,e.event_name==='$identify');
-    const exists = await c.query('SELECT 1 FROM projects WHERE tenant_id=$1 AND id=$2', [record.tenant_id,record.project_id]);
+    const exists = await c.query('SELECT $3::timestamptz<project_retention_cutoff(retention_days,retention_floor) AS retention_expired FROM projects WHERE tenant_id=$1 AND id=$2', [record.tenant_id,record.project_id,e.event_time]);
     if (!exists.rowCount) throw new EventConflict('scope_mismatch');
-    if(e.event_name==='$identify'){
+    if(e.event_name==='$identify'&&!exists.rows[0].retention_expired){
       if(!e.anonymous_id)throw new EventConflict('missing_anonymous_id');
       const oldLink=await c.query('SELECT user_id FROM identity_links WHERE tenant_id=$1 AND project_id=$2 AND anonymous_id=$3',[record.tenant_id,record.project_id,e.anonymous_id]);
       if(oldLink.rows[0]&&oldLink.rows[0].user_id!==e.distinct_id)throw new EventConflict('identity_conflict');
@@ -36,6 +36,10 @@ export async function persist(record: StoredEnvelope): Promise<'inserted' | 'dup
         await c.query("INSERT INTO ingest_metrics VALUES($1,$2,'duplicates',1) ON CONFLICT(project_id,metric) DO UPDATE SET value=ingest_metrics.value+1", [record.tenant_id,record.project_id]);
         await c.query('COMMIT'); return 'duplicate';
       }
+    }
+    if(exists.rows[0].retention_expired){
+      await c.query("INSERT INTO ingest_metrics VALUES($1,$2,'retention_suppressed',1) ON CONFLICT(project_id,metric) DO UPDATE SET value=ingest_metrics.value+1",[record.tenant_id,record.project_id]);
+      await c.query('COMMIT');return 'suppressed';
     }
     if (e.event_name === '$identify') {
       if (!e.anonymous_id) throw new EventConflict('missing_anonymous_id');

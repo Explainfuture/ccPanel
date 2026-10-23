@@ -70,7 +70,7 @@ export async function behaviorQuery(
     time: new Date(r.time).getTime(),
   })) as BehaviorEvent[];
   const projectRow = await run(
-    "SELECT timezone FROM projects WHERE tenant_id=$1 AND id=$2",
+    "SELECT timezone,project_retention_cutoff(retention_days,retention_floor) AS cutoff,CURRENT_TIMESTAMP AS at FROM projects WHERE tenant_id=$1 AND id=$2",
     [tenant, project],
   );
   const result =
@@ -85,7 +85,7 @@ export async function behaviorQuery(
     computed_at: new Date().toISOString(),
     source_events: events.length,
     source_limit: limit,
-    data_coverage:dataCoverage(spec),
+    data_coverage:dataCoverage(spec,projectRow.rows[0].at.getTime(),projectRow.rows[0].cutoff.getTime()),
   };
 }
 export function registerBehaviorRoutes(app: Hono<Env>) {

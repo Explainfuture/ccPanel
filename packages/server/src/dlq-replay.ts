@@ -16,6 +16,10 @@ async function deleted(db:PoolClient,r:StoredEnvelope){
   const hashes=ids.map(id=>identityHash(r.tenant_id,r.project_id,id));
   return !!(await db.query("SELECT 1 FROM deletion_barriers b WHERE b.tenant_id=$1 AND b.project_id=$2 AND (b.identity_hash='*' OR ((b.identity_hash=ANY($3::text[]) OR b.identity_hash IN (SELECT encode(sha256(convert_to($1::uuid::text||':'||$2::uuid::text||':'||user_id,'UTF8')),'hex') FROM identity_links WHERE tenant_id=$1 AND project_id=$2 AND anonymous_id=ANY($4::text[]))) AND ($5::timestamptz<=b.blocked_before OR $6::timestamptz<=b.requested_at))) LIMIT 1",[r.tenant_id,r.project_id,hashes,ids,r.event.event_time,r.received_at])).rowCount;
 }
+async function retentionExpired(db:PoolClient,r:StoredEnvelope){
+  const row=(await db.query('SELECT $3::timestamptz<project_retention_cutoff(retention_days,retention_floor) AS expired FROM projects WHERE tenant_id=$1 AND id=$2',[r.tenant_id,r.project_id,r.event.event_time])).rows[0];
+  return !row||row.expired;
+}
 async function audit(db:PoolClient,job:{tenant_id:string;project_id:string;id:string;user_id:string},action:string,details:Record<string,unknown>){
   await db.query('INSERT INTO audit_logs(tenant_id,user_id,action,details) VALUES($1,$2,$3,$4)',[job.tenant_id,job.user_id,action,JSON.stringify({project_id:job.project_id,replay_job_id:job.id,...details})]);
 }
@@ -41,6 +45,7 @@ export function registerReplayRoutes(app:Hono<Env>){
         const registration=(await db.query('SELECT payload_hash,created_at FROM event_dedup WHERE tenant_id=$1 AND project_id=$2 AND event_id=$3 FOR SHARE',[tenant,project,decoded.record.event.event_id])).rows[0]??null;
         const candidate=replayCandidate({...input,registration});
         if(await deleted(db,candidate.record))throw new ReplayRejected('deleted_scope');
+        if(await retentionExpired(db,candidate.record))throw new ReplayRejected('project_retention_expired');
         candidates.push({id:row.id,event:candidate.record.event.event_id,hash:digest(canonical(candidate.record.event))});
       }
       await db.query('INSERT INTO replay_jobs(id,tenant_id,project_id,user_id,request_hash,reason) VALUES($1,$2,$3,$4,$5,$6)',[body.request_id,tenant,project,c.get('userId'),hash,body.reason]);
@@ -85,6 +90,7 @@ export async function replayTick(publish:ReplayPublisher){
           const candidate=replayCandidate({tenant:job.tenant_id,project:job.project_id,payload:row.payload,reason:row.reason,registration});
           if(digest(canonical(candidate.record.event))!==item.payload_hash)throw new ReplayRejected('manual_review_required');
           if(await deleted(db,candidate.record)){await set('suppressed','deleted_scope');}
+          else if(await retentionExpired(db,candidate.record)){await set('rejected','project_retention_expired');}
           else if(registration?.status==='stored'){await set(item.status==='published'?'stored':'duplicate');}
           else if(item.status==='published'){
             const outcome=digest(`${item.topic}:${item.partition}:${item.message_offset}`);

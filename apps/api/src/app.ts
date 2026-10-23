@@ -137,7 +137,7 @@ export function createApp(deps: AppDeps) {
       )
         return c.json({ error: "invalid_key" }, 401);
       const found = await query(
-        "SELECT k.tenant_id,k.project_id,p.origins,p.schema_mode FROM write_keys k JOIN projects p ON p.id=k.project_id AND p.tenant_id=k.tenant_id WHERE k.key_hash=$1 AND k.revoked_at IS NULL",
+        "SELECT k.tenant_id,k.project_id,p.origins,p.schema_mode,project_retention_cutoff(p.retention_days,p.retention_floor) AS retention_cutoff FROM write_keys k JOIN projects p ON p.id=k.project_id AND p.tenant_id=k.tenant_id WHERE k.key_hash=$1 AND k.revoked_at IS NULL",
         [digest(body.write_key)],
       );
       const key = found.rows[0];
@@ -181,6 +181,7 @@ export function createApp(deps: AppDeps) {
           )
             code = "unknown_event";
           if (schema) code = checkRequired(e,schema.required_properties);
+          if(!code&&Date.parse(e.event_time)<key.retention_cutoff.getTime())code='project_retention_expired';
         }
         if (code) errors.push({ index, code });
       });
