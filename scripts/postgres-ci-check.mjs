@@ -27,13 +27,15 @@ function child(file,env,input='',args=[]){
 }
 try{
   const entries={migrate:'packages/server/src/migrate.ts','deletion-ledger':'packages/server/src/deletion-ledger.ts'};
-  const suites=['company-provision','report-edit','query-export','retention','partitions','capacity-proof','operational-history','operational-alerts','project-retention','schema-upgrade','retention-recovery','pressure-alerts'];
+  const suites=['company-provision','report-edit','query-export','retention','partitions','capacity-proof','operational-history','operational-alerts','project-retention','schema-upgrade','retention-recovery','pressure-alerts','pressure-persistence'];
   for(const suite of suites)entries[suite]=`scripts/${suite}-check.ts`;
   for(const[name,entry]of Object.entries(entries))await build({entryPoints:[entry],outfile:path.join(dir,name+'.mjs'),bundle:true,platform:'node',target:'node22',format:'esm',packages:'external'});
   // Actual immutable schema19 source, not a reverse-edited schema20 fixture.
   const legacy=execFileSync('git',['show','1bd729e2bb44d1fbb75ef160bf6a2dab2bc263f3:packages/server/src/migrate.ts'],{encoding:'utf8',maxBuffer:1024*1024});
   assert.match(legacy,/export const schemaVersion=19;/);
   await build({stdin:{contents:legacy,resolveDir:path.resolve('packages/server/src'),sourcefile:'schema19.ts',loader:'ts'},outfile:path.join(dir,'migrate19.mjs'),bundle:true,platform:'node',target:'node22',format:'esm',packages:'external'});
+  const schema20=execFileSync('git',['show','502d6c13aef0b80f1b714f7e4d1fc50f40cf8a28:packages/server/src/migrate.ts'],{encoding:'utf8',maxBuffer:1024*1024});assert.match(schema20,/export const schemaVersion=20;/);
+  await build({stdin:{contents:schema20,resolveDir:path.resolve('packages/server/src'),sourcefile:'schema20.ts',loader:'ts'},outfile:path.join(dir,'migrate20.mjs'),bundle:true,platform:'node',target:'node22',format:'esm',packages:'external'});
   await admin.connect();
   for(const suite of suites){
     const database='ccpanel_restore_'+new Date().toISOString().replace(/\D/g,'').slice(0,14)+'_'+randomBytes(4).toString('hex');
@@ -43,7 +45,7 @@ try{
     delete env.CCPANEL_PROGRESS_BOOTSTRAP_REASON;delete env.CCPANEL_RECOVERY_LEDGER;delete env.CCPANEL_OFFLINE_RESTORE;
     try{
       await admin.query(`CREATE DATABASE ${database}`);created=true;
-      await child(suite==='schema-upgrade'?'migrate19':'migrate',env);
+      await child(suite==='schema-upgrade'?'migrate19':suite==='pressure-persistence'?'migrate20':'migrate',env);
       // Export from this freshly created empty source, never from a restored DB.
       const ledger=await child('deletion-ledger',env,'',['export']);
       assert.ok(ledger.length>0);

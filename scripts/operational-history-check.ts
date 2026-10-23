@@ -7,7 +7,7 @@ import {storeOperationalSnapshot,operationalHistoryLimit} from '../packages/serv
 import {startOperationalCollection} from '../packages/server/src/operational-collection';
 try{
   assert.match((await pool.query('SELECT current_database() AS name')).rows[0].name,/^ccpanel_restore_[0-9]{14}_[a-f0-9]{8}$/);
-  assert.equal((await pool.query('SELECT max(version) AS n FROM schema_migrations')).rows[0].n,20);
+  assert.equal((await pool.query('SELECT max(version) AS n FROM schema_migrations')).rows[0].n,21);
   const db=await pool.connect(),blocker=await pool.connect();
   const count=async()=>Number((await pool.query('SELECT count(*)::int AS n FROM operational_samples')).rows[0].n);
   try{
@@ -41,6 +41,6 @@ try{
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM operational_alert_states')).rows[0].n,4,'scheduled collector must persist fixed alert states before draining');
     assert.equal(await count(),operationalHistoryLimit);
     assert.equal((await pool.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE application_name='ccpanel_operational_history' AND datname=current_database()")).rows[0].n,0,'collector pool must close');
-    console.log(JSON.stringify({operational_history:true,schema20:true,precise_counters:true,idempotent:true,immutable_conflict:true,lock_contention_skips:true,expiry_prunes:true,global_cap:operationalHistoryLimit,failed_insert_restores_evicted_row:true,invalid_payload_no_write:true,scheduled_collection:true,collector_pool_closed:true}));
+    console.log(JSON.stringify({operational_history:true,schema21:true,precise_counters:true,idempotent:true,immutable_conflict:true,lock_contention_skips:true,expiry_prunes:true,global_cap:operationalHistoryLimit,failed_insert_restores_evicted_row:true,invalid_payload_no_write:true,scheduled_collection:true,collector_pool_closed:true}));
   }finally{await blocker.query('ROLLBACK');blocker.release();db.release();}
 }finally{await pool.end();}
