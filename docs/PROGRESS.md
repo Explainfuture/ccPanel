@@ -816,3 +816,5 @@ Worker主路径包装persist、DLQ发布、DLQ索引及Kafka checkpoint，固定
 150项单测/类型检查、JS语法、VPS bash -n通过。真实m4-observability-003演练由独立ccpanel-fault114.service运行，RuntimeMaxSec600，已观测inactive/dead、Result success、ExecMainStatus0。Worker停下时事件1被Kafka确认但PG0，恢复后PG1；事件2确认后保存消费位点，PG停机时位点不推进，PG恢复后PG2；Kafka停机请求503无假202，恢复后事件3确认且PG3；invalid_event_id毒消息进DLQ；fixture事务清理并移除state。控制日志与前后指纹在/opt/ccpanel/shared/fault114。
 
 最终原表指纹完全一致，唯一变化consumer_progress总10722（相对113新增3正常+1毒消息）；raw2/dedup3/DLQ0，测试公司0。完整性检查passed、门禁open、四服务running、HTTPS ready；API/Worker RestartCount各6，PG/Kafka各0，OOM标志均false。重启属于停机测试预期行为，绝非无重启容量证明。新进程指标按instance重置，未伪称本演练测到persist事务失败计数。尚无同租约下短暂写库失败、独立DLQ broker失败及主机断电/切流证据。CI待本分支，生产资源与其余PRD门槛保持未完成。
+
+步骤114 CI补充：Actions39885125292（ca86ed0）verify/postgres均success，150项单测、类型/构建、SDK消费者/崩溃检查及5套PG控制器通过。实机故障证据独立于CI保留，未扩大为DLQ不可用或同进程瞬时事务失败验证。同步preview/integration/草稿PR1，当前运行release仍m4-observability-003，操作脚本在shared/fault114，不覆盖release。
