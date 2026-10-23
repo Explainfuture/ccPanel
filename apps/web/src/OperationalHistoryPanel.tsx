@@ -6,7 +6,7 @@ import type {OperationalSnapshot} from '../../../packages/server/src/operational
 type Sample={source:'api'|'worker';instance_id:string;started_at:string;observed_at:string;snapshot:OperationalSnapshot};
 type Page={scope:'platform_aggregate';samples:Sample[];next_cursor:string|null;computed_at:string};
 const formatter=new Intl.NumberFormat('zh-CN');
-const labels:Record<string,string>={persist:'事件落库',dlq_publish:'DLQ发布',dlq_index:'DLQ索引',kafka_checkpoint:'Kafka位点提交',inserted:'插入',duplicate:'重复',suppressed:'删除抑制',conflict:'冲突',failed:'失败',completed:'完成'};
+const labels:Record<string,string>={persist:'事件落库',dlq_publish:'DLQ发布',dlq_index:'DLQ索引',kafka_checkpoint:'Kafka位点提交',inserted:'插入',duplicate:'重复',suppressed:'抑制（删除或保留期）',conflict:'冲突',failed:'失败',completed:'完成'};
 const count=(value:string)=>/^\d+$/.test(value)?formatter.format(BigInt(value)):'未记录';
 export default function OperationalHistoryPanel({prefix}:{prefix:string}){
   const [source,setSource]=useState(''),[request,setRequest]=useState<{cursor:string|null;version:number}|null>(null),[data,setData]=useState<Page|null>(null),[selected,setSelected]=useState<Sample|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
