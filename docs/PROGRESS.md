@@ -1584,3 +1584,4 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 2Lm0f9实测两次Worker启动均非零退出，真实API三次503/Retry-After正确，重启不清除事故；PG两位点0、raw/dedup/jobs/DLQ0、paused审计1、事故完整行不变，Kafka位点/高低界/DLQ高位不变。没有确认事故或伪造恢复丢失事件。
 - 临时topic/group/DB/env/ledger清理，主库暂停期间44关系指纹相同，013/HTTPS ready。结果已下载，SHA256 e1290a74199d06e5d9ed8ccfc28dd1d24d110bd20abcbc4e6574ade59de74e23。本轮仅运维演练源文件，未覆盖线上发布目录；CI新增语法检查，真实broker故障仅VPS执行。
 - 更新历史保留入口指引到新控制器；完整容量/设备矩阵、异机自动备份与最新删除策略同步、独立通知及HA仍未通过。
+- CI Actions39990847398 verify/postgres均success，既有构建/测试/真实PG/SDK进程与打包、新演练语法及历史入口空PATH检查通过；主库最终raw2/dedup3/DLQ0、总位点15618、临时DB0。
