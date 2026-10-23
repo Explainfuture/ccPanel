@@ -1,4 +1,5 @@
 import { defaultPressurePolicy,evaluatePressure,type PressureDecision,type PressurePolicy,type PressureReason,type PressureSnapshot } from './ingest-pressure';
+import {evaluatePressureAlerts} from './pressure-alerts';
 
 export type AdmissionReason=PressureReason|'pressure_probe_unavailable'|'host_probe_unavailable'|'host_probe_invalid'|'kafka_probe_unavailable'|'ingest_reservations_full';
 export interface AdmissionStatus extends Omit<PressureDecision,'reason'> {
@@ -39,6 +40,7 @@ export class IngestAdmission {
     }
   }
   restoreIntegrityGap(reason:'retained_offset_gap'|'consumer_offset_unknown'){this.integrityGap=reason;}
+  pressureAlerts(){return evaluatePressureAlerts(this.snapshot,this.policy,this.clock(),{unavailable:this.unavailable,integrityReason:this.integrityGap});}
   probeFailed(reason:'host_probe_unavailable'|'host_probe_invalid'|'kafka_probe_unavailable'|'pressure_probe_unavailable'){
     this.unavailable=reason;
   }

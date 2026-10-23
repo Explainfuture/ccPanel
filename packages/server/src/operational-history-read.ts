@@ -44,7 +44,7 @@ export async function readOperationalAlerts(user:string,tenant:string,project:st
     return{scope:'platform_aggregate' as const,freshness_ms:90000,...live,persistence_state:persistenceState,persisted_states:persisted,transitions:history,transition_limit:50};
   });
 }
-async function withOperationalRead<T>(user:string,tenant:string,project:string,read:(db:PoolClient)=>Promise<T>){
+export async function withOperationalRead<T>(user:string,tenant:string,project:string,read:(db:PoolClient)=>Promise<T>){
   const db=await pool.connect();
   try{
     await db.query('BEGIN');

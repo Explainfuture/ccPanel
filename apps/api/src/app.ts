@@ -17,7 +17,8 @@ import { registerDeletions } from '../../../packages/server/src/deletion-service
 import { registerReplayRoutes } from '../../../packages/server/src/dlq-replay';
 import {readDeadLetterSummary} from '../../../packages/server/src/dlq-summary';
 import {readQueryStatus} from '../../../packages/server/src/query-status';
-import {readOperationalHistory,readOperationalAlerts,OperationalReadError} from '../../../packages/server/src/operational-history-read';
+import {readOperationalHistory,readOperationalAlerts,OperationalReadError,withOperationalRead} from '../../../packages/server/src/operational-history-read';
+import type {PressureAlerts} from '../../../packages/server/src/pressure-alerts';
 import type {HostResourceStatus} from '../../../packages/server/src/host-resource-status';
 import { registerInvitationAcceptance,registerCompanyInvitations,lockMembership,membershipAdmin } from '../../../packages/server/src/invitations';
 import { IngestionPaused,type AdmissionStatus } from '../../../packages/server/src/ingest-admission';
@@ -46,6 +47,7 @@ export interface AppDeps {
   publish: (records: StoredEnvelope[]) => Promise<void>;
   ready: () => boolean;
   admissionStatus?:()=>AdmissionStatus;
+  pressureAlerts?:()=>PressureAlerts;
   observeIntake?:(value:IntakeObservation)=>void|Promise<void>;
   intakeStatus?:()=>ReturnType<IntakeMetrics['snapshot']>;
   hostResourceStatus?:()=>ReturnType<HostResourceStatus['snapshot']>;
@@ -573,8 +575,10 @@ export function createApp(deps: AppDeps) {
   );
   app.get(prefix+'/ingest-status',async c=>{
     if(!allowed(c,['admin']))return c.json({error:'forbidden'},403);
-    if(!(await query('SELECT 1 FROM platform_operators WHERE user_id=$1 AND revoked_at IS NULL',[c.get('userId')])).rowCount)return c.json({error:'forbidden'},403);
-    return c.json({scope:'platform_aggregate',computed_at:new Date().toISOString(),admission:deps.admissionStatus?.()??null,intake:deps.intakeStatus?.()??null,host_resources:deps.hostResourceStatus?.()??null,processing:{in_flight:intakeInFlight,max_in_flight:maxIntakeInFlight,at_capacity:intakeInFlight>=maxIntakeInFlight}});
+    if(new URL(c.req.url).search)return c.json({error:'invalid_status_query'},400);
+    if(!rate('ingest-status:'+c.get('userId'),12,60000)){c.header('Retry-After','5');return c.json({error:'rate_limited'},429);}
+    try{return c.json(await withOperationalRead(c.get('userId'),c.get('tenantId'),c.req.param('project')!,async()=>({scope:'platform_aggregate',computed_at:new Date().toISOString(),admission:deps.admissionStatus?.()??null,pressure_alerts:deps.pressureAlerts?.()??null,intake:deps.intakeStatus?.()??null,host_resources:deps.hostResourceStatus?.()??null,processing:{in_flight:intakeInFlight,max_in_flight:maxIntakeInFlight,at_capacity:intakeInFlight>=maxIntakeInFlight}})));}
+    catch(error){if(error instanceof OperationalReadError)return c.json({error:error.status===404?'not_found':'forbidden'},error.status);throw error;}
   });
   app.get(prefix+'/operational-history',async c=>{
     if(!allowed(c,['admin']))return c.json({error:'forbidden'},403);
