@@ -1332,3 +1332,11 @@ VPS证据 `/opt/ccpanel/shared/kafka-durability-check.pE6b96`：候选只读CLI�
 清理后33个原业务关系完全一致，原1418采样/54告警历史/639压力历史/6条DLQ历史的完整行前缀均保持，只有消费进度与监控当前/新增历史变化。root raw2/dedup3/DLQ0/operators0、临时恢复库/合成公司0，两个项目仍默认策略。PG=Kafka committed=high7184/7236、lag0，恰由测试四条消息尝试推进。恢复/完整性门禁open、四容器running/restart0/OOMfalse、HTTPS ready；受控recreate不能解释为服务连续。
 
 两端dump/清单临时明文、测试账号及浏览器cookie文件已核验后删除；加密dump和清单均保留、密钥留工作站。备份证明提交00888fc的[Actions39933926119](https://github.com/Explainfuture/ccPanel/actions/runs/39933926119)通过211测试/15套PG及既有保护/构建/打包检查。最终记录仍在product-upgrade.kBen5w；没有新的完整容量窗口，旧资源门槛仍未通过，独立备份同步/通知/运行策略漂移监控与HA仍未完成。
+
+### 步骤167：schema22容量工具与新窗口启动（2026-10-23，运行中）
+
+分支ops/167-schema22-capacity，工具提交477ebcc。保留校验现在识别完整压力/DLQ表组，验证原历史精确指纹和固定状态数量；缺组、原记录改变、历史减少、未知关系等拒绝。离线回归与[Actions39934802193](https://github.com/Explainfuture/ccPanel/actions/runs/39934802193)通过211测试/15PG及既有检查，实际VPS schema22预检也通过。工具归档SHA256 `3a85a32defc00df0e3a7359bbffa60051de9e537c4436733688014c303d3e923`；没有应用代码或运行release变更。
+
+新窗口 `/opt/ccpanel/shared/capacity-integrity.BhntUa`，m4-durability-011，schema22-monitor-on-v1，资源unit ccpanel-capacity-20261023095346.service；实际原生成器session26218仍在运行。预检无遗留夹具/容量服务，原库2事件/3去重/0DLQ，位点总14420，采样/保留均开启，内存/磁盘安全余量及固定规则4/3/2通过。开始前34原业务关系及四类监控历史已冻结，必须在最终清理后精确对账。
+
+两个不同新鲜host帧后才启动30分钟1EPS/每10秒查询的离机生成器；资源有限1980秒。已观察采样unit真实active/running、8帧无错误和生成器第一分钟进度（无错误/6次查询成功），未观察终态，不能提前声明数据或资源通过。测试期间不部署、不改变配置，不重开原进程。最终验证/清理按同一组句柄继续；细节与未验收状态见CAPACITY步骤167。
