@@ -1525,3 +1525,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 本机passed：首flush10003ms、initial_requests1/recovery_requests1，两次HTTP完整事件相同、原ID保持、202后文件清空，无看门狗强杀。fixture仍为合成本机HTTP，无fetch/时钟mock，不等同Kafka/PG去重或VPS容量。
 - 沿用已接入CI的真实验收步骤，未改SDK产品源码或VPS012；完整容量/设备等门槛保持。
 - CI Actions39952605728 verify/postgres全部success（243项测试、15套真实PG及既有检查）；Linux真实双进程日志为flush10000ms、initial1/recovery1、完整载荷相同、202后文件清空、无强杀。与Windows10003ms分别记录。
+
+### 步骤 192：SDK 发布归档与线上预检
+
+- 冻结源码4899d25，重新typecheck/build，生成m4-sdk-013候选归档（156文件/634782字节），SHA256 d90de9d92753a9d0ad5ae53ee85778f40c72961ea8033d0126169a820a5d828b。Browser发布SDK SHA256 449f14f4719751a13ef1a666ff141511dd223ddc93b246968d87bf2688c4b661，gzip6620字节；Node gzip7749字节。
+- 本机及服务器实际比较API/Worker束均与正在运行012逐字节一致，schema22；归档已上传新独立路径、校验通过，证据sdk192-stage.json明确not_applied=true。没有覆盖当前release目录或canonical release.tar.gz。
+- 服务器当前012/HTTPS ready，可用约329MiB、磁盘约13GiB，无活动容量采样器。未关闭采集/保留或API，尚未进入停机备份/恢复/应用阶段；以上预检不等于容量通过。
