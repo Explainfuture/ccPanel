@@ -22,6 +22,7 @@ jobs:
       - run: pnpm --dir packages/sdk-node pack --pack-destination ../../artifacts
       - run: python3 scripts/check-packed-sdks.py artifacts
       - run: node scripts/node-outbox-crash-check.mjs
+      - run: node scripts/check-public-load-accounting.mjs
       - run: python3 scripts/check-web-asset-retention.py
   postgres:
     runs-on: ubuntu-latest

@@ -7,6 +7,8 @@ if(!config||!output||!Number.isInteger(seconds)||seconds<10||seconds>3600)throw 
 const f=JSON.parse(await readFile(config,'utf8')),base=f.origin,root=`${base}/api/tenants/${f.tenant}/projects/${f.project}`;
 if(new URL(base).protocol!=='https:')throw new Error('Trusted HTTPS is required');
 const ingest=[],visible=[],queries=[],errors=[],pending=new Map(),backlog=[],retryCopies=[],ids=[];
+const workload={ingest_attempts:0,ingest_accepted_requests:0,ingest_failed_requests:0,ingest_attempted_events:0,ingest_body_bytes_total:0,ingest_body_bytes_min:null,ingest_body_bytes_max:null,query_opportunities:0,query_attempts:0,query_successes:0,query_failures:0,query_skipped_busy:0,visibility_requests:0};
+const accounting=()=>({...workload,ingest_body_bytes_mean:workload.ingest_attempts?workload.ingest_body_bytes_total/workload.ingest_attempts:null,query_schedule_coverage:workload.query_opportunities>0&&workload.query_skipped_busy===0});
 const p95=a=>{const s=[...a].sort((a,b)=>a-b);return s.length?s[Math.min(s.length-1,Math.floor(s.length*.95))]:null;};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const login=await fetch(base+'/api/auth/login',{method:'POST',headers:{origin:base,'content-type':'application/json'},body:JSON.stringify({email:f.email,password:f.password}),signal:AbortSignal.timeout(15000)});
@@ -15,12 +17,14 @@ let acknowledged=0,duplicates=0,sending=false,observing=false,querying=false,sto
 let sender=Promise.resolve(),observer=Promise.resolve(),querier=Promise.resolve();
 async function post(events){
   const before=performance.now();
+  const body=JSON.stringify({write_key:f.key,schema_version:1,events}),bytes=Buffer.byteLength(body,'utf8');
+  workload.ingest_attempts++;workload.ingest_attempted_events+=events.length;workload.ingest_body_bytes_total+=bytes;workload.ingest_body_bytes_min=workload.ingest_body_bytes_min===null?bytes:Math.min(workload.ingest_body_bytes_min,bytes);workload.ingest_body_bytes_max=workload.ingest_body_bytes_max===null?bytes:Math.max(workload.ingest_body_bytes_max,bytes);
   try{
-    const r=await fetch(base+'/v1/batch',{method:'POST',headers:{origin:base,'content-type':'text/plain'},body:JSON.stringify({write_key:f.key,schema_version:1,events}),signal:AbortSignal.timeout(12000)});
+    const r=await fetch(base+'/v1/batch',{method:'POST',headers:{origin:base,'content-type':'text/plain'},body,signal:AbortSignal.timeout(12000)});
     if(r.status!==202)throw new Error('ingest_'+r.status);const value=await r.json();
     if(!Array.isArray(value.accepted_event_ids)||value.accepted_event_ids.length!==events.length||events.some(e=>!value.accepted_event_ids.includes(e.event_id)))throw new Error('invalid_ack');
-    ingest.push(performance.now()-before);return true;
-  }catch(e){errors.push(e.message);return false;}
+    workload.ingest_accepted_requests++;ingest.push(performance.now()-before);return true;
+  }catch(e){workload.ingest_failed_requests++;errors.push(e.message);return false;}
 }
 function pump(){
   if(sending||stopped||!backlog.length&&!retryCopies.length)return;
@@ -33,6 +37,7 @@ function observe(){
   observing=true;
   observer=(async()=>{
     for(let page=0;page<10&&pending.size;page++){
+      workload.visibility_requests++;
       const r=await fetch(root+'/events?event_name=capacity_public_probe&page='+page,{headers:{cookie},signal:AbortSignal.timeout(15000)});
       if(r.status!==200)throw new Error('visibility_'+r.status);const body=await r.json(),now=Date.now();
       for(const e of body.events){if(pending.has(e.event_id)){visible.push(now-pending.get(e.event_id));pending.delete(e.event_id);}}
@@ -43,12 +48,15 @@ function observe(){
   return observer;
 }
 function queryTrend(){
-  if(querying||stopped)return;
+  if(stopped)return;
+  workload.query_opportunities++;
+  if(querying){workload.query_skipped_busy++;return;}
+  workload.query_attempts++;
   querying=true;const before=performance.now();
-  querier=fetch(root+'/trends',{headers:{cookie},signal:AbortSignal.timeout(15000)}).then(async r=>{if(r.status!==200)throw new Error('query_'+r.status);await r.json();queries.push(performance.now()-before);}).catch(e=>errors.push(e.message)).finally(()=>{querying=false;});
+  querier=fetch(root+'/trends',{headers:{cookie},signal:AbortSignal.timeout(15000)}).then(async r=>{if(r.status!==200)throw new Error('query_'+r.status);await r.json();workload.query_successes++;queries.push(performance.now()-before);}).catch(e=>{workload.query_failures++;errors.push(e.message);}).finally(()=>{querying=false;});
 }
 const start=Date.now(),startedAt=new Date(start).toISOString();
-const progress=async()=>{const value={elapsed_seconds:Math.round((Date.now()-start)/1000),generated:ids.length,acknowledged,backlog:backlog.length,not_yet_visible:pending.size,max_generation_lag_ms:maxScheduleLag,ingest_p95_ms:p95(ingest),visible_p95_ms:p95(visible),query_p95_ms:p95(queries),errors:errors.length};await writeFile(output+'.progress',JSON.stringify(value),{mode:0o600});console.log(JSON.stringify(value));};
+const progress=async()=>{const value={elapsed_seconds:Math.round((Date.now()-start)/1000),generated:ids.length,acknowledged,backlog:backlog.length,not_yet_visible:pending.size,max_generation_lag_ms:maxScheduleLag,ingest_p95_ms:p95(ingest),visible_p95_ms:p95(visible),query_p95_ms:p95(queries),errors:errors.length,workload:accounting()};await writeFile(output+'.progress',JSON.stringify(value),{mode:0o600});console.log(JSON.stringify(value));};
 const observeTimer=setInterval(()=>void observe(),1000),queryTimer=setInterval(queryTrend,10000),progressTimer=setInterval(()=>void progress(),60000);
 queryTrend();
 for(let n=0;n<seconds;n++){
@@ -63,5 +71,8 @@ const deadline=Date.now()+30000;
 while((pending.size||backlog.length||retryCopies.length||sending)&&Date.now()<deadline){pump();await observe();await sleep(250);}
 clearInterval(observeTimer);clearInterval(queryTimer);clearInterval(progressTimer);stopped=true;
 await Promise.allSettled([sender,observer,querier]);
+const workloadResult=accounting();
 const result={tenant:f.tenant,project:f.project,started_at:startedAt,completed_at:new Date().toISOString(),duration_seconds:Math.round((Date.now()-start)/1000),generation_seconds:generationSeconds,max_generation_lag_ms:maxScheduleLag,target_eps:1,generated:ids.length,acknowledged,duplicate_requests:duplicates,backlog:backlog.length,not_yet_visible:pending.size,ingest_p95_ms:p95(ingest),observed_visible_p95_ms:p95(visible),query_p95_ms:p95(queries),errors,passed:ids.length===seconds&&maxScheduleLag<1000&&acknowledged===seconds&&!pending.size&&!backlog.length&&!retryCopies.length&&!errors.length&&p95(ingest)<1000&&p95(visible)<10000,event_ids:ids};
+result.workload=workloadResult;
+result.passed=result.passed&&workloadResult.query_schedule_coverage&&workloadResult.query_successes>0;
 await writeFile(output,JSON.stringify(result,null,2),{mode:0o600});console.log(JSON.stringify({...result,event_ids:undefined}));if(!result.passed)process.exitCode=1;

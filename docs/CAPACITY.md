@@ -208,3 +208,11 @@ UTC2026-10-22 23:20:21.065至23:50:21.076，实际1800.011秒，生成器原会�
 冻结资源证据后，使用通过6套PG控制器的新版只读验证器直接匹配raw、dedup及aggregation_jobs的1800个ID，已处理任务及桶贡献1800。集合SHA256为864231f0fa9344312425433eb5e6bcb120f85212861de44e187b039d5b8ba40b；另替换一个请求ID，实机验证1799/1800明确失败，没有改数据库记录。原始证据：/opt/ccpanel/shared/capacity-integrity.IusWZe；工作站.local/capacity-auth121-*。
 
 清理后所有原表指纹一致，只有消费进度按1800正常+35重复推进：p0=6257/p1=6304，总12561，与Kafka committed/high一致、lag0。两端临时凭证、合成PG公司/用户/事件/聚合已清除，临时DB0；Kafka合成消息按保留期存在。门禁open、完整性检查通过、HTTPS ready，采样器实际inactive/dead、Result success、ExecMainStatus0，自然结束。
+
+## 步骤133：后续负载测量口径
+
+public load CLI新增workload字段：接入尝试/202且回执匹配的成功请求/失败请求、每次尝试所含事件数（包含重试与重复副本）、序列化请求体UTF-8总/最小/最大/平均字节、可见性请求数；字节不含HTTP头、TLS或响应，不是Kafka记录大小。总字节包含失败尝试；均值按请求尝试数，不按唯一事件数。没有请求时min/max/mean为null。
+
+查询另记机会、真正启动、成功、失败、因上一请求未结束而跳过的次数；开始时一次，随后约10秒一次，包含排空阶段。结束前等待在途请求，最终attempts=successes+failures，opportunities=attempts+skipped_busy。进度文件可能在途，不能要求当时终态等式。query_schedule_coverage要求至少一个机会且无busy跳过，passed另要求该覆盖及至少一次成功；不能将跳过的机会算作已施加查询负载。没有放宽既有事件/延迟/资源条件。
+
+真实CLI的独立合成fetch验收覆盖非ASCII UTF-8逐次请求体字节、接入503后的重试、慢查询跨过下一机会及应失败的覆盖判断。它不访问VPS，不证明服务器性能。旧容量结果没有这些字段，不回填查询次数或均值；m4-history-005尚未完成完整新负载窗口。
