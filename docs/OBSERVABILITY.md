@@ -57,3 +57,5 @@ persist成功区分inserted/duplicate/suppressed，EventConflict记conflict，�
 公司有效成员可GET项目`/query-status`，与同项目query-jobs列表使用相同的未过期、当前privacy_epoch、创建者仍为公司成员过滤。五个固定状态queued/running/succeeded/failed/cancelled，各返回精确字符串count、最老created_at及其数据库年龄；running另返回从最老有效started_at计算的oldest_running_seconds。空类别时间/年龄null，未来时间钳制0。不是全平台队列、接入限额占用或已隐藏任务计数；管理员也不能据此推断其他公司或失效创建者任务。
 
 duration_samples及max_completed_duration_ms仅使用started_at存在且finished_at>=started_at的记录，覆盖完成/失败/取消，不把未开始或无效时间当0。时长从开始执行到状态完成，不包含排队，不证明取消已中断SQL；running年龄是读取时观察，既非已完成耗时也非死锁判定。默认任务24小时过期，隐私变更和成员撤销会改变统计样本，因此这些是当前可见保留记录统计，不是稳定历史SLO。单SQL一致性快照、PG 5秒超时；不读取spec/result或返回用户/任务ID，未新增索引，规模成本待测。界面、历史与告警仍待接入。
+
+步骤117已接入源码投递监控：所有有效角色可读项目查询状态，展示五状态、最老任务年龄、最老运行已执行时间与终态耗时样本/最大值。采用数据库快照时间，刷新后更新，不把运行中的时间计入完成耗时。整数和小数均精确文本格式化，缺失显示未记录、0条无任务、0有效样本无有效样本。失败/失权/项目切换清除旧快照；Chrome mock验证通过。尚未部署，持久历史和告警仍待完成。
