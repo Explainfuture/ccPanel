@@ -12,6 +12,8 @@ import { defaultPressurePolicy } from '../../../packages/server/src/ingest-press
 import { startAggregations } from '../../../packages/server/src/aggregations';
 import { startRetention } from '../../../packages/server/src/retention';
 import { startPartitions } from '../../../packages/server/src/partitions';
+import { WorkerMetrics,startWorkerMetricLog } from '../../../packages/server/src/worker-metrics';
+const metrics=new WorkerMetrics();
 const releaseRecoveryLease=await holdRecoveryLease();
 const stream={topic:eventsTopic,group:consumerGroup};
 await assertTopicCreationSafe(stream,await ensureTopics());
@@ -41,7 +43,7 @@ await consumer.run({ autoCommit: false, eachBatchAutoResolve: false, eachBatch: 
     } catch { reason = 'invalid_json'; }
     if (!reason && record) {
       while (isRunning() && !isStale()) {
-        try { await persist(record); break; }
+        try { await metrics.measure('persist',()=>persist(record!),value=>value,error=>error instanceof EventConflict?'conflict':'failed'); break; }
         catch (e) {
           if (e instanceof EventConflict) { reason = e.reason; break; }
           console.error(JSON.stringify({code:'database_write_retry',partition:batch.partition}));
@@ -58,20 +60,21 @@ await consumer.run({ autoCommit: false, eachBatchAutoResolve: false, eachBatch: 
       const tenant=validScope(record?.tenant_id),project=validScope(record?.project_id);
       const identities=tenant&&project?[record?.event?.distinct_id,record?.event?.anonymous_id].filter((v):v is string=>typeof v==='string'&&v.length>0&&v.length<=256).map(v=>identityHash(tenant,project,v)):[];
       const dead:DeadLetter = { id, reason, source: { topic: batch.topic, partition: batch.partition, offset: message.offset },tenant_id:tenant,project_id:project,identity_hashes:identities,raw_base64:message.value?.toString('base64')??null,processor_version:2 };
-      await producer.send({ topic: dlqTopic, acks: -1, messages: [{ key: id, value: JSON.stringify(dead) }] });
+      await metrics.measure('dlq_publish',()=>producer.send({ topic: dlqTopic, acks: -1, messages: [{ key: id, value: JSON.stringify(dead) }] }));
       // The exact original bytes remain in a storage-safe envelope. The DLQ
       // acknowledgement precedes the offset; a failed index write retries.
-      await indexDeadLetter(dead,record);
+      await metrics.measure('dlq_index',()=>indexDeadLetter(dead,record));
     }
     return true;
     });
     if(!complete||!isRunning()||isStale())break;
     resolveOffset(message.offset);
-    await consumer.commitOffsets([{ topic: batch.topic, partition: batch.partition, offset: (BigInt(message.offset) + 1n).toString() }]);
+    await metrics.measure('kafka_checkpoint',()=>consumer.commitOffsets([{ topic: batch.topic, partition: batch.partition, offset: (BigInt(message.offset) + 1n).toString() }]));
     await heartbeat();
   }
 } });
 console.log(JSON.stringify({ code: 'worker_ready' }));
+const stopMetrics=startWorkerMetricLog(metrics);
 const stopAggregations=startAggregations();
 const stopRetention=startRetention();
 const stopPartitions=startPartitions();
@@ -83,4 +86,4 @@ const progressTimer=setInterval(async()=>{
   finally{checking=false;}
 },5000);
 progressTimer.unref();
-for (const signal of ['SIGTERM','SIGINT'] as const) process.once(signal, async () => { stopPartitions();stopRetention();stopAggregations();clearInterval(progressTimer);await consumer.disconnect(); await producer.disconnect();await progressAdmin.disconnect();await releaseRecoveryLease();await pool.end(); process.exit(0); });
+for (const signal of ['SIGTERM','SIGINT'] as const) process.once(signal, async () => { stopPartitions();stopRetention();stopAggregations();clearInterval(progressTimer);await consumer.disconnect();stopMetrics(); await producer.disconnect();await progressAdmin.disconnect();await releaseRecoveryLease();await pool.end(); process.exit(0); });
