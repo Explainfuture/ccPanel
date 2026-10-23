@@ -1156,3 +1156,9 @@ SQL证明raw/dedup/job各2个原ID、已处理2/桶贡献2、DLQ0，集合SHA da
 进一步在两个独立临时PG库执行真实pg_dump/pg_restore：原源先持有默认30天/三条合成raw及旧缓存，备份后通过真实事务服务将A项目改1天，并从该原源导出最新v2；还原旧dump的目标未自导出清单。旧快照公共关系指纹逐项一致，目标迁移后门禁关闭、旧A可见2；导入最新原源后A可见1，raw/dedup各3保持，B公司可见1，旧缓存清零。精确raw ID集合SHA d51a04dfd1327a2cadef5f647f562e8afce32342519ad3be33f18b04213f4eb5，dump SHA cdf67fb16912617d2453f657dd38ccd9c8c68af587e4e2c983eea38ad320e9ea，最新ledger SHA 9dfa6830db45339330faf0e75411ec4307631bdd7f99000a82148637398e3f9c。
 
 证据/opt/ccpanel/shared/retention-restore.VpNAyA及.local/restore152.log，完成后两个临时库、env/明文ledger/dump由受限路径trap清理；演练不接Kafka、不改变线上原业务数据。下一阶段候选.local/release-recovery152.tar.gz（131文件/544873字节，SHAc177b4d6bfe1981732d018e255ee92f7d4dc2878abd308d16f5d7b46acff719e）与151已验收源码一致，尚待新备份/恢复证明后发布；没有新的容量通过结论。
+
+同轮完成真实发布：20→20 prepare实际使用目标归档CLI导出v2并检查两个原项目策略；新备份20261023T061244Z-a3d0780a离机加密/解密字节一致，回传隔离恢复3秒、全部公共关系指纹一致。product-upgrade.MFFRNm证明通过后apply，上线m4-recovery-008/schema20；原字段对账完全相同，启动等待三次curl reset后ready。两个原项目仍30天/version1/floor空，无root策略改写或旧库回滚。
+
+已部署CLI导出v2，含2个完整策略/1个删除图项目，明文SHA 800e0c828339a35d9de167f6325d74c4478f8af00b00e5d66dcf1a1db480dc5f；工作站加密/解密一致并两端保留密文，密钥分离。单独恢复清理/采集后，33原业务关系指纹不变，原653采样/15历史前缀保持；变化仅新增监控采样、告警状态/历史。root raw2/dedup3/DLQ0、平台资格0、两原项目默认策略，临时库/公司0，PG=Kafka committed=high仍7180/7228、lag0，四规则clear且采样时age9秒，四容器running/restart0/OOMfalse，门禁open/ready。
+
+临时dump/解密副本/原源及当前清单明文两端清理；没有向运行主库执行restore/apply测试或重跑SDK流量，针对新CLI的隔离/实快照与部署导出验证已完成。源代码仍为151验收版，6bb7c6f的CI39909978986已通过182单测/11套真实PG；实际部署证据与CI分列。自动异机最新状态同步、外部通知、资源/HA及其他PRD缺口仍未完成。
