@@ -8,6 +8,7 @@ import HostResourcesPanel,{type HostResources} from './HostResourcesPanel';
 import OperationalHistoryPanel from './OperationalHistoryPanel';
 import OperationalAlertsPanel from './OperationalAlertsPanel';
 import PressureSignalsPanel from './PressureSignalsPanel';
+import PressureHistoryPanel from './PressureHistoryPanel';
 import type {PressureAlerts} from '../../../packages/server/src/pressure-alerts';
 import type {AdmissionStatus} from '../../../packages/server/src/ingest-admission';
 type Metric={metric:string;value:string};
@@ -69,5 +70,6 @@ export default function DeliveryMonitor({prefix,canManage,canObservePlatform=fal
     {canObservePlatform?<IntakeMetricsPanel data={snapshot?.intake}/>:null}
     {canObservePlatform&&!platformError&&!error?<OperationalHistoryPanel key={prefix} prefix={prefix}/>:null}
     {canObservePlatform&&!platformError&&!error?<OperationalAlertsPanel key={prefix} prefix={prefix}/>:null}
+    {canObservePlatform&&!platformError&&!error?<PressureHistoryPanel key={prefix} prefix={prefix}/>:null}
   </>;
 }
