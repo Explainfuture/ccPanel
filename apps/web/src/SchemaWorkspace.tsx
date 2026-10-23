@@ -3,6 +3,7 @@ import { ArrowDownToLine, Braces, Save } from "lucide-react";
 import { api, ApiError } from "./api";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
+import RetentionSettings from './RetentionSettings';
 type Schema = {
   event_name: string;
   required_properties: Record<string, string>;
@@ -109,6 +110,7 @@ export default function SchemaWorkspace({
           {notice}
         </div>
       ) : null}
+      <RetentionSettings prefix={prefix} canEdit={canEdit}/>
       <section className="panel">
         <div className="panel-heading">
           <div>
