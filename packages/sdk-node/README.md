@@ -49,3 +49,5 @@ SDK和整个平台尚未通过完整PRD发布门槛；ESM类型/包导入验收�
 Node 同样通过 `getQueueStatus().counters` 获取实例内的 expired（事件数）、rejected_overflow / rejected_pending_overflow（拒绝次数）、storage_error（操作失败次数，不等于数据丢失）。与 Browser 一致，返回快照、饱和计数且不持久化；重开文件队列不会恢复上一实例的诊断计数。事件 ID、文件队列内容和确认规则保持不变。
 
 `flushInterval` 沿用 Browser 的整数校验范围 100～2147483647ms；无效值在初始化创建定时器前抛出 invalid_flush_interval，防止 Node 将溢出/Infinity 延迟转换为短周期循环。
+
+Node 复用按需调度：空队列不周期读取 outbox，新增事件、恢复待发及错误重试仍按已冻结的 flushInterval 调度；凭证暂停/撤回/destroy 会取消。存储状态未知保留恢复探测，不能把读取失败当作队列为空。

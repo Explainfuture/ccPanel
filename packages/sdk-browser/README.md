@@ -31,3 +31,5 @@ getQueueStatus新增`pending_writes`、`pending_bytes`、`pending_limit_count`�
 退出快照保留内部入队时间，页面长期挂起后 sendBeacon 同步跳过超过七天的记录，不在关闭回调里读取 IndexedDB。过滤不代表服务端确认，不删除本地记录或提前增加 expired；后续普通队列清理时统一计数。持久队列恢复使用原始 created，不重新计算 TTL。destroy 后手动调用 beacon 也不会继续采集发送。
 
 `flushInterval` 默认 3000ms；显式配置必须是 100～2147483647ms 的整数。NaN、Infinity、超大值、小数及非 number 均在初始化创建定时器前抛出 invalid_flush_interval，避免运行时定时器溢出/强制转换造成高频循环。这是跨 Browser/Node 的运行时参数约束，不改变三秒默认值或重试退避。
+
+发送调度采用按需单次定时器：初始化先恢复旧队列，确认队列为空且存储状态明确后停止计时；新事件持久/内存入队后重新计时。待发、在途写入或持久存储状态未知时继续有界调度；next_attempt_at/Retry-After 仍控制实际请求。凭证暂停、撤回授权和 destroy 取消定时器，更新凭证及重新授权会触发恢复。合法 flushInterval 在初始化时冻结，修改传入配置对象不会改变运行中间隔。跨标签页产生的记录依靠该标签页自身发送以及初始化/online/恢复可见等既有触发，不新增广播或永久主标签页。

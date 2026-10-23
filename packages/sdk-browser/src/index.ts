@@ -18,14 +18,14 @@ export class Analytics {
   private memory=new MemoryQueue();
   private consent:boolean;
   private anonymous='';private user:string|undefined;
-  private timer:ReturnType<typeof setInterval>|undefined;
+  private timer:ReturnType<typeof setTimeout>|undefined;
   private flight:Promise<{confirmed:number;pending:number}>|undefined;
   private snapshot:{event:AnalyticsEvent;created:number}[]=[];
   private hiddenSent=false;private paused=false;private lastError:string|undefined;private epoch=0;
   private owner=crypto.randomUUID();private identityKey:string;
   private consentKey:string;
   private consentMarker:string|null=null;
-  private batchSize:number;private running=true;private pendingWrites=0;private pendingBytes=0;
+  private flushInterval:number;private batchSize:number;private running=true;private pendingWrites=0;private pendingBytes=0;
   private needsRecovery=false;private nextRecovery=0;
   private consentChanges:Promise<void>=Promise.resolve();
   private allowedProperties:Map<string,Set<string>>|undefined;
@@ -39,6 +39,7 @@ export class Analytics {
     // Browsers and Node use a signed 32-bit millisecond timer delay.
     // NaN/Infinity/overflow can otherwise become an unintended ~1 ms loop.
     if(options.flushInterval!==undefined&&(!Number.isInteger(options.flushInterval)||options.flushInterval<100||options.flushInterval>2147483647))throw new Error('invalid_flush_interval');
+    this.flushInterval=options.flushInterval??3000;
     if(options.propertyAllowlist!==undefined){
       const list=options.propertyAllowlist;
       if(!list||typeof list!=='object'||Array.isArray(list)||![Object.prototype,null].includes(Object.getPrototypeOf(list))||Object.keys(list).length>1000)throw new Error('invalid_property_allowlist');
@@ -54,8 +55,6 @@ export class Analytics {
     this.consent=options.consent===true&&!this.consentMarker?.startsWith('revoked:');
     this.queue=options.queue??(typeof indexedDB!=='undefined'?new IndexedQueue(this.identityKey+':queue'):this.memory);
     if(this.consent)this.loadIdentity();
-    this.timer=setInterval(()=>{void this.flush();},options.flushInterval??3000);
-    this.timer.unref?.();
     if(typeof window!=='undefined'){
       const hidden=()=>{if(document.visibilityState==='hidden')this.beacon();else{this.hiddenSent=false;void this.flush();}};
       const pagehide=()=>this.beacon();const online=()=>void this.flush();
@@ -66,6 +65,7 @@ export class Analytics {
     void this.flush();
   }
   private error(code:string,details?:{event_ids:string[]}){
+    if(code==='storage_error'&&this.queue.persistent)this.needsRecovery=true;
     if(code==='storage_error'||code==='rejected_overflow'||code==='rejected_pending_overflow')this.counters[code]=Math.min(Number.MAX_SAFE_INTEGER,this.counters[code]+1);
     else if(/^expired:[1-9][0-9]*$/.test(code))this.counters.expired=Math.min(Number.MAX_SAFE_INTEGER,this.counters.expired+Number(code.slice(8)));
     this.lastError=code;try{this.options.onError?.(code,details);}catch{/* diagnostics must not break business code */}}
@@ -129,6 +129,7 @@ export class Analytics {
       if(!this.hasConsent()||version!==this.epoch){await this.queue.finish([event.event_id],'');await this.memory.finish([event.event_id],'');return{status:'rejected',reason:'consent_revoked'};}
       if(!stored){this.snapshot=this.snapshot.filter(r=>r.event.event_id!==event.event_id);this.error('rejected_overflow');return{status:'rejected',reason:'rejected_overflow'};}
       const status=this.queue.persistent&&!(await this.memory.peek(100)).some(r=>r.event.event_id===event.event_id)?'queued-persistent':'queued-memory';
+      this.schedule(true);
       const stats=await this.getQueueStatus();if(stats.count>=this.batchSize||stats.bytes>=limits.batchBytes)queueMicrotask(()=>void this.flush());
       return{status,event_id:event.event_id};
     }finally{this.pendingWrites--;this.pendingBytes-=eventBytes;}
@@ -139,7 +140,7 @@ export class Analytics {
   private changeConsent(value:boolean,publish:boolean){
     // Runtime callers may bypass TypeScript; only explicit true grants collection.
     value=value===true;
-    const version=++this.epoch;this.consent=false;this.snapshot=[];
+    const version=++this.epoch;this.consent=false;this.snapshot=[];this.schedule(false);
     const prior=this.readConsentMarker();
     if(!value&&publish)try{localStorage.setItem(this.consentKey,'revoked:'+crypto.randomUUID());}catch{/* cross-tab synchronization unavailable */}
     const apply=async()=>{
@@ -172,9 +173,17 @@ export class Analytics {
   private envelope(events:AnalyticsEvent[]){return{write_key:this.options.writeKey,project_id:this.options.projectId,schema_version:1,events};}
   private async stores(){return this.queue===this.memory?[this.queue]:[this.queue,this.memory];}
   async getQueueStatus(){let count=0,bytes=0,persistent_count=0,memory_count=0,oldest:number|null=null;for(const q of await this.stores()){try{const s=await q.stats();count+=s.count;bytes+=s.bytes;if(q.persistent)persistent_count+=s.count;else memory_count+=s.count;if(s.oldest!==null)oldest=oldest===null?s.oldest:Math.min(oldest,s.oldest);}catch{this.error('storage_error');}}return{count,bytes,persistent_count,memory_count,oldest,counters:{...this.counters},pending_writes:this.pendingWrites,pending_bytes:this.pendingBytes,pending_limit_count:this.queue.persistent?1000:100,pending_limit_bytes:this.queue.persistent?5*1024*1024:512*1024,last_error:this.lastError,storage:this.needsRecovery?'memory-fallback':this.queue.persistent?'persistent-with-memory-fallback':'memory'};}
+  private schedule(pending:boolean){
+    if(!pending||!this.running||!this.consent||this.paused){
+      if(this.timer!==undefined)clearTimeout(this.timer);this.timer=undefined;return;
+    }
+    if(this.timer!==undefined)return;
+    this.timer=setTimeout(()=>{this.timer=undefined;void this.flush();},this.flushInterval);
+    this.timer.unref?.();
+  }
   flush():Promise<{confirmed:number;pending:number}>{
     if(this.flight)return this.flight;
-    this.flight=this.send().catch(()=>{this.error('send_error');return{confirmed:0,pending:0};}).finally(()=>{this.flight=undefined;});return this.flight;
+    this.flight=this.send().then(result=>{this.schedule(result.pending>0||this.pendingWrites>0||this.needsRecovery);return result;}).catch(()=>{this.error('send_error');this.schedule(true);return{confirmed:0,pending:0};}).finally(()=>{this.flight=undefined;});return this.flight;
   }
   private async send(){
     let confirmed=0;
@@ -238,7 +247,7 @@ export class Analytics {
     this.hiddenSent=true;
     return navigator.sendBeacon(this.options.endpoint,new Blob([JSON.stringify(this.envelope(events))],{type:'text/plain;charset=UTF-8'}));
   }
-  destroy(){this.running=false;if(this.timer)clearInterval(this.timer);for(const fn of this.cleanup)fn();this.cleanup=[];}
+  destroy(){this.running=false;this.schedule(false);for(const fn of this.cleanup)fn();this.cleanup=[];}
 }
 export type EventMap=Record<string,Record<string,Json>>;
 export type TypedAnalytics<Events extends EventMap>=Omit<Analytics,'track'>&{
