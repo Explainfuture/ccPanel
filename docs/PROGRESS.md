@@ -1551,3 +1551,4 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 首轮4yzjz9通过后补充pg_locks实际共享恢复租约后端断言，新资源D0Rwar再通过：3次实际失败/重试日志、两快照PG0/Kafka未提交；同PID/同共享锁后端恢复，raw/dedup/jobs/processed/桶贡献各2，DLQ0，精确事件集合一致。
 - 主库44个public关系（含恢复控制表）指纹全同；测试topic/group/DB/env/ledger清理，原API/Worker启动/HTTPS ready。结果双方保存；CI只加shell/JS语法检查，不称CI执行了broker演练。host无Node命令，JS使用容器/本地Node验证，无安装宿主依赖。
 - 本次主预览有计划暂停，未改产品构建013或资源门槛；不等同真实PG并发冲突/网络断连、COMMIT强杀、独立DLQ broker或容量/HA通过。方法与限定见FAULT-DRILL步骤194。
+- CI Actions39955516514 verify/postgres均success：243项测试、15套真实PG、既有进程/打包/主机保护检查及新增演练shell/JS语法检查通过。实际Worker/broker事务演练仅在VPS执行，最终安全结果SHA256 c5a71dccd1128730057110aa772b1fbac64d306b79fd71794579fd89f7a71279。
