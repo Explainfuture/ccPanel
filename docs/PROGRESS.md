@@ -1458,3 +1458,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 复制初始化配置，防止调用方修改 endpoint/project/writeKey 对象让新请求与既有队列归属错位；合法密钥通过 updateWriteKey 更新。初始化项目/凭证及换钥补齐运行时字符串校验，不执行隐式强制转换。
 - 236 项测试、typecheck、build、两个 pnpm tarball 仓库外验证通过。新增两入口非法 URL 无定时器创建、非法运行时凭证、URL 规范化、配置变更不会改目标/项目、显式换钥仍生效。传输 stub，未替换 VPS 012；不将此前浏览器/线上验收挪作新版证明。
 - CI Actions 39947748888 verify/postgres 均成功，236 项测试、15 套真实 PG 及既有打包/部署保护检查通过。配置对象变更和换钥由源码用例验证；仓库外 tarball 检查覆盖导入、类型与持久队列运行，未声称该新用例本身在 tarball 上执行。
+
+### 步骤 182：仓库外 tarball 边界验证
+
+- 扩展既有 check-packed-sdks.py，用 pnpm 实际 tarball 在仓库外分别导入 Browser/Node 包，执行非法 URL/定时参数拒绝、规范化目标、外部配置对象修改不改变归属、显式换钥、业务时间/原 ID 传输以及诊断计数快照检查。此前这些新边界仅有源码用例，此次补包产物证据。
+- 从当前源码重新 pnpm build、两个 pack 后运行检查，passed=true/both_package_runtime_boundaries=true。仍通过已有严格类型/负例、Node 文件队列、锁释放和身份范围检查。Browser 包在 Node 的内存队列运行，明确 browser_runtime_environment，不当作真实 Browser/IndexedDB/设备验证；网络 stub。
+- 本步骤只增加发布包验证，没有改 SDK 或服务器；VPS 012/容量/设备矩阵结论不变。

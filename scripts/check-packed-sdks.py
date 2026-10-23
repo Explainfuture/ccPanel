@@ -119,9 +119,22 @@ const scopedEvents=[],scopedOutbox=resolve('scoped-outbox.json');
 const shared=createNodeAnalytics({...options,outboxPath:scopedOutbox,fetch:async(_url,init)=>{const events=JSON.parse(init.body).events;scopedEvents.push(...events);return Response.json({accepted_event_ids:events.map(e=>e.event_id)},{status:202});}});
 try{await shared.flush();const results=await Promise.all([shared.trackFor('user-A','purchase',{amount:1},{event_time:new Date(Date.now()-86400000).toISOString()}),shared.trackFor('user-B','purchase',{amount:2})]);assert.ok(results.every(r=>r.status==='queued-persistent'));await shared.flush();assert.deepEqual(scopedEvents.map(e=>e.distinct_id),['user-A','user-B']);assert.deepEqual(scopedEvents.map(e=>e.event_id),results.map(r=>r.event_id));assert.ok(scopedEvents.every(e=>!('anonymous_id' in e)));assert.ok(Math.abs(Date.parse(scopedEvents[0].event_time)-(Date.now()-86400000))<10000);assert.ok(Math.abs(Date.parse(scopedEvents[1].event_time)-Date.now())<10000);assert.equal((await shared.getQueueStatus()).count,0);}finally{await shared.shutdown();}
 assert.equal(existsSync(scopedOutbox+'.lock'),false);
+for(const factory of [createAnalytics,createNodeAnalytics]){
+  for(const endpoint of ['https://user:password@consumer.invalid/v1/batch','https://consumer.invalid/v1/batch?write_key=synthetic','https://consumer.invalid/v1/batch#synthetic'])assert.throws(()=>factory({...options,endpoint}),/invalid_endpoint/);
+  for(const flushInterval of [NaN,Infinity,2147483648])assert.throws(()=>factory({...options,flushInterval}),/invalid_flush_interval/);
+  const requests=[],input={...options,endpoint:'https://CONSUMER.invalid:443/v1/batch',fetch:async(url,init)=>{const body=JSON.parse(init.body);requests.push({url:String(url),body});return Response.json({accepted_event_ids:body.events.map(e=>e.event_id)},{status:202});}};
+  const checked=factory(input),businessTime=new Date(Date.now()-86400000).toISOString();
+  try{
+    await checked.flush();const queued=await checked.track('boundary_probe',{amount:1},{event_time:businessTime});assert.equal(queued.status,'queued-memory');
+    input.endpoint='https://other.invalid/v1/batch';input.projectId='other-project';input.writeKey='mutated';await checked.flush();
+    assert.equal(requests[0].url,'https://consumer.invalid/v1/batch');assert.equal(requests[0].body.project_id,'fixture');assert.equal(requests[0].body.write_key,'fixture');assert.equal(requests[0].body.events[0].event_time,businessTime);assert.equal(requests[0].body.events[0].event_id,queued.event_id);
+    await checked.track('rotated');checked.updateWriteKey('rotated-synthetic');await checked.flush();assert.equal(requests[1].body.write_key,'rotated-synthetic');assert.equal(requests[1].body.project_id,'fixture');assert.equal((await checked.getQueueStatus()).count,0);
+    assert.deepEqual((await checked.getQueueStatus()).counters,{expired:0,rejected_overflow:0,rejected_pending_overflow:0,storage_error:0});
+  }finally{checked.destroy();if('shutdown' in checked)await checked.shutdown();}
+}
 const browser=createAnalytics({...options,consent:false,fetch:async()=>{throw new Error('unexpected_transport');}});
 try{assert.equal((await browser.getQueueStatus()).count,0);}finally{browser.destroy();}
-console.log(JSON.stringify({runtime_imports:true,node_persistent_queue:true,stable_id_confirmed:true,shutdown_releases_lock:true,node_per_event_identity:true,browser_import_smoke_only:true,network:'stub'}));
+console.log(JSON.stringify({runtime_imports:true,node_persistent_queue:true,stable_id_confirmed:true,shutdown_releases_lock:true,node_per_event_identity:true,browser_import_smoke_only:false,both_package_runtime_boundaries:true,browser_runtime_environment:'Node memory queue, not a browser',network:'stub'}));
 """, encoding='utf-8')
     runtime = json.loads(run([node, str(consumer / 'runtime.mjs')]))
     print(json.dumps({'passed': True, 'source': 'pnpm_tarballs', 'outside_workspace': True, 'node_nodenext_without_dom': True, 'browser_bundler_and_nodenext': True, 'strict_library_and_negative_types': True, **runtime}))
