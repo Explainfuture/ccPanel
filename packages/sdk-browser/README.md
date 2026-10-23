@@ -33,3 +33,5 @@ getQueueStatus新增`pending_writes`、`pending_bytes`、`pending_limit_count`�
 `flushInterval` 默认 3000ms；显式配置必须是 100～2147483647ms 的整数。NaN、Infinity、超大值、小数及非 number 均在初始化创建定时器前抛出 invalid_flush_interval，避免运行时定时器溢出/强制转换造成高频循环。这是跨 Browser/Node 的运行时参数约束，不改变三秒默认值或重试退避。
 
 发送调度采用按需单次定时器：初始化先恢复旧队列，确认队列为空且存储状态明确后停止计时；新事件持久/内存入队后重新计时。待发、在途写入或持久存储状态未知时继续有界调度；next_attempt_at/Retry-After 仍控制实际请求。凭证暂停、撤回授权和 destroy 取消定时器，更新凭证及重新授权会触发恢复。合法 flushInterval 在初始化时冻结，修改传入配置对象不会改变运行中间隔。跨标签页产生的记录依靠该标签页自身发送以及初始化/online/恢复可见等既有触发，不新增广播或永久主标签页。
+
+endpoint 只接受无 URL 用户名密码、无查询串/片段的接入 URL，写入凭证只放信封体；不合规则初始化抛出 invalid_endpoint。URL 会规范化，实例复制初始化配置，防止事后修改原对象改变发送目标或项目却沿用旧队列。切换项目/endpoint 应创建独立实例；密钥更新使用 updateWriteKey，要求非空字符串且不超过 256 字符。HTTP 仍只允许已有的 localhost/127.0.0.1 本地开发例外，其余必须 HTTPS。

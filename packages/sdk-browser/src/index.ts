@@ -31,9 +31,15 @@ export class Analytics {
   private allowedProperties:Map<string,Set<string>>|undefined;
   private cleanup:(()=>void)[]=[];
   constructor(private options:AnalyticsOptions){
-    const url=new URL(options.endpoint);
+    // Keep endpoint/project queue ownership fixed for this instance. Key rotation
+    // remains explicit through updateWriteKey rather than caller object mutation.
+    options=this.options={...options};
+    if(typeof options.endpoint!=='string')throw new Error('invalid_endpoint');
+    let url:URL;try{url=new URL(options.endpoint);}catch{throw new Error('invalid_endpoint');}
+    if(url.username||url.password||url.search||url.hash)throw new Error('invalid_endpoint');
+    options.endpoint=url.href;
     if(url.protocol!=='https:'&&!(url.protocol==='http:'&&['localhost','127.0.0.1'].includes(url.hostname)))throw new Error('HTTPS endpoint required');
-    if(!options.projectId||!options.writeKey||options.writeKey.length>256)throw new Error('projectId and writeKey required');
+    if(typeof options.projectId!=='string'||!options.projectId.trim()||typeof options.writeKey!=='string'||!options.writeKey.trim()||options.writeKey.length>256)throw new Error('projectId and writeKey required');
     this.batchSize=options.batchSize??limits.batchEvents;
     if(!Number.isInteger(this.batchSize)||this.batchSize<1||this.batchSize>100)throw new Error('invalid_batch_size');
     // Browsers and Node use a signed 32-bit millisecond timer delay.
@@ -169,7 +175,7 @@ export class Analytics {
     });
     this.consentChanges=change;return change;
   }
-  updateWriteKey(key:string){if(!key||key.length>256)throw new Error('invalid_key');this.options.writeKey=key;this.paused=false;void this.flush();}
+  updateWriteKey(key:string){if(typeof key!=='string'||!key.trim()||key.length>256)throw new Error('invalid_key');this.options.writeKey=key;this.paused=false;void this.flush();}
   private envelope(events:AnalyticsEvent[]){return{write_key:this.options.writeKey,project_id:this.options.projectId,schema_version:1,events};}
   private async stores(){return this.queue===this.memory?[this.queue]:[this.queue,this.memory];}
   async getQueueStatus(){let count=0,bytes=0,persistent_count=0,memory_count=0,oldest:number|null=null;for(const q of await this.stores()){try{const s=await q.stats();count+=s.count;bytes+=s.bytes;if(q.persistent)persistent_count+=s.count;else memory_count+=s.count;if(s.oldest!==null)oldest=oldest===null?s.oldest:Math.min(oldest,s.oldest);}catch{this.error('storage_error');}}return{count,bytes,persistent_count,memory_count,oldest,counters:{...this.counters},pending_writes:this.pendingWrites,pending_bytes:this.pendingBytes,pending_limit_count:this.queue.persistent?1000:100,pending_limit_bytes:this.queue.persistent?5*1024*1024:512*1024,last_error:this.lastError,storage:this.needsRecovery?'memory-fallback':this.queue.persistent?'persistent-with-memory-fallback':'memory'};}

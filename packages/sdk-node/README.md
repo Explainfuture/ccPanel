@@ -51,3 +51,5 @@ Node 同样通过 `getQueueStatus().counters` 获取实例内的 expired（事�
 `flushInterval` 沿用 Browser 的整数校验范围 100～2147483647ms；无效值在初始化创建定时器前抛出 invalid_flush_interval，防止 Node 将溢出/Infinity 延迟转换为短周期循环。
 
 Node 复用按需调度：空队列不周期读取 outbox，新增事件、恢复待发及错误重试仍按已冻结的 flushInterval 调度；凭证暂停/撤回/destroy 会取消。存储状态未知保留恢复探测，不能把读取失败当作队列为空。
+
+Node 沿用 endpoint 边界：拒绝 URL 用户名密码、查询串和片段；复制初始化配置并固定实例目标/项目，密钥轮换走 updateWriteKey。该行为避免目的地与已建立的本地队列身份不一致。

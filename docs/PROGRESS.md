@@ -1451,3 +1451,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 234 项测试、typecheck、build 和 pnpm tarball 仓库外验证通过。新增空闲无 stats 读取、两次入队唤醒、确认后停表、503/Retry-After 自动重试、初始存储不可用后自动恢复、撤回/destroy 取消及凭证暂停/换钥恢复用例。初次类型检查发现测试自引用 mock 推断失败，改为独立计数器后通过。
 - Chrome 155 复测真实本机原生 pagehide HTTP：退出 no-cors 1、恢复 cors 1，保留未确认且原 ID/载荷一致，普通 202 后清空。Browser 构建 SHA256 dfda71029622076cbf97d75fd4ea9f78d633155d722a96ef5432bc7018360a80；浏览器及接收端已关闭。此版本未上 VPS，012 与容量结论保持不变，不挪用步骤 178 作为本版线上验收。
 - CI Actions 39947198494 verify/postgres 成功，含 234 项测试、15 套真实 PG 集成及既有打包/进程证据/部署保护检查。
+
+### 步骤 181：SDK 接入 URL 与实例归属边界
+
+- 对照 PRD 凭证不在 URL、队列按 endpoint/project 隔离，拒绝带用户信息/查询串/片段或非字符串的 endpoint，解析错误统一 invalid_endpoint，正常 URL 规范化。保持已有 HTTPS/loopback 开发例外，不改变服务端协议。
+- 复制初始化配置，防止调用方修改 endpoint/project/writeKey 对象让新请求与既有队列归属错位；合法密钥通过 updateWriteKey 更新。初始化项目/凭证及换钥补齐运行时字符串校验，不执行隐式强制转换。
+- 236 项测试、typecheck、build、两个 pnpm tarball 仓库外验证通过。新增两入口非法 URL 无定时器创建、非法运行时凭证、URL 规范化、配置变更不会改目标/项目、显式换钥仍生效。传输 stub，未替换 VPS 012；不将此前浏览器/线上验收挪作新版证明。
