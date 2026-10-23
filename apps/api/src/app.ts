@@ -40,12 +40,16 @@ export interface AppDeps {
   admissionStatus?:()=>AdmissionStatus;
   observeIntake?:(value:IntakeObservation)=>void|Promise<void>;
   intakeStatus?:()=>ReturnType<IntakeMetrics['snapshot']>;
+  maxIntakeInFlight?:number;
 }
 const validId = (s: string | undefined) =>
   typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(s);
 const allowed = (c: Context<Env>, roles: Role[]) =>
   roles.includes(c.get("role"));
 export function createApp(deps: AppDeps) {
+  const maxIntakeInFlight=deps.maxIntakeInFlight??16;
+  if(!Number.isInteger(maxIntakeInFlight)||maxIntakeInFlight<1||maxIntakeInFlight>128)throw new Error('invalid_intake_concurrency_budget');
+  let intakeInFlight=0;
   const app = new Hono<Env>();
   const intakeCounts=new WeakMap<Context<Env>,{events:number|null}>();
   const buckets = new Map<string, { count: number; expires: number }>();
@@ -93,6 +97,14 @@ export function createApp(deps: AppDeps) {
     try{await next();}finally{
       if(c.req.method==='POST')try{const observed=deps.observeIntake?.({status:c.res.status,events:sample.events,durationMs:performance.now()-started});if(observed)void observed.catch(()=>console.error(JSON.stringify({code:'intake_telemetry_failed'})));}catch{console.error(JSON.stringify({code:'intake_telemetry_failed'}));}
     }
+  });
+  app.use('/v1/batch',async(c,next)=>{
+    if(c.req.method!=='POST')return next();
+    // Reserve synchronously BEFORE reading/parsing the body or waiting for PG.
+    // This is a processing budget, not a client TCP connection limit.
+    if(intakeInFlight>=maxIntakeInFlight){c.header('Retry-After','5');return c.json({error:'ingestion_paused',reason:'intake_concurrency_full'},503);}
+    intakeInFlight++;
+    try{await next();}finally{intakeInFlight--;}
   });
   app.options("/v1/batch", (c) => {
     c.header("Access-Control-Allow-Origin", "*");
@@ -548,7 +560,7 @@ export function createApp(deps: AppDeps) {
   );
   app.get(prefix+'/ingest-status',c=>{
     if(!allowed(c,['admin']))return c.json({error:'forbidden'},403);
-    return c.json({scope:'platform_aggregate',computed_at:new Date().toISOString(),admission:deps.admissionStatus?.()??null,intake:deps.intakeStatus?.()??null});
+    return c.json({scope:'platform_aggregate',computed_at:new Date().toISOString(),admission:deps.admissionStatus?.()??null,intake:deps.intakeStatus?.()??null,processing:{in_flight:intakeInFlight,max_in_flight:maxIntakeInFlight,at_capacity:intakeInFlight>=maxIntakeInFlight}});
   });
   app.get(prefix + "/dlq", async (c) => {
     if (!allowed(c, ["admin"])) return c.json({ error: "forbidden" }, 403);

@@ -4,7 +4,7 @@ import {api,ApiError} from './api';
 import {Button} from './components/ui/button';
 import type {AdmissionStatus} from '../../../packages/server/src/ingest-admission';
 type Metric={metric:string;value:string};
-type Snapshot={scope:'platform_aggregate';computed_at:string;admission:AdmissionStatus|null};
+type Snapshot={scope:'platform_aggregate';computed_at:string;admission:AdmissionStatus|null;processing?:{in_flight:number;max_in_flight:number;at_capacity:boolean}};
 const count=(value:string|number|null|undefined)=>value!==null&&value!==undefined&&/^\d+$/.test(String(value))?new Intl.NumberFormat('zh-CN').format(BigInt(value)):'未记录';
 const reasons:Record<string,string>={consumer_offset_unknown:'消费位点无法确认，需要管理员核对来源与进度。',retained_offset_gap:'发现消息保留缺口，完整性保护已暂停接入，需要离线核对。',consumer_lag_high:'消费积压达到保护阈值，等待消费者追赶。',consumer_lag_old:'存在超过时间预算的消费积压。',disk_space_low:'存储可用空间不足。',disk_inodes_low:'存储可用文件节点不足。',disk_probe_stale:'磁盘采样已过期。',host_probe_unavailable:'宿主机采样暂不可用。',host_probe_invalid:'宿主机采样未通过校验。',kafka_probe_unavailable:'Kafka采样暂不可用。',pressure_probe_unavailable:'压力采样暂不可用。',pressure_probe_stale:'压力采样已过期。',pressure_probe_invalid:'压力采样未通过校验。',ingest_reservations_full:'本接入实例的保留余量已用尽。'};
 const counters=[['inserted','累计成功落库'],['duplicates','重复上报命中'],['deletion_suppressed','删除屏障拦截'],['retention_raw_expired','保留期清理事件']] as const;
@@ -31,7 +31,7 @@ export default function DeliveryMonitor({prefix,canManage}:{prefix:string;canMan
     };
     void load();return()=>{controller.abort();if(timer)clearTimeout(timer);};
   },[prefix,canManage,auto,refresh]);
-  const admission=snapshot?.admission,values=new Map(metrics?.map(row=>[row.metric,row.value]));
+  const admission=snapshot?.admission,processing=snapshot?.processing,accepts=admission?.allowed&&!processing?.at_capacity,reason=admission?.reason?(reasons[admission.reason]??'保护状态暂不可用，请检查平台运行情况。'):processing?.at_capacity?'本实例上报处理已达并发预算，请等待重试。':null,values=new Map(metrics?.map(row=>[row.metric,row.value]));
   return <>
     <section className="panel delivery-monitor">
       <div className="panel-heading"><div><h2>项目投递计数</h2><p className="muted">仅当前公司与项目，累计值不等于当前保留的事件数。</p></div><Button type="button" variant="outline" disabled={busy} onClick={()=>setRefresh(v=>v+1)}><RefreshCw size={14}/>刷新监控</Button></div>
@@ -40,7 +40,7 @@ export default function DeliveryMonitor({prefix,canManage}:{prefix:string;canMan
     </section>
     {canManage?<section className="panel"><div className="panel-heading"><div><h2>平台接入保护</h2><p className="muted">平台脱敏汇总，不是本项目的独立Kafka积压。</p></div></div><div className="panel-body">
       {platformError?<p role="alert" className="error">{platformError}</p>:null}
-      {admission?<><p role="status" className={'notice '+(admission.allowed?'':'delivery-paused')}>{admission.allowed?'读取时允许接入':'读取时暂停接入'}{admission.reason?' · '+(reasons[admission.reason]??'保护状态暂不可用，请检查平台运行情况。'):''}</p><p className="fine-print">状态时间 {new Date(snapshot!.computed_at).toLocaleString('zh-CN')}。允许接入表示当前保护条件满足，不代表已通过生产容量验收。</p><dl className="delivery-values"><div><dt>总消费积压</dt><dd>{count(admission.totalLagMessages)}</dd></div><div><dt>最繁忙分区积压</dt><dd>{count(admission.maxLagMessages)}</dd></div><div><dt>本实例保留余量</dt><dd>{count(admission.remainingMessages)}</dd></div><div><dt>确认结果未知的保留量</dt><dd>{count(admission.unknownMessages)}</dd></div></dl><p className="fine-print">确认结果未知不表示事件已丢失。接入暂停时SDK保留原ID重试；完整性暂停需要核对，不能在此直接清除。</p></>:!platformError?<p className="muted">尚无可用平台状态，无法判断接入是否开放。</p>:null}
+      {admission?<><p role="status" className={'notice '+(accepts?'':'delivery-paused')}>{accepts?'读取时允许接入':'读取时暂停接入'}{reason?' · '+reason:''}</p><p className="fine-print">状态时间 {new Date(snapshot!.computed_at).toLocaleString('zh-CN')}。允许接入表示当前保护条件满足，不代表已通过生产容量验收。</p><dl className="delivery-values"><div><dt>总消费积压</dt><dd>{count(admission.totalLagMessages)}</dd></div><div><dt>最繁忙分区积压</dt><dd>{count(admission.maxLagMessages)}</dd></div><div><dt>本实例保留余量</dt><dd>{count(admission.remainingMessages)}</dd></div><div><dt>确认结果未知的保留量</dt><dd>{count(admission.unknownMessages)}</dd></div><div><dt>同时处理的上报请求</dt><dd>{count(processing?.in_flight)}</dd></div><div><dt>本实例处理上限</dt><dd>{count(processing?.max_in_flight)}</dd></div></dl><p className="fine-print">确认结果未知不表示事件已丢失。接入暂停时SDK保留原ID重试；完整性暂停需要核对，不能在此直接清除。</p></>:!platformError?<p className="muted">尚无可用平台状态，无法判断接入是否开放。</p>:null}
     </div></section>:null}
   </>;
 }

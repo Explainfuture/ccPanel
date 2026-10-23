@@ -20,9 +20,10 @@ try{
     const secret=token(),csrf=digest(secret+':csrf');await pool.query("INSERT INTO sessions VALUES($1,$2,$3,now()+interval '1 hour')",[digest(secret),id,digest(csrf)]);headers.set(id,{cookie:'ccpanel_session='+secret,origin,'x-csrf-token':csrf,'content-type':'application/json'});
   }
   const intake=new IntakeMetrics();intake.observe({status:202,events:2,durationMs:9});let intakeReads=0;
-  const app=createApp({ready:()=>true,intakeStatus:()=>{intakeReads++;return intake.snapshot();},publish:async()=>{throw new Error('unexpected_publish');}}),root=`/api/tenants/${a}/projects/${project}`,other=`/api/tenants/${b}/projects/${otherProject}`;
+  const app=createApp({maxIntakeInFlight:2,ready:()=>true,intakeStatus:()=>{intakeReads++;return intake.snapshot();},publish:async()=>{throw new Error('unexpected_publish');}}),root=`/api/tenants/${a}/projects/${project}`,other=`/api/tenants/${b}/projects/${otherProject}`;
   const req=(user:string,path:string,body?:unknown,method=body?'POST':'GET')=>app.request(path,{method,headers:headers.get(user),...(body?{body:JSON.stringify(body)}:{})});
   const telemetry=await req(admin,root+'/ingest-status');assert.equal(telemetry.status,200);const telemetryBody=await telemetry.json();assert.equal(telemetryBody.intake.scope,'api_instance_aggregate');assert.equal(telemetryBody.intake.responses[0].known_events,'2');
+  assert.deepEqual(telemetryBody.processing,{in_flight:0,max_in_flight:2,at_capacity:false});
   for(const actor of [viewer,analyst])assert.equal((await req(actor,root+'/ingest-status')).status,403);
   assert.equal((await req(foreign,root+'/ingest-status')).status,404);assert.equal((await app.request(root+'/ingest-status')).status,401);assert.equal(intakeReads,1);
   for(const id of [a,b,project,otherProject])assert.ok(!JSON.stringify(telemetryBody).includes(id));
