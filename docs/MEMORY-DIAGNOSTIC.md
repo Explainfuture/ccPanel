@@ -11,3 +11,11 @@
 四容器memory.events max/oom/oom_kill均0，当前内存压力很低；紧邻一次vmstat的四个1秒增量样本si/so均0。首行vmstat是开机累计平均，不当作当前速率。**这些短快照不推翻schema16的30分钟容量Swap失败，也不证明最新版本容量通过。**本轮未修改Swap、内存/heap、复制、确认或服务参数；不执行swapoff、drop_caches或停安全更新来制造结果。
 
 原始快照：服务器/opt/ccpanel/shared/memory-diagnostic120.json及工作站.local/memory-diagnostic120.json。下一步在最新版本固定配置做一次正式30分钟测试；保持原PRD门槛，期间不部署/故障注入或调整参数，根据实际结果决定后续资源方案。
+
+## 步骤143：schema19冻结窗口诊断
+
+同一份capacity-integrity.HfanpA冻结样本新增诊断字段，不修改原报告、窗口或门槛。CPU加权分项（沿用两位截取）user17.98%、system6.97%、idle74.67%、iowait0.28%、steal0.07%。四容器memory.events high/max增量、CPU nr_throttled/throttled_usec增量均0。没有捕获容器限额触发或CPU限流证据，不能仅凭Swap结果就认定需调高容器上限；这也不否定宿主机换页或其他压力。
+
+capacity-report现在返回cpuBreakdownPercent及containerPressureDeltas；可选计数任何帧缺失就返回null，不填0。可选计数在窗口内回退使证据无效，新增诊断在无效窗口全部null。分项使用完整区间累计差，不平均每帧百分比；诊断字段不放宽既有保守资源门槛。增强报告在.local/capacity-alerts139-diagnostic-report.json，原capacity-alerts139-resource-report.json保持原样，conservativeResourcePass仍false。
+
+窗口外UTC04:45:53只读快照：可用307636KiB、Swap占226552KiB；cgroup Swap API4.16MiB/Worker0/PG7.42/Kafka132.14。Java进程VmSwap118784KiB，其RSS含共享页；不能与cgroup数强行相等或将全部宿主机Swap归因Kafka。该快照晚于正式窗口，且发生在集合验证/清理之后，不定位窗口内Swap I/O来源，也不证明减heap或改内存限制有效。服务器配置、内存/heap/确认/副本和安全服务均未改，未重跑同配置追求绿色。快照保存在服务器/opt/ccpanel/shared/memory-diagnostic143.json和本机.local/memory-diagnostic143.json。

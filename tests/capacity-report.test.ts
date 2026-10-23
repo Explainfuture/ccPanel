@@ -65,3 +65,14 @@ it('invalidates changed or missing configuration while ignoring JSON object key 
   data.configurationEnd={swappiness:60,limits:{worker:'96m',api:'128m'}};expect(capacityReport(data).reasons).toContain('configuration_changed');
   data.configurationEnd=undefined;expect(capacityReport(data).reasons).toContain('configuration_missing');
 });
+it('reports weighted CPU and exact optional pressure deltas without changing the resource gate',()=>{
+  const data=fixture();data.frames.forEach((frame,index)=>{for(const value of Object.values(frame.containers!)){value.memoryEvents.high=9007199254740000+index*2;value.memoryEvents.max=100+index*3;value.cpu.nr_throttled=200+index;value.cpu.throttled_usec=1000+index*250;}});
+  const report=capacityReport(data);expect(report.evidenceValid).toBe(true);expect(report.conservativeResourcePass).toBe(true);
+  expect(report.cpuBreakdownPercent).toEqual({userTicks:20,systemTicks:10,idleTicks:70,ioWaitTicks:0,stealTicks:0});
+  expect(report.containerPressureDeltas.api).toEqual({memory_high:6,memory_max:9,throttle_periods:3,throttle_usec:750});
+});
+it('keeps missing optional pressure counters unknown and rejects resets inside the window',()=>{
+  const data=fixture();expect(capacityReport(data).containerPressureDeltas.api).toEqual({memory_high:null,memory_max:null,throttle_periods:null,throttle_usec:null});
+  data.frames.forEach((frame,index)=>{for(const value of Object.values(frame.containers!))value.memoryEvents.max=[100,110,90,120][index]!;});
+  const reset=capacityReport(data);expect(reset.evidenceValid).toBe(false);expect(reset.reasons).toContain('container_counter_reset');expect(reset.containerPressureDeltas.api!.memory_max).toBe(null);expect(reset.cpuBreakdownPercent.idleTicks).toBe(null);
+});

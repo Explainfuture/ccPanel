@@ -1058,3 +1058,9 @@ public CLI记录接入尝试/成功/失败/尝试事件数及UTF-8请求体字�
 冻结后独立PG验证raw/dedup/job ID各1800、完成/桶贡献1800、DLQ0，集合SHA51e154993b18e576a22a682419c270a8b49a3b23f13917849118a98cec43b698；替换一个ID的反例实际1799/1800拒绝，不改DB。清理合成公司/账号/会话/业务数据后，新preservation工具真实应用：34原业务关系一致、原160采样/8告警历史子集完全一致；动态项只有consumer_progress、operational_samples、operational_alert_states。PG7176/7228总14404，与Kafka committed/high相同/lag0，root raw2/dedup3/DLQ0、临时公司/DB0，门禁open/ready。两端fixture凭证删除，冻结证据/汇总报告已保存双方，未删除按Kafka保留期存在的合成消息。
 
 窗口中API/Worker各60采样/各1实例，区间已读日志采集/评估失败或拒绝码均0；最终4规则clear且评估年龄约27秒，history8。原采样器实际inactive/dead、Result success/ExecMainStatus0、199帧/elapsed1980000ms自然完成，未人工停止/重开。证据capacity-integrity.HfanpA/.local/capacity-alerts139-*，数据与资源判定分开。当前生产资源门槛仍未通过；其他规则/通知、持续离机同步、自助策略、设备矩阵和生产拓扑继续，目标未完成。
+
+### 步骤143：冻结资源窗口的CPU/限额诊断（未改服务器配置）
+
+增强capacity-report输出CPU分项和四容器memory high/max、CPU限流次数/微秒累计差；缺失可选计数=null，回退使证据无效，不放宽资源条件。类型检查及173单测通过，新增加权分项/大安全整数差/可选计数缺失/窗口中重置反例。原冻结样本生成独立diagnostic-report，不覆盖原resource-report；CPU iowait0.28%、steal0.07%，四容器high/max/throttle增量0，resource verdict仍false，未找到直接调整容器上限的证据。
+
+窗口外04:45:53运行当前release的只读memory-diagnostic，Swap占226552KiB，cgroup Kafka132.14MiB/PG7.42/API4.16/Worker0；占用不是窗口I/O归因，详见MEMORY-DIAGNOSTIC。第一次共享脚本路径不存在后改用release脚本，未改服务配置。没有swapoff/drop_caches/heap或副本调整、停安全服务或重跑压测；下一步继续按证据定位资源问题及其他PRD缺口，CI待本分支。

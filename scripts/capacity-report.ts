@@ -49,13 +49,22 @@ export function capacityReport(input:CapacityEvidence){
     restarts+=Math.max(0,f.restartCount-b.restartCount);oom ||=b.oomKilled||f.oomKilled;
   }
   let totalTicks=0n,idleTicks=0n,swapIn=0n,swapOut=0n,activeIntervals=0,longestRun=0,run=0,maxIn=0,maxOut=0;
+  const cpuKeys=['userTicks','systemTicks','idleTicks','ioWaitTicks','stealTicks'] as const;
+  const cpuParts=Object.fromEntries(cpuKeys.map(key=>[key,0n])) as Record<typeof cpuKeys[number],bigint>;
+  const diagnosticKeys=['memory_high','memory_max','throttle_periods','throttle_usec'] as const;
+  type DiagnosticKey=typeof diagnosticKeys[number];
+  const diagnostics=Object.fromEntries(names.map(name=>[name,Object.fromEntries(diagnosticKeys.map(key=>[key,{complete:true,total:0}]))])) as Record<typeof names[number],Record<DiagnosticKey,{complete:boolean;total:number}>>;
+  const diagnosticValue=(container:Container,key:DiagnosticKey)=>key==='memory_high'?container.memoryEvents.high:key==='memory_max'?container.memoryEvents.max:key==='throttle_periods'?container.cpu.nr_throttled:container.cpu.throttled_usec;
   let diskFreeMin=100,availableMin:bigint|null=null;
   const peaks=Object.fromEntries(names.map(name=>[name,0])),oomDeltas=Object.fromEntries(names.map(name=>[name,0])),oomEvents=Object.fromEntries(names.map(name=>[name,0]));
   let previous:typeof valid[number]|undefined;
   for(const row of valid){
     for(const disk of row.host.disks)diskFreeMin=Math.min(diskFreeMin,Number(BigInt(disk.availableBytes)*10000n/BigInt(disk.totalBytes))/100);
     const available=BigInt(row.host.host.memoryBytes.available);availableMin=availableMin===null||available<availableMin?available:availableMin;
-    for(const name of names)peaks[name]=Math.max(peaks[name]!,row.containers[name]!.memoryBytes);
+    for(const name of names){
+      peaks[name]=Math.max(peaks[name]!,row.containers[name]!.memoryBytes);
+      for(const key of diagnosticKeys)if(diagnosticValue(row.containers[name]!,key)===undefined)diagnostics[name][key].complete=false;
+    }
     if(previous){
       const elapsed=(row.frame.capturedAt-previous.frame.capturedAt)/1000;
       if(elapsed<=0||elapsed>20)reasons.add('capture_gap');
@@ -63,6 +72,12 @@ export function capacityReport(input:CapacityEvidence){
         const a=previous.containers[name]!,b=row.containers[name]!;
         if(b.cpu.usage_usec!<a.cpu.usage_usec!||b.memoryEvents.oom_kill!<a.memoryEvents.oom_kill!||b.memoryEvents.oom!<a.memoryEvents.oom!)reasons.add('container_counter_reset');
         else {oomDeltas[name]!+=b.memoryEvents.oom_kill!-a.memoryEvents.oom_kill!;oomEvents[name]!+=b.memoryEvents.oom!-a.memoryEvents.oom!;}
+        for(const key of diagnosticKeys){
+          const before=diagnosticValue(a,key),after=diagnosticValue(b,key),diagnostic=diagnostics[name][key];
+          if(before===undefined||after===undefined){diagnostic.complete=false;continue;}
+          if(after<before){diagnostic.complete=false;reasons.add('container_counter_reset');continue;}
+          if(diagnostic.complete)diagnostic.total+=after-before;
+        }
       }
       if(row.host.sampledAt<previous.host.sampledAt)reasons.add('host_counter_reset');
       // Repeated host frames are allowed briefly but never counted as new data.
@@ -73,6 +88,7 @@ export function capacityReport(input:CapacityEvidence){
         if(di<0n||dout<0n||ticks<=0n||idle<0n||idle>ticks||a.pageBytes!==b.pageBytes||(['userTicks','systemTicks','ioWaitTicks','stealTicks'] as const).some(key=>BigInt(b.cpu[key])<BigInt(a.cpu[key])))reasons.add('host_counter_reset');
         else{
           totalTicks+=ticks;idleTicks+=idle;swapIn+=di*BigInt(b.pageBytes);swapOut+=dout*BigInt(b.pageBytes);
+          for(const key of cpuKeys)cpuParts[key]+=BigInt(b.cpu[key])-BigInt(a.cpu[key]);
           maxIn=Math.max(maxIn,Number(di)*b.pageBytes/1024/seconds);maxOut=Math.max(maxOut,Number(dout)*b.pageBytes/1024/seconds);
           if(di||dout){activeIntervals++;run+=seconds;longestRun=Math.max(longestRun,run);}else run=0;
         }
@@ -85,6 +101,8 @@ export function capacityReport(input:CapacityEvidence){
   if(valid.length!==frames.length||valid.length<2||totalTicks===0n)reasons.add('insufficient_valid_samples');
   const evidenceValid=reasons.size===0,oomKills=Object.values(oomDeltas).reduce((a,b)=>a+b,0),oomCount=Object.values(oomEvents).reduce((a,b)=>a+b,0);
   return {evidenceValid,reasons:[...reasons].sort(),configurationChecked,durationSeconds:(input.finishedAt-input.startedAt)/1000,captureFrames:frames.length,validFrames:valid.length,
+    cpuBreakdownPercent:Object.fromEntries(cpuKeys.map(key=>[key,evidenceValid&&totalTicks?round(Number(cpuParts[key]*10000n/totalTicks)/100):null])),
+    containerPressureDeltas:Object.fromEntries(names.map(name=>[name,Object.fromEntries(diagnosticKeys.map(key=>[key,evidenceValid&&diagnostics[name][key].complete?diagnostics[name][key].total:null]))])),
     cpuIdlePercent:totalTicks?round(Number(idleTicks*10000n/totalTicks)/100):null,memoryAvailableMinBytes:availableMin?.toString()??null,containerMemoryPeakBytes:peaks,
     swapInBytes:swapIn.toString(),swapOutBytes:swapOut.toString(),swapActiveIntervals:activeIntervals,longestSwapActivitySeconds:round(longestRun),swapInMaxKiBPerSecond:round(maxIn),swapOutMaxKiBPerSecond:round(maxOut),diskAvailableMinPercent:valid.length?round(diskFreeMin):null,restarts,oomObserved:oom||oomKills>0||oomCount>0,oomKillDeltas:oomDeltas,oomEventDeltas:oomEvents,
     // Zero swap is a sufficient conservative pass. Any activity still needs
