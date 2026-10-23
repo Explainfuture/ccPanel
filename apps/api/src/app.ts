@@ -13,6 +13,7 @@ import { registerDeletions } from '../../../packages/server/src/deletion-service
 import { registerReplayRoutes } from '../../../packages/server/src/dlq-replay';
 import {readDeadLetterSummary} from '../../../packages/server/src/dlq-summary';
 import {readQueryStatus} from '../../../packages/server/src/query-status';
+import {readOperationalHistory,OperationalReadError} from '../../../packages/server/src/operational-history-read';
 import type {HostResourceStatus} from '../../../packages/server/src/host-resource-status';
 import { registerInvitationAcceptance,registerCompanyInvitations,lockMembership,membershipAdmin } from '../../../packages/server/src/invitations';
 import { IngestionPaused,type AdmissionStatus } from '../../../packages/server/src/ingest-admission';
@@ -567,6 +568,13 @@ export function createApp(deps: AppDeps) {
     if(!allowed(c,['admin']))return c.json({error:'forbidden'},403);
     if(!(await query('SELECT 1 FROM platform_operators WHERE user_id=$1 AND revoked_at IS NULL',[c.get('userId')])).rowCount)return c.json({error:'forbidden'},403);
     return c.json({scope:'platform_aggregate',computed_at:new Date().toISOString(),admission:deps.admissionStatus?.()??null,intake:deps.intakeStatus?.()??null,host_resources:deps.hostResourceStatus?.()??null,processing:{in_flight:intakeInFlight,max_in_flight:maxIntakeInFlight,at_capacity:intakeInFlight>=maxIntakeInFlight}});
+  });
+  app.get(prefix+'/operational-history',async c=>{
+    if(!allowed(c,['admin']))return c.json({error:'forbidden'},403);
+    if(!rate('operational-history:'+c.get('userId'),12,60000))return c.json({error:'rate_limited'},429);
+    c.header('Cache-Control','no-store');
+    try{return c.json(await readOperationalHistory(c.get('userId'),c.get('tenantId'),c.req.param('project')!,new URL(c.req.url).searchParams));}
+    catch(error){if(error instanceof OperationalReadError)return c.json({error:error.status===400?'invalid_history_query':'forbidden'},error.status);throw error;}
   });
   app.get(prefix+'/query-status',async c=>c.json(await readQueryStatus(c.get('tenantId'),c.req.param('project')!)));
   app.get(prefix+'/dlq-summary',async c=>{

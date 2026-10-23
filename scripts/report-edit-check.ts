@@ -24,7 +24,18 @@ try{
   const app=createApp({maxIntakeInFlight:2,ready:()=>true,intakeStatus:()=>{intakeReads++;return intake.snapshot();},hostResourceStatus:()=>{resourceReads++;return resourceStatus.snapshot();},publish:async()=>{throw new Error('unexpected_publish');}}),root=`/api/tenants/${a}/projects/${project}`,other=`/api/tenants/${b}/projects/${otherProject}`;
   const req=(user:string,path:string,body?:unknown,method=body?'POST':'GET')=>app.request(path,{method,headers:headers.get(user),...(body?{body:JSON.stringify(body)}:{})});
   assert.equal((await req(admin,root+'/ingest-status')).status,403);assert.equal(intakeReads,0);assert.equal(resourceReads,0);assert.equal((await (await req(admin,'/api/me')).json()).platform_operator,false);
+  assert.equal((await req(admin,root+'/operational-history')).status,403);
   await pool.query('INSERT INTO platform_operators(user_id) VALUES($1)',[admin]);
+  const historySnapshot=intake.snapshot();
+  // Synthetic SQL timestamps intentionally differ at microsecond precision to
+  // exercise lossless DB keyset boundaries, not producer timestamp fidelity.
+  await pool.query("INSERT INTO operational_samples(source,instance_id,started_at,observed_at,payload_hash,snapshot) SELECT 'api',$1,clock_timestamp()-interval '1 hour',date_trunc('second',CURRENT_TIMESTAMP)-interval '1 second'+n*interval '1 microsecond',$2,$3 FROM generate_series(1,53) n",[historySnapshot.instance_id,'0'.repeat(64),JSON.stringify(historySnapshot)]);
+  const history=await req(admin,root+'/operational-history?source=api');assert.equal(history.status,200);assert.equal(history.headers.get('cache-control'),'no-store');const historyBody=await history.json();assert.equal(historyBody.samples.length,50);assert.equal(historyBody.scope,'platform_aggregate');assert.ok(historyBody.next_cursor);
+  const nextHistory=await(await req(admin,root+'/operational-history?source=api&cursor='+historyBody.next_cursor)).json();assert.equal(nextHistory.samples.length,3);assert.equal(nextHistory.next_cursor,null);
+  assert.equal((await(await req(admin,root+'/operational-history?source=worker')).json()).samples.length,0);
+  for(const suffix of ['?limit=100000','?source=api&source=worker','?cursor=broken'])assert.equal((await req(admin,root+'/operational-history'+suffix)).status,400);
+  for(const user of [viewer,analyst])assert.equal((await req(user,root+'/operational-history')).status,403);
+  assert.equal((await req(foreign,root+'/operational-history')).status,404);assert.equal((await app.request(root+'/operational-history')).status,401);
   assert.equal((await (await req(admin,'/api/me')).json()).platform_operator,true);
   const telemetry=await req(admin,root+'/ingest-status');assert.equal(telemetry.status,200);const telemetryBody=await telemetry.json();assert.equal(telemetryBody.intake.scope,'api_instance_aggregate');assert.equal(telemetryBody.host_resources.scope,'host_aggregate');assert.equal(telemetryBody.host_resources.state,'unavailable');assert.equal(resourceReads,1);assert.equal(telemetryBody.intake.responses[0].known_events,'2');
   assert.deepEqual(telemetryBody.processing,{in_flight:0,max_in_flight:2,at_capacity:false});
@@ -62,6 +73,7 @@ try{
   const emptyStatus=await (await req(admin,root+'/query-status')).json();for(const row of emptyStatus.states){assert.equal(row.count,'0');assert.equal(row.oldest_age_seconds,null);}
   for(const id of [a,b,project,otherProject])assert.ok(!JSON.stringify(telemetryBody).includes(id));
   await pool.query('UPDATE platform_operators SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=$1',[admin]);assert.equal((await req(admin,root+'/ingest-status')).status,403);assert.equal(intakeReads,1);assert.equal(resourceReads,1);assert.equal((await (await req(admin,'/api/me')).json()).platform_operator,false);
+  assert.equal((await req(admin,root+'/operational-history')).status,403);
   await pool.query('DELETE FROM platform_operators WHERE user_id=$1',[admin]);
   const day=Math.floor(Date.now()/86400000)*86400000,first=day-86400000-1800000;
   const range={from:new Date(day-3*86400000).toISOString(),to:new Date(day).toISOString()};
