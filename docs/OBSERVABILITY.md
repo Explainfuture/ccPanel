@@ -249,3 +249,13 @@ CI39926863062（204e67f）全success：206单测/58文件、类型/构建/SDK/CL
 CI39927984856（e328dde）全success：206单测/58文件、构建/SDK/CLI/Python、15真实PG及72主机保护例。VPS独立validation-ops162暂存同代码在Linux跑72例亦通过，归档SHA ae7064beab5097ec8be007c25f2c145718d6733195e38fd86497a14868cab592；没有安装/替换线上共享升级脚本。安全摘要final-summary.json/.local/ops162-final-summary.json，两端保留每例日志hash。
 
 最终只读复核m4-pressure-009/schema21、projects2/raw2/dedup3/DLQ0/operators0，位点7182/7230，临时库0，新DLQ两表仍不存在。四容器running/restart0/OOMfalse、HTTPSready；初检可用318MiB/Swap271MiB/磁盘32%只表示瞬时资源，不能替代容量门槛。本轮未进行新备份/真实恢复或运行库升级；实际旧21→22/HTTP证据仍是步骤160的临时数据库，页面证据是161的合成Chrome。下一步须新归档、新离机备份和真实隔离恢复、受控21→22/原数据对账与实际页面/权限/采集验收后才算发布。
+
+## Kafka 启动确认策略保护（步骤165，源码/候选验收）
+
+`KAFKA_RF`、`KAFKA_MIN_ISR`只接受规范十进制正整数1–32767，缺省均1；空串、0、负数、小数、科学记数、前后空格及ISR大于RF在创建客户端前拒绝。设置环境变量不会重新分配已有topic副本。
+
+API/Worker的 `ensureTopics()` 在创建/确认topic后读取事件及DLQ两个topic的实际metadata和有效配置：每分区副本数至少满足要求，配置minISR至少满足要求且不大于实际副本数，当前ISR满足实际minISR、leader属于ISR，禁止unclean leader election。缺项、重复、协议错误、授权失败或不可信拓扑均阻止启动；不自行改写旧topic配置、副本或位点。更强且当前满足的实际策略可以保留。新建DLQ也显式关闭不洁选举。
+
+只读命令 `node dist/kafka-durability.mjs` 使用同样断言，仅执行metadata/DescribeConfigs；账号须有这两种读取权限。输出表示读取时的启动策略快照，不等于持续健康、确认所有历史数据存在或多故障域HA。API和Worker启动各增加两次读取，无新增定时器/逐事件查询；后续每次发送仍依靠acks=-1。运行中管理员修改策略后的连续漂移检测尚未由该检查覆盖，需独立运维监控；不能把一次通过永久解释为满足策略。
+
+本项未升级VPS运行release，实际候选验证见PROGRESS步骤165。部署前仍需新的归档、备份/恢复和升级验收；当前单机依然RF1，无副本HA。

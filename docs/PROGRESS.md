@@ -1302,3 +1302,13 @@ Encrypted dump and v2 ledger remain on both ends with the key separately on the 
 暂停期间主数据库44个public关系完全相同（包含recovery_gate和recovery_import_scopes），整体指纹SHA256 `1db8f2cca943c18b167596c39fdf68d29df19401f31f144a577840e2124f0ac4`；测试日志SHA256 `489c26e33ddbe6d38db3b714f2d76356e549034e5f2000c249d353289aff0d40`。临时数据库/全部本演练前缀topics/groups均0，临时凭证及清单删除。原库schema22/raw2/dedup3/DLQ0/operators0，主业务位点仍7184/7232。采集与清理两进程均true，四容器运行/restart0/OOMfalse、HTTPS ready；曾主动stop/start，不能宣称服务连续或替代容量门槛。剩余独立broker故障、瞬时事务和真实设备/外部备份通知等仍待完成。
 
 步骤164修正版 `83df171` 的 [Actions39932005942](https://github.com/Explainfuture/ccPanel/actions/runs/39932005942) 已通过206项单测、15套PG、72个主机工具mock、类型/构建/打包消费者检查及新增演练入口语法检查。真实Kafka拒收证据来自上述VPS演练，不将CI语法检查表述为真实broker测试。
+
+### 步骤165：Kafka配置与实际确认策略启动检查（2026-10-23）
+
+分支 `fix/165-kafka-durability-guard`，实现提交 `4b49b67`。严格解析RF/minISR并拒绝不可能组合；启动时从事件/DLQ两topic读取实际副本、ISR、有效minISR及unclean election，拒绝已有弱拓扑或不完整观察，不用环境配置冒充已有副本升级。新增只读CLI；不自动修改原topic或推进位点。该项是启动快照，运行后漂移、真正三副本和故障域验证仍未完成。
+
+本地类型检查/构建及211测试（59文件）通过；新增5项包含多个异常/拓扑变体，覆盖不规范值、RF1/ISR2、弱副本/确认数、unsafe election、重复/缺失/错误响应、强策略保留与读取失败。候选构建归档SHA256 `97abe18f6ec93bea4b9ce3faed313e3334dc60814715113f67df6cae96cf96fe`，冻结实现4b49b67。
+
+VPS证据 `/opt/ccpanel/shared/kafka-durability-check.pE6b96`：候选只读CLI对当前1/1策略通过，对要求3/2的现有单副本拒绝。实际候选API分别以1/2、3/2、3/1启动，均退出1，分别命中非法配置、弱确认要求、弱副本数保护，未监听服务/运行后台任务；运行中的API/Worker未替换或重启。额外3/1检查确保不仅因minISR不足而短路，实际副本数也被单独验证。
+
+37个原非监控关系（包含消费位点与恢复门禁）完整指纹相同，整体SHA256 `18a3c4b2306b0ca3d7e1895790d67e0208c8a75f9f33acac7809f6b007de756c`。root仍schema22/raw2/dedup3/DLQ0/operators0、位点7184/7232；四容器running/restart0/OOMfalse、HTTPS ready。当前正式预览仍m4-dlq-010/旧源码，不把候选检查当作部署完成，也不宣称新增容量或HA通过。演练164最终CI39932376723已通过；本步CI另记。
