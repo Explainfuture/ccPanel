@@ -11,7 +11,9 @@ import {createApp} from '../apps/api/src/app';
 import {digest,token} from '../packages/server/src/security';
 import {canonical} from '../packages/schema/src/index';
 import {replayTick} from '../packages/server/src/dlq-replay';
+import {withQuerySnapshot,lockQuerySnapshot} from '../packages/server/src/query-snapshot';
 import type {StoredEnvelope} from '../packages/schema/src/index';
+import type {TrendSpec} from '../packages/server/src/query-spec';
 try{
   assert.match((await pool.query('SELECT current_database() AS name')).rows[0].name,/^ccpanel_restore_[0-9]{14}_[a-f0-9]{8}$/);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM tenants')).rows[0].n,0);
@@ -72,7 +74,7 @@ try{
   };
   // Admit before policy change, then recheck the queued job at publication.
   const queued=await replay(record(2));assert.equal(queued.status,202);const queuedId=(await queued.json()).id;
-  const oldQuery=randomUUID(),spec={kind:'trend',from:new Date(Date.now()-3*86400000).toISOString(),to:new Date().toISOString(),metric:'count',filters:[],group_by:[]};
+  const oldQuery=randomUUID(),spec:TrendSpec={kind:'trend',from:new Date(Date.now()-3*86400000).toISOString(),to:new Date().toISOString(),metric:'count',filters:[],group_by:[]};
   // Synthetic saved output: this checks epoch invalidation, not query execution.
   await pool.query("INSERT INTO query_jobs(id,tenant_id,project_id,user_id,spec,status,result,privacy_epoch,finished_at) SELECT $1,$2,$3,$4,$5,'succeeded',$6,privacy_epoch,clock_timestamp() FROM projects WHERE id=$3",[oldQuery,tenant,project,admin,JSON.stringify(spec),JSON.stringify({summary:{events:1}})]);
   const download=await app.request(root+`/query-jobs/${oldQuery}/download`,{headers});assert.equal(download.status,200);await download.text();
@@ -88,5 +90,35 @@ try{
   const invalid=await ingest([recent,old]);assert.equal(invalid.status,400);const invalidBody=await invalid.json();
   assert.deepEqual(invalidBody.errors,[{index:1,code:'project_retention_expired'}]);assert.equal(published,0,'batch admission is all or nothing');
   const accepted=await ingest([recent]);assert.equal(accepted.status,202);assert.equal(published,1);
+  await assert.rejects(withQuerySnapshot(tenant,other,async()=>{throw new Error('foreign callback must not run');}),{status:404});
+  let snapshotCount=0;
+  await withQuerySnapshot(tenant,project,async run=>{
+    const before=(await run('SELECT count(*)::int AS n,CURRENT_TIMESTAMP AS at FROM visible_events WHERE tenant_id=$1 AND project_id=$2',[tenant,project])).rows[0];snapshotCount=before.n;
+    await assert.rejects(update(2,4),{status:409,message:'retention_policy_busy'});
+    assert.equal(await persist(record(0.001)),'inserted','normal intake can proceed during a shared query');
+    const after=(await run('SELECT count(*)::int AS n,CURRENT_TIMESTAMP AS at FROM visible_events WHERE tenant_id=$1 AND project_id=$2',[tenant,project])).rows[0];
+    assert.equal(after.n,before.n,'one snapshot excludes events inserted between subqueries');assert.equal(after.at.getTime(),before.at.getTime());
+  });
+  const fresh=await trends(tenant,project,spec);assert.equal(fresh.summary.events,snapshotCount+1);
+  // Deterministic race: a policy commits after snapshot creation but before
+  // shared lock acquisition. Row locking must reject the outdated snapshot.
+  const raced=await pool.connect();
+  try{
+    await raced.query('BEGIN ISOLATION LEVEL REPEATABLE READ');await raced.query('SELECT 1');
+    await update(2,4);
+    await assert.rejects(lockQuerySnapshot(raced,tenant,project),(error:unknown)=>(error as {code:string}).code==='40001');
+  }finally{await raced.query('ROLLBACK');raced.release();}
+  await assert.rejects(withQuerySnapshot(tenant,project,async()=>{throw new Error('synthetic read failure');}),/synthetic read failure/);
+  await update(3,5); // Prior rollback released both locks and connection.
+  const busy=await pool.connect();
+  try{
+    await busy.query('BEGIN');await lockProjectPrivacy(busy,project,true);
+    for(const [path,input]of[['/query',spec],['/behavior',{kind:'funnel',from:spec.from,to:spec.to,steps:['view','finish'],window_hours:24}]] as const){
+      const response=await app.request(root+path,{method:'POST',headers,body:JSON.stringify(input)});assert.equal(response.status,429);assert.equal(response.headers.get('retry-after'),'1');assert.equal((await response.json()).error,'query_busy');
+    }
+  }finally{await busy.query('ROLLBACK');busy.release();}
+  await assert.rejects(withQuerySnapshot(tenant,project,async run=>{await run('SELECT pg_sleep(6)');}),{status:504,message:'query_timeout'});
+  await update(4,6); // SQL timeout also rolls back and releases the shared lock.
+  console.log(JSON.stringify({query_snapshot:true,repeatable_rows_and_clock:true,ingestion_during_read:true,policy_write_busy_during_read:true,post_snapshot_policy_commit_rejected:true,foreign_snapshot_hidden:true,sync_trend_and_behavior_busy_http:true,error_and_timeout_release_locks:true}));
   console.log(JSON.stringify({passed:true,schema20:true,fresh_authorization:true,foreign_scope_hidden:true,no_op_no_audit:true,version_conflict:true,privacy_lock_busy:true,logical_expiry_immediate:true,extension_no_resurrection:true,expired_consumer_dedup:true,expired_identify_no_link:true,audit_atomic_rollback:true,physical_expiry_keeps_45_day_dedup:true,replay_admission_and_queued_recheck:true,http_batch_all_or_nothing:true,old_result_and_download_hidden:true}));
 }finally{await pool.end();}
