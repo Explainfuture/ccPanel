@@ -798,3 +798,13 @@ Worker主路径包装persist、DLQ发布、DLQ索引及Kafka checkpoint，固定
 150项单测、类型/生产构建通过。Chrome生产构建模拟API验证9007199254740993精确显示、172800秒/0秒/空类、503及403清除、恢复、切换A/B公司旧年龄消失且切回恢复、viewer无DLQ请求或面板。桌面和390px截图已检查，窄屏无文档溢出，表格可横向滚动。浏览器与本地服务已关闭。API状态/公司数据为fixture，不冒充公网权限/真实PG验证（后者步骤111）；SDK未变。CI待本分支，VPS仍m4-retention-002。
 
 步骤112 CI补充：Actions39883737706（c853f7e）verify/postgres均success，150项单测、类型/构建、SDK包消费者及5套真实PG控制器通过。同步preview/integration/草稿PR1。页面mock与接口PG证据分开保留，尚无新版本公网产品流程或容量结论；下一步按可信升级流程部署累计改动并验证Worker指标与DLQ页面真实链路。
+
+### 步骤113：观测版本可信升级与真实链路（已部署预览，非生产验收）
+
+部署m4-observability-003/schema17，累计104–112改动，archive SHA256为243332164edd2bb10d595d57f9324e09af8bda0a8af78683b72e2c617af67c53（114文件/468981字节）。先核对旧版本保留数据指纹及维护无错误、无活跃容量服务，暂关物理保留，再冻结API/Worker。证据目录/opt/ccpanel/shared/product-upgrade.6pxiYs。备份20261023T012652Z-8195e5ed，93327字节，明文SHA256 e0dc9643c390ceb0491480403beeb17cdfb7a0955a5bf468fe77b7176bb47e6d；工作站AES-GCM加密93363字节、解密逐字节一致，回传隔离PG恢复3秒且全表指纹一致，源ledger另加密885字节。验证标记后apply，升级前后原字段完全一致、门禁open、PG进度完整，恢复保留true。
+
+真实公网HTTPS隔离项目发送2条唯一事件并重发相同批次：202逐ID确认，PG raw/dedup/已处理聚合/桶贡献均2、duplicate计数2。明确注入1条无效event_name合成消息到同项目Kafka，Worker DLQ发布/PG索引各1，项目DLQ1；实际worker_metrics插入2、重复2、DLQ发布/索引完成各1、checkpoint5、四类failed均0。HTTPS管理员接入状态含intake/processing，DLQ摘要未解决1及实际年龄；Chrome真实HTTPS页面显示同样计数/年龄及保护允许，无alert，截图已查看。这证明本版正常/重复/毒事件路径指标接线，不代表PG/Kafka故障注入或容量通过。
+
+清理测试PG公司、事件、DLQ、用户与会话，移除两端fixture/临时浏览器凭证、注入脚本、备份/解密dump及源ledger明文，保留密文与分开的工作站密钥；Kafka合成消息仍按流保留周期存在。最终所有原表指纹一致，仅consumer_progress按5条消息推进：p0=5608、p1=5110，总10718；临时DB/测试公司0，四服务running、ready。两次旧验证命令因容器挂载路径/权限失败，未修改数据，最终改用受限fixture UUID直接PG对账并通过；未伪造旧验证通过。
+
+升级前可用内存约314MiB、Swap占262MiB、根盘可用12GiB，仅瞬时读数。此前schema16持续Swap容量门槛失败仍有效，本版尚无容量验收；RF1/单PG、设备矩阵、持续离机备份与事故/删除状态同步、全量持久监控告警、保留策略配置等生产要求仍未完成。

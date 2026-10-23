@@ -49,3 +49,5 @@ persist成功区分inserted/duplicate/suppressed，EventConflict记conflict，�
 仅返回四个固定类别及聚合时间，不返回payload/ID/原因文本。使用既有created_at与replay source索引，受PG 5秒statement timeout约束；大规模DLQ下的查询成本尚待容量验证，不声称无界规模可用。暂未接入监控UI/告警，下一步继续完成展示和运行验收。
 
 步骤112已在源码投递监控页面接入：仅管理员请求DLQ摘要，展示保留来源分类、精确数量、最老来源年龄（秒）及数据库快照时间。0条对应无记录，缺失对应未记录。手动刷新及可选可见时轮询，失败或失权清除旧DLQ数据；公司/项目切换卸载旧组件并中止请求。Chrome模拟API验证失败/恢复、公司切换、viewer不请求和窄屏布局；尚未部署VPS，也未完成持久告警及真实本版Worker运行验证。
+
+步骤113部署更新：m4-observability-003/schema17已在VPS运行。真实HTTPS2个唯一事件及重复批次，PG/聚合贡献2且重复计数2；同一隔离测试项目1条无效合成Kafka消息进入DLQ。实际Worker累计快照观察inserted2/duplicate2、DLQ publish/index completed各1、Kafka checkpoint5、failed0。HTTPS摘要及Chrome页面均显示未解决1和实际年龄。测试PG数据/凭证已清理，仅原消费位点按5条消息推进；详见PROGRESS步骤113。尚未做本版PG/Kafka不可用注入、持久时序/告警或新容量验收，不能把这次功能验证解释为完整生产监控验收。
