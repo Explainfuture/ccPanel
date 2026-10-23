@@ -167,3 +167,13 @@ schema21新增三项固定规则的pressure_signal_states和pressure_signal_hist
 单事务try advisory lock协调写入，拒绝旧实例、乱序、同时间冲突、不完整三行状态与revision溢出；同一观测幂等，稳定状态刷新证据不增加revision。状态、原因、策略、实例或已知信号观察中断产生历史，持续unknown不反复增加gap。历史保留14天、上限5000，每次过期和容量删除分别最多100行；超过有界清理能力拒绝整次写入。状态更新、历史和清理同事务，历史插入失败整体回滚。
 
 当前只有内部模型/写入与验证，尚未连接采集器、保护读接口或前端历史，也无独立外部通知；可信VPS升级/激活工具继续只接受至schema20，线上m4-recovery-008未改动。schema21构建不得绕过现有升级保护部署。CI增加第13套真实PostgreSQL专项，从实际schema20迁移源启动，验证迁移失败回滚、原字段指纹、源过期、精确大整数、乱序/实例、历史失败原子性、容量拒绝和有界过期清理；通过记录另见PROGRESS。
+
+## 步骤155：压力缓存采集与受保护读取（源码，未部署）
+
+API把admission.pressureAlerts缓存回调交给既有operational采集器，沿用30秒、首次延迟、单在途、无积压和独立max1连接池。在PG等待前捕获压力评估与相同API instance/start；关闭采集时不读任一回调、不建池/定时器，Worker即使传入压力回调也不调用。压力回调/写入失败用固定无载荷日志隔离，PG错误销毁监控连接；不改上报确认，不新增探针。原四项告警和压力分事务，后者失败不撤销已提交原采样。
+
+新增GET项目路径pressure-history，仍是平台脱敏汇总，只允许当前公司admin且有效platform_operator。沿用事务内成员/项目/运维资格FOR SHARE、no-store；拒绝所有query，和operational-history/operational-alerts共享每API进程每用户12/min预算，429 Retry-After:5。普通同公司分析权限不因平台读预算改变。
+
+单SQL快照读三状态及14天内最近50变化，ID按bigint排序再输出字符串，revision/lag保持精度。DB查询后时钟判断源到期；输出state_at_assessment与独立current_state。缺失unavailable，不完整/hash或策略不一致/未来记录invalid，均不推断当前健康；源过期current unknown，各域独立到期。写入的7天接收窗口不用于否定旧存档：停止采集8天后仍是expired而非格式invalid。历史只代表当时观察，客户端接入后必须继续扣除网络等待并本地过期。
+
+30秒采样大于Kafka默认15秒源TTL，故持久读在两个采样之间可能未知，已知信号会出现gap变化；不能延长TTL或冒充连续检测。14天是最长保留，5000上限可能提前淘汰。前端历史、外部通知、schema21受控升级/真实部署尚待完成；VPS保持m4-recovery-008/schema20。
