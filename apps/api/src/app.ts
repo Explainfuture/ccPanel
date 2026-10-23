@@ -16,6 +16,7 @@ import { IngestionPaused,type AdmissionStatus } from '../../../packages/server/s
 import { lockProjectPrivacy } from '../../../packages/server/src/privacy';
 import { checkRequired } from '../../../packages/server/src/project-schema';
 import { projectQueryFlights as queryFlights } from '../../../packages/server/src/query-budget';
+import type {IntakeObservation,IntakeMetrics} from '../../../packages/server/src/intake-metrics';
 import { randomUUID } from "node:crypto";
 import { pool, query } from "../../../packages/server/src/db";
 import {
@@ -37,6 +38,8 @@ export interface AppDeps {
   publish: (records: StoredEnvelope[]) => Promise<void>;
   ready: () => boolean;
   admissionStatus?:()=>AdmissionStatus;
+  observeIntake?:(value:IntakeObservation)=>void|Promise<void>;
+  intakeStatus?:()=>ReturnType<IntakeMetrics['snapshot']>;
 }
 const validId = (s: string | undefined) =>
   typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(s);
@@ -44,6 +47,7 @@ const allowed = (c: Context<Env>, roles: Role[]) =>
   roles.includes(c.get("role"));
 export function createApp(deps: AppDeps) {
   const app = new Hono<Env>();
+  const intakeCounts=new WeakMap<Context<Env>,{events:number|null}>();
   const buckets = new Map<string, { count: number; expires: number }>();
   function rate(key: string, max: number, interval: number) {
     const now = Date.now();
@@ -84,7 +88,11 @@ export function createApp(deps: AppDeps) {
     // Public, cookie-free ingestion errors must be readable by cross-origin SDKs.
     c.header('Access-Control-Allow-Origin','*');
     c.header('Access-Control-Expose-Headers','Retry-After');
-    await next();
+    const started=performance.now(),sample={events:null as number|null};
+    if(c.req.method==='POST')intakeCounts.set(c,sample);
+    try{await next();}finally{
+      if(c.req.method==='POST')try{const observed=deps.observeIntake?.({status:c.res.status,events:sample.events,durationMs:performance.now()-started});if(observed)void observed.catch(()=>console.error(JSON.stringify({code:'intake_telemetry_failed'})));}catch{console.error(JSON.stringify({code:'intake_telemetry_failed'}));}
+    }
   });
   app.options("/v1/batch", (c) => {
     c.header("Access-Control-Allow-Origin", "*");
@@ -117,6 +125,8 @@ export function createApp(deps: AppDeps) {
       );
       const key = found.rows[0];
       if (!key) return c.json({ error: "invalid_key" }, 401);
+      const intake=intakeCounts.get(c);
+      if(intake&&Array.isArray(body.events)&&body.events.length<=limits.serverEvents)intake.events=body.events.length;
       const origin = c.req.header("origin");
       if (origin && !(key.origins as string[]).includes(origin))
         return c.json({ error: "origin_not_allowed" }, 403);
@@ -538,7 +548,7 @@ export function createApp(deps: AppDeps) {
   );
   app.get(prefix+'/ingest-status',c=>{
     if(!allowed(c,['admin']))return c.json({error:'forbidden'},403);
-    return c.json({scope:'platform_aggregate',computed_at:new Date().toISOString(),admission:deps.admissionStatus?.()??null});
+    return c.json({scope:'platform_aggregate',computed_at:new Date().toISOString(),admission:deps.admissionStatus?.()??null,intake:deps.intakeStatus?.()??null});
   });
   app.get(prefix + "/dlq", async (c) => {
     if (!allowed(c, ["admin"])) return c.json({ error: "forbidden" }, 403);

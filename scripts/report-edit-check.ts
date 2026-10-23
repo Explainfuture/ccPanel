@@ -6,6 +6,7 @@ import {persist} from '../packages/server/src/consume';
 import {token,digest} from '../packages/server/src/security';
 import {createApp} from '../apps/api/src/app';
 import {startQueryJobs} from '../packages/server/src/query-jobs';
+import {IntakeMetrics} from '../packages/server/src/intake-metrics';
 let stopJobs:(()=>void)|undefined;
 try{
   assert.match((await pool.query('SELECT current_database() AS name')).rows[0].name,/^ccpanel_restore_[0-9]{14}_[a-f0-9]{8}$/);
@@ -18,8 +19,13 @@ try{
     await pool.query('INSERT INTO users VALUES($1,$2,$3)',[id,`report-${id}@integration.invalid`,'fixture-only']);await pool.query('INSERT INTO tenant_memberships VALUES($1,$2,$3)',[tenant,id,role]);
     const secret=token(),csrf=digest(secret+':csrf');await pool.query("INSERT INTO sessions VALUES($1,$2,$3,now()+interval '1 hour')",[digest(secret),id,digest(csrf)]);headers.set(id,{cookie:'ccpanel_session='+secret,origin,'x-csrf-token':csrf,'content-type':'application/json'});
   }
-  const app=createApp({ready:()=>true,publish:async()=>{throw new Error('unexpected_publish');}}),root=`/api/tenants/${a}/projects/${project}`,other=`/api/tenants/${b}/projects/${otherProject}`;
+  const intake=new IntakeMetrics();intake.observe({status:202,events:2,durationMs:9});let intakeReads=0;
+  const app=createApp({ready:()=>true,intakeStatus:()=>{intakeReads++;return intake.snapshot();},publish:async()=>{throw new Error('unexpected_publish');}}),root=`/api/tenants/${a}/projects/${project}`,other=`/api/tenants/${b}/projects/${otherProject}`;
   const req=(user:string,path:string,body?:unknown,method=body?'POST':'GET')=>app.request(path,{method,headers:headers.get(user),...(body?{body:JSON.stringify(body)}:{})});
+  const telemetry=await req(admin,root+'/ingest-status');assert.equal(telemetry.status,200);const telemetryBody=await telemetry.json();assert.equal(telemetryBody.intake.scope,'api_instance_aggregate');assert.equal(telemetryBody.intake.responses[0].known_events,'2');
+  for(const actor of [viewer,analyst])assert.equal((await req(actor,root+'/ingest-status')).status,403);
+  assert.equal((await req(foreign,root+'/ingest-status')).status,404);assert.equal((await app.request(root+'/ingest-status')).status,401);assert.equal(intakeReads,1);
+  for(const id of [a,b,project,otherProject])assert.ok(!JSON.stringify(telemetryBody).includes(id));
   const day=Math.floor(Date.now()/86400000)*86400000,first=day-86400000-1800000;
   const range={from:new Date(day-3*86400000).toISOString(),to:new Date(day).toISOString()};
   const trend={kind:'trend',...range,event_name:'view',metric:'count',filters:[],group_by:[]};
