@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {randomBytes,randomUUID} from 'node:crypto';
+import {readFile} from 'node:fs/promises';
 import pg from 'pg';
 import {withBackupSnapshot,readBackupFingerprints} from '../packages/server/src/backup-snapshot';
 assert.equal(process.env.GITHUB_ACTIONS,'true');
@@ -47,6 +48,10 @@ try{
     await writer.query("INSERT INTO tenants(id,name) VALUES($1,'inserted-after-snapshot')",[later]);
     await writer.query('COMMIT');
     const live=await readBackupFingerprints(writer);assert.notDeepEqual(live,snapshot.fingerprints);
+    const operatorSql=await readFile('scripts/backup-fingerprint.sql','utf8');
+    const independently=await command(['psql','-X','-A','-t','-q','-v','ON_ERROR_STOP=1','-U','ccpanel_ci','-d',source.pathname.slice(1)],Buffer.from(`BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;\nSET TRANSACTION SNAPSHOT '${snapshot.snapshotId}';\nSET LOCAL TIME ZONE 'UTC';\n${operatorSql}\nROLLBACK;\n`),snapshot.signal);
+    assert.equal(independently.code,0);assert.equal(independently.signal,null);
+    assert.deepEqual(independently.data.toString('utf8').trim().split('\n'),snapshot.fingerprints,'new fingerprint implementation must match existing operator SQL');
     const archive=await dump(snapshot.snapshotId,snapshot.signal);assert.equal(archive.code,0);assert.equal(archive.signal,null);assert.ok(archive.data.length>0);
     const restoredResult=await command(['pg_restore','-U','ccpanel_ci','-d',restored,'--single-transaction','--exit-on-error','--no-owner','--no-acl'],archive.data,snapshot.signal);
     assert.equal(restoredResult.code,0);assert.equal(restoredResult.signal,null);
@@ -60,7 +65,7 @@ try{
   await assert.rejects(withBackupSnapshot(source.href,{expectedSchema:999},async()=>{throw Error('must not run');}),/backup_schema_mismatch/);
   await assert.rejects(withBackupSnapshot(source.href,{expectedSchema:22,timeoutMs:1000},async snapshot=>new Promise((_resolve,reject)=>snapshot.signal.addEventListener('abort',()=>reject(Error('aborted')),{once:true}))),/backup_snapshot_timeout/);
   assert.equal((await admin.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE application_name='ccpanel_backup_snapshot'")).rows[0].n,0);
-  console.log(JSON.stringify({passed:true,shared_pg_snapshot:true,concurrent_insert_update_delete_committed:true,live_fingerprint_differs:true,actual_pg_dump_restore:true,restored_fingerprints_exact:true,recovery_gate_rows:0,expired_snapshot_rejected:true,schema_mismatch_rejected:true,timeout_aborted_callback:true,exporter_sessions_remaining:0,...result}));
+  console.log(JSON.stringify({passed:true,shared_pg_snapshot:true,concurrent_insert_update_delete_committed:true,live_fingerprint_differs:true,existing_operator_sql_matches:true,actual_pg_dump_restore:true,restored_fingerprints_exact:true,recovery_gate_rows:0,expired_snapshot_rejected:true,schema_mismatch_rejected:true,timeout_aborted_callback:true,exporter_sessions_remaining:0,...result}));
 }finally{
   if(restoreConnected)await restoreDb.end();await writer.end();
   if(created)await admin.query(`DROP DATABASE ${restored} WITH (FORCE)`);await admin.end();

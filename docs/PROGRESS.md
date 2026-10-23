@@ -1612,3 +1612,4 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 新增withBackupSnapshot：UTC只读REPEATABLE READ、schema绑定、现有指纹关系范围、精确bigint文本、pg_export_snapshot与有界回调生命周期；回调接AbortSignal，超时/连接丢失失败，正常返回前确认事务仍存活。不含传输/发布执行器，不替换线上旧安静窗口脚本。
 - 新增第16套真实PG CI验收：快照后另一连接实际提交insert/update/delete，live指纹必须改变；同快照pg_dump与真实pg_restore后，原指纹及原两条精确记录一致，恢复门禁数据0。另测快照结束后拒绝复用、schema不符拒绝回调、超时中断及导出连接清理。
 - typecheck通过；实际PG17.7导出/恢复与异常路径待CI。CI使用同一个PG17.7服务容器内的客户端，避免宿主pg_dump版本不匹配；仅随机临时DB，不接VPS/真实生产数据。迁移/DDL外层锁、流式有界落盘与可信最新状态自动同步仍待执行器接入。
+- 首轮Actions39994183333 verify/postgres通过，实际dump122307字节、43关系指纹一致，原两记录恢复，过期/schema/超时路径通过，导出连接0。随后补独立psql导入同一快照执行既有backup-fingerprint.sql，要求与新指纹逐字一致，避免仅以同一新函数前后自比作唯一口径证明；加强检查待新CI。
