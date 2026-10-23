@@ -26,8 +26,8 @@ docker compose run --rm -T --no-deps api node dist/consumer-progress.mjs check
 before=$(docker compose exec -T api node -e 'process.stdout.write(process.env.OPERATIONAL_COLLECTION_ENABLED||"unset")')
 [[ "$before" = true || "$before" = false ]]
 test "$(docker compose exec -T worker node -e 'process.stdout.write(process.env.OPERATIONAL_COLLECTION_ENABLED||"unset")')" = "$before"
-python3 ../scripts/operational-collection-env.py check "$before" /opt/ccpanel/shared/runtime.env .env
-python3 ../scripts/operational-collection-env.py set "$state" /opt/ccpanel/shared/runtime.env .env
+python3 ../scripts/operational-collection-env.py check "$before" /opt/ccpanel/shared/runtime.env "$PWD/.env"
+python3 ../scripts/operational-collection-env.py set "$state" /opt/ccpanel/shared/runtime.env "$PWD/.env"
 if [ "$state" != "$before" ]; then docker compose up -d --no-deps api worker; fi
 for service in api worker; do
   test "$(docker compose exec -T "$service" node -e 'process.stdout.write(process.env.OPERATIONAL_COLLECTION_ENABLED||"unset")')" = "$state"
