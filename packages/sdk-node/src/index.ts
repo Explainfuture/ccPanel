@@ -73,7 +73,12 @@ export class FileQueue extends MemoryQueue {
 export type {TrackOptions} from '../../sdk-browser/src/index.js';
 export type NodeOptions=Omit<AnalyticsOptions,'source'|'queue'>&{outboxPath?:string};
 class NodeAnalytics extends Analytics{
-  trackFor(distinctId:string,name:string,properties:Record<string,Json>={},options?:TrackOptions){return this.trackWithIdentity(name,properties,distinctId,undefined,options);}
+  private shuttingDown=false;
+  stopAccepting(){this.shuttingDown=true;}
+  override track(name:string,properties:Record<string,Json>={},options?:TrackOptions):Promise<TrackResult>{
+    return this.shuttingDown?Promise.resolve({status:'rejected',reason:'shutdown'}):super.track(name,properties,options);
+  }
+  trackFor(distinctId:string,name:string,properties:Record<string,Json>={},options?:TrackOptions){return this.shuttingDown?Promise.resolve<TrackResult>({status:'rejected',reason:'shutdown'}):this.trackWithIdentity(name,properties,distinctId,undefined,options);}
 }
 export type NodeClient=Analytics&{trackFor(distinctId:string,name:string,properties?:Record<string,Json>,options?:TrackOptions):Promise<TrackResult>;shutdown():Promise<void>};
 export type TypedNodeClient<Events extends EventMap>=TypedAnalytics<Events>&{
@@ -85,5 +90,21 @@ export function createNodeAnalytics<Events extends EventMap>(options:NodeOptions
 export function createNodeAnalytics(options:NodeOptions):unknown{
   const queue=options.outboxPath?new FileQueue(options.outboxPath):new MemoryQueue();
   const analytics=new NodeAnalytics({...options,queue,source:'node'});
-  return Object.assign(analytics,{async shutdown(){try{await analytics.flush();}finally{analytics.destroy();if(queue instanceof FileQueue)await queue.close();}}});
+  let shutdown:Promise<void>|undefined;
+  const onError=options.onError;
+  return Object.assign(analytics,{shutdown(){
+    if(shutdown)return shutdown;
+    analytics.stopAccepting();
+    return shutdown=new Promise<void>((resolve,reject)=>{
+      const timer=setTimeout(()=>{
+        analytics.destroy();
+        try{onError?.('shutdown_timeout');}catch{/* diagnostics cannot block shutdown */}
+        reject(new Error('shutdown_timeout'));
+      },10000);
+      // The deadline bounds the caller's wait, not native I/O. Keep the lock
+      // until in-flight writes settle; never release it early or fake an ack.
+      const finish=async()=>{try{await analytics.flush();}finally{analytics.destroy();if(queue instanceof FileQueue)await queue.close();}};
+      void finish().then(()=>{clearTimeout(timer);resolve();},error=>{clearTimeout(timer);reject(error);});
+    });
+  }});
 }

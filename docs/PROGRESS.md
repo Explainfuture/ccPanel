@@ -1495,3 +1495,10 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 配额覆盖报告为0但未触发QuotaExceeded；有界填充及独立持久profile复核仍未满足前置条件，明确保留真实quota场景未验证。另以CDP清除专用测试origin的IndexedDB，触发真实已打开连接失效，不将两类测试混同。
 - Chrome155最终脚本通过：queued-memory/memory_count1、storage_error、原生持久库重建且存在、真实HTTP同ID202后清空、未处理pageerror0。无indexedDB/fetch mock或网络拦截；语法检查通过。未改SDK/VPS，不通过全A09/设备矩阵。
 - 测试来源存储清理，配额恢复，浏览器和接收端终止；递归删除独立profile被自动审批以blocked by policy拒绝，未绕过，该Git忽略目录保留。具体范围与复现见SDK-BROWSER-CHECKS.md。
+
+### 步骤 188：Node shutdown 等待截止与生命周期
+
+- 对照PRD Node退出约束，shutdown开始即拒绝新track/trackFor，重复调用同Promise。发送/关闭总等待预算10秒，超时shutdown_timeout并回调；停止采集/计时，不清除未确认或伪造确认，不释放尚有I/O的文件锁，不再启动第二次发送。
+- 后台原操作允许按真实结果收尾，文件锁仅真实close完成释放；不会把已返回超时改成成功。JS预算不强制取消原生I/O/杀进程；普通flush整体慢存储截止仍是未完成项，不声称完整Node超时要求完成。
+- 241项测试、typecheck/build/两SDK pnpm tarball仓库外检查通过。新增正常/幂等shutdown、关闭后拒绝、忽略AbortSignal的慢fetch/晚确认、诊断回调抛错及慢FileQueue.close。真实文件锁在模拟close延迟期间仍存在，释放延迟后才消失；时间用fake timers，慢操作用受控Promise，非真实磁盘挂起。包产物也检查shutdown后两入口拒绝事件。
+- 未动Browser SDK/VPS012或运行新容量窗口，Node生命周期改动仅源码/包验证。

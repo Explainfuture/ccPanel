@@ -53,3 +53,7 @@ Node 同样通过 `getQueueStatus().counters` 获取实例内的 expired（事�
 Node 复用按需调度：空队列不周期读取 outbox，新增事件、恢复待发及错误重试仍按已冻结的 flushInterval 调度；凭证暂停/撤回/destroy 会取消。存储状态未知保留恢复探测，不能把读取失败当作队列为空。
 
 Node 沿用 endpoint 边界：拒绝 URL 用户名密码、查询串和片段；复制初始化配置并固定实例目标/项目，密钥轮换走 updateWriteKey。该行为避免目的地与已建立的本地队列身份不一致。
+
+`shutdown()` 开始后立即拒绝新的 `track/trackFor`（rejected/shutdown），重复调用共享同一个退出结果。发送及文件关闭总等待预算为10秒；超时reject `Error('shutdown_timeout')` 并调用onError，停止定时/新采集。它不伪造确认、不清除未确认事件，也不会为超时另起发送。底层未结束的原生I/O或在途发送不能被该JS截止时间强制取消，文件锁只在真实关闭完成后释放；原操作稍后完成仍按真实结果收尾，已返回的超时不变为成功。调用方应处理reject，并自行决定进程最终退出策略；该预算不是对阻塞事件循环/内核I/O的强制杀进程保证。
+
+普通 `flush()` 的网络请求仍有10秒AbortSignal超时，但慢存储导致的整体flush等待尚未有独立截止时间；本次不将shutdown的边界称作整个PRD Node超时要求已完成。

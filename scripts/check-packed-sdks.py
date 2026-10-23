@@ -114,7 +114,7 @@ const sent=[],outbox=resolve('outbox.json');
 const options={endpoint:'https://consumer.invalid/v1/batch',projectId:'fixture',writeKey:'fixture',consent:true};
 const client=createNodeAnalytics({...options,outboxPath:outbox,fetch:async(_url,init)=>{const ids=JSON.parse(init.body).events.map(e=>e.event_id);sent.push(...ids);return Response.json({accepted_event_ids:ids},{status:202});}});
 try{await client.flush();const queued=await client.track('purchase',{amount:1});assert.equal(queued.status,'queued-persistent');await client.flush();assert.deepEqual(sent,[queued.event_id]);assert.equal((await client.getQueueStatus()).count,0);}finally{await client.shutdown();}
-assert.equal(existsSync(outbox+'.lock'),false);
+assert.equal(existsSync(outbox+'.lock'),false);assert.equal((await client.track('after_shutdown')).reason,'shutdown');assert.equal((await client.trackFor('A','after_shutdown')).reason,'shutdown');
 const scopedEvents=[],scopedOutbox=resolve('scoped-outbox.json');
 const shared=createNodeAnalytics({...options,outboxPath:scopedOutbox,fetch:async(_url,init)=>{const events=JSON.parse(init.body).events;scopedEvents.push(...events);return Response.json({accepted_event_ids:events.map(e=>e.event_id)},{status:202});}});
 try{await shared.flush();const results=await Promise.all([shared.trackFor('user-A','purchase',{amount:1},{event_time:new Date(Date.now()-86400000).toISOString()}),shared.trackFor('user-B','purchase',{amount:2})]);assert.ok(results.every(r=>r.status==='queued-persistent'));await shared.flush();assert.deepEqual(scopedEvents.map(e=>e.distinct_id),['user-A','user-B']);assert.deepEqual(scopedEvents.map(e=>e.event_id),results.map(r=>r.event_id));assert.ok(scopedEvents.every(e=>!('anonymous_id' in e)));assert.ok(Math.abs(Date.parse(scopedEvents[0].event_time)-(Date.now()-86400000))<10000);assert.ok(Math.abs(Date.parse(scopedEvents[1].event_time)-Date.now())<10000);assert.equal((await shared.getQueueStatus()).count,0);}finally{await shared.shutdown();}
@@ -134,7 +134,7 @@ for(const factory of [createAnalytics,createNodeAnalytics]){
 }
 const browser=createAnalytics({...options,consent:false,fetch:async()=>{throw new Error('unexpected_transport');}});
 try{assert.equal((await browser.getQueueStatus()).count,0);}finally{browser.destroy();}
-console.log(JSON.stringify({runtime_imports:true,node_persistent_queue:true,stable_id_confirmed:true,shutdown_releases_lock:true,node_per_event_identity:true,browser_import_smoke_only:false,both_package_runtime_boundaries:true,browser_runtime_environment:'Node memory queue, not a browser',network:'stub'}));
+console.log(JSON.stringify({runtime_imports:true,node_persistent_queue:true,stable_id_confirmed:true,shutdown_releases_lock:true,node_shutdown_rejects_new_tracks:true,node_per_event_identity:true,browser_import_smoke_only:false,both_package_runtime_boundaries:true,browser_runtime_environment:'Node memory queue, not a browser',network:'stub'}));
 """, encoding='utf-8')
     runtime = json.loads(run([node, str(consumer / 'runtime.mjs')]))
     print(json.dumps({'passed': True, 'source': 'pnpm_tarballs', 'outside_workspace': True, 'node_nodenext_without_dom': True, 'browser_bundler_and_nodenext': True, 'strict_library_and_negative_types': True, **runtime}))
