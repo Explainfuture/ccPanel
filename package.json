@@ -14,6 +14,7 @@
     "build": "node scripts/build.mjs",
     "db:migrate": "tsx packages/server/src/migrate.ts",
     "bootstrap": "tsx packages/server/src/bootstrap.ts",
+    "backup:check": "tsx scripts/backup-config-check.ts",
     "worker": "tsx apps/worker/src/main.ts"
   },
   "devDependencies": {

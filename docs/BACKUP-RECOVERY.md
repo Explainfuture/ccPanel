@@ -2,7 +2,7 @@
 
 ## 当前范围
 
-2026-10-24用户确认暂时没有独立目的地，先完成可配置方案。设计与默认禁用模板见 [BACKUP-CONFIG.md](BACKUP-CONFIG.md) 和 [offhost.example.json](../infra/backup/offhost.example.json)；尚无执行该模板的传输/调度程序，没有启用自动离机备份。历史手动实测与下述未通过门槛继续保留。
+2026-10-24用户确认暂时没有独立目的地，先完成可配置方案。设计、只读预检命令与默认禁用模板见 [BACKUP-CONFIG.md](BACKUP-CONFIG.md) 和 [offhost.example.json](../infra/backup/offhost.example.json)；尚无执行该模板的传输/调度程序，没有启用自动离机备份。历史手动实测与下述未通过门槛继续保留。
 
 PG 自定义格式备份包含原始事件、去重、身份、报表、任务、配置和权限；恢复门禁与导入scope的操作数据按设计排除，不能让旧备份重开门禁。传输通过已校验主机指纹的 SSH；离机副本用 AES-256-GCM 加密，密钥独立保存，不能丢失或随备份公开。临时明文文件在验证后删除。
 
