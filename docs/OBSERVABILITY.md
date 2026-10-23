@@ -149,3 +149,13 @@ scripts/enable-operational-collection-preview.sh要求明确目标release、sche
 启用后真实HTTPS得到4即时clear、4持久fresh、8条启动/基线变化，revision/id字符串；真实Chrome三表、桌面/390px与撤权清旧表/重载隐藏通过。双用户SDK/重复/异步趋势及SQL精确ID各2、DLQ0；测试账号/资格/数据已清理。原140条监控记录完整保留，新增采样是预期变化，其他原关系仅consumer_progress推进4。UTC04:03附近API76/Worker74采样，4规则clear、历史8；采集和保留均true、门禁open/ready。四个2秒vmstat区间si/so0只是短窗口，单次可用306MiB/Swap206MiB不能代替本版完整容量或独立外部告警证明。
 
 步骤150：当前m4-retention-007/schema20，暂停采集完成新备份/隔离恢复和原字段对账后单独重新开启。清理后541条原采样/8条原告警历史的前缀指纹不变，新实例评估产生预期状态/历史变动；末态四规则clear且age约10秒。两进程collection/retention均true，四容器restart0/OOMfalse。项目面板新增消费时retention_suppressed，与物理retention_raw_expired分开；Worker共用suppressed标签涵盖删除或保留过期。真实Node SDK/HTTPS与已发布策略页面通过，仍无独立外部通知或本版生产容量证明。
+
+## 步骤153：独立即时压力信号（源码已实现，未部署）
+
+复用API原有探针缓存，单独计算kafka_backlog、ingest_integrity、storage_headroom，读取不增加Kafka/PG/宿主机探测频率、不修改接入决策/保留量。Kafka条数与年龄、位点保留缺口/未知，以及PG/Kafka两类磁盘的字节/比例/inode预留独立判断；同时Kafka积压和磁盘不足可同时触发，不再被单一接入reason遮蔽。整数按BigInt计算，计数JSON仍为字符串，无法确认时为null。
+
+Kafka采用原策略maxProbeAgeMs，磁盘按最早磁盘时间/maxDiskAgeMs；缺失/畸形/未来/失败/过期为unknown，域间独立验证。已锁存的完整性暂停即使探针失败也持续firing，按读取时API状态提供短有效期，不能因新位点回到可用范围就自动清除。新信号不等于全部副本清单或生产SLO，当前来源仍是一个API实例缓存。这里尚无持久压力历史或外部通知，原四规则持久状态模型未扩充。
+
+ingest-status沿用公司admin且有效platform_operator双资格，并改为事务内FOR SHARE重新核对成员、项目和运维资格；构造内存响应在授权锁内，未授权、跨公司或已撤权请求不调用数据回调。拒绝query参数，按API进程每用户12次/分钟、超额429+Retry-After:5；预算与普通项目指标分开。响应no-store。新pressure_alerts为空表示暂不可用，兼容尚无该字段的旧响应，不推断健康。
+
+面板只在已有平台授权监控里出现，保留原手动/可选15秒刷新，不新增网络轮询。按服务端expires_at减computed_at，再扣客户端performance.now从本次请求开始的完整等待，包括其他并行请求等待；不能在响应到达后重置有效期。每秒更新本地过期提示，过期变当前unknown，停止不再需要的计时；重新可见时校正。源15秒TTL与页面约15秒刷新/网络/缓存年龄可能造成短暂未知，不能放宽TTL伪装连续健康。窄屏可键盘/触摸横向查看精确计数，状态用文本和颜色区分。失权或无效响应清旧数据。
