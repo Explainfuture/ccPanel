@@ -1403,3 +1403,4 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 对齐 PRD 本地队列“公开 rejected_overflow、expired、storage_error 计数和回调”：getQueueStatus 新增 counters 快照，区分过期事件数、已满队列拒绝次数、待入队预算拒绝次数和存储操作失败次数。回调前更新，安全整数饱和，生命周期内累计；不持久化、不含身份/事件属性，不把存储故障次数解释为丢失条数。
 - 本地入队七天 TTL 与业务时间有效范围独立，未改写入队时间或延长服务端有效期。新增 Memory/IndexedDB 过期不发送且只计一次、回调抛错、快照不可改写内部计数、授权变更保持诊断及存储故障内存降级测试，既有预算压力用例验证两种拒绝分别计数。
 - 223 项测试、typecheck、build、两个 pnpm tarball 仓库外验证通过；网络 stub、IndexedDB 为 fake-indexeddb。本步骤未发布 npm 或替换 VPS 012，容量门槛保持未通过。
+- CI Actions 39944061588 的 verify 与 postgres 均 success（223 项测试、15 套真实 PG 集成及既有部署保护检查）。
