@@ -8,6 +8,7 @@ import {createApp} from '../apps/api/src/app';
 import {startQueryJobs} from '../packages/server/src/query-jobs';
 import {IntakeMetrics} from '../packages/server/src/intake-metrics';
 import type {OperationalAlert} from '../packages/server/src/operational-alerts';
+import {evaluateAndStoreOperationalAlerts} from '../packages/server/src/operational-alert-store';
 import {HostResourceStatus} from '../packages/server/src/host-resource-status';
 let stopJobs:(()=>void)|undefined;
 try{
@@ -42,6 +43,12 @@ try{
   for(const [offset,failures]of [[30000,'9007199254740993'],[1000,'9007199254740995']] as const){const snapshot=structuredClone(historySnapshot);snapshot.started_at=new Date(alertNow-60000).toISOString();snapshot.observed_at=new Date(alertNow-offset).toISOString();snapshot.responses.find(row=>row.status==='500')!.batches=failures;await pool.query("INSERT INTO operational_samples(source,instance_id,started_at,observed_at,payload_hash,snapshot) VALUES('api',$1,$2,$3,$4,$5)",[snapshot.instance_id,snapshot.started_at,snapshot.observed_at,'0'.repeat(64),JSON.stringify(snapshot)]);}
   const alertsResponse=await req(admin,root+'/operational-alerts');assert.equal(alertsResponse.status,200);assert.equal(alertsResponse.headers.get('cache-control'),'no-store');const alerts=await alertsResponse.json() as {scope:string;rules:OperationalAlert[]};assert.equal(alerts.scope,'platform_aggregate');assert.equal(alerts.rules.length,4);assert.equal(alerts.rules.find(row=>row.rule==='api_server_errors')!.increase,'2');assert.equal(alerts.rules.find(row=>row.rule==='api_server_errors')!.state,'firing');assert.equal(alerts.rules.find(row=>row.rule==='worker_sampling')!.reason,'missing_sample');assert.equal((await req(admin,root+'/operational-alerts?source=api')).status,400);
   for(const user of [viewer,analyst])assert.equal((await req(user,root+'/operational-alerts')).status,403);
+  const alertDb=await pool.connect();try{await evaluateAndStoreOperationalAlerts(alertDb);}finally{alertDb.release();}
+  const alertApp=createApp({ready:()=>true,publish:async()=>{throw new Error('unexpected_publish');}});
+  const persistedAlert=async()=>{const response=await alertApp.request(root+'/operational-alerts',{headers:headers.get(admin)});assert.equal(response.status,200);return response.json();};
+  const freshAlerts=await persistedAlert() as {persistence_state:string;persisted_states:{rule:string;state:string;revision:string}[];transitions:unknown[]};assert.equal(freshAlerts.persistence_state,'fresh');assert.equal(freshAlerts.persisted_states.length,4);assert.equal(freshAlerts.transitions.length,4);assert.ok(freshAlerts.persisted_states.every(row=>typeof row.revision==='string'));assert.equal(freshAlerts.persisted_states.find(row=>row.rule==='api_server_errors')!.state,'firing');
+  await pool.query("UPDATE operational_alert_states SET evaluated_at=clock_timestamp()-interval '2 minutes',state_since=clock_timestamp()-interval '3 minutes'");assert.equal((await persistedAlert()).persistence_state,'stale');
+  await pool.query("UPDATE operational_alert_states SET evaluated_at=clock_timestamp()+interval '1 hour'");assert.equal((await persistedAlert()).persistence_state,'invalid');
   assert.equal((await req(foreign,root+'/operational-alerts')).status,404);assert.equal((await app.request(root+'/operational-alerts')).status,401);
   for(const user of [viewer,analyst])assert.equal((await req(user,root+'/operational-history')).status,403);
   assert.equal((await req(foreign,root+'/operational-history')).status,404);assert.equal((await app.request(root+'/operational-history')).status,401);
