@@ -960,3 +960,13 @@ API/Worker接入30秒定时快照，单进行中/无积压、失败隔离后下�
 复查补充：历史响应observed_at也保留数据库6位微秒，避免游标精确但响应Date毫秒截断导致前端同实例行key重复；真实PG新增53条响应时间均唯一断言。展示日期仍本地化到秒，行身份保持完整字符串。
 
 步骤131最新提交059cd66的CI39894074455 success，162单测/构建及7套真实PG通过，包括53条微秒响应唯一、权限/分页、实际定时采集与连接回收。同步集成分支/草稿PR；界面mock验证与真实PG证据分列，仍未升级schema18或宣称资源验收通过。
+
+### 步骤132：schema18受控升级及实机验收
+
+当前服务器重新核实m4-telemetry-auth-004/schema17后，构建118文件497115字节归档SHA d11cefae98943c6bde87969840a65859c90ebd9c920bbe89335441216cc0729c。更新共享可信升级/保留/恢复脚本、Linux bash语法实际通过，归档schema18匹配显式17→18。按旧证据禁用保留、离线API/Worker，product-upgrade.uG77GL保存原列指纹及20261023T031929Z-b8db5122备份。工作站加密/解密逐字节一致，回传隔离PG全公共关系恢复2秒通过，验证标记hash核对后apply；没有bootstrap/旧库自导出解锁。
+
+m4-history-005/schema18切换成功，原表before/after指纹全一致，恢复/完整性门禁open、持久消费进度check通过、HTTPS ready，重新开启物理保留。就绪轮询曾遇一次Empty reply后重试正常，不隐去该启动瞬态。真实Node SDK两用户事件、重复重传及异步趋势2通过；SQL精确raw/dedup/job ID均2、processed/bucket2、DLQ0，集合SHA ef67657d6516b1cb3991987c7fddb0f6c4c559985265b57bca69e640de1bec8c。
+
+临时合成平台授权后真实HTTPS历史API/Worker两来源、微秒响应、过滤及no-store通过，宿主机状态/速率ready；线上Chrome历史详情与1280/390px截图已查看，无文档溢出；撤权后刷新清除历史详情、父监控失败移除、重载隐藏通过。清理临时平台审计/资格/公司/账号/会话和业务数据后，原关系只consumer_progress预期推进4条消息：6257/6308，与来源检查一致；raw2/dedup3/DLQ0、临时DB/合成公司/平台资格0。真实账号未提权，浏览器关闭。
+
+UTC03:25采样API8/Worker7条、各1实例，空闲采集连接0、四容器running/restart0/OOMfalse。单次可用333MiB/Swap占用191MiB，四个2秒vmstat区间有一次4KiB/s换入；不当作正式容量窗口或无Swap结论。当前仍未获得生产资源通过，持续告警/异机备份/策略/真实设备矩阵等继续。明文dump/解密副本/源ledger/fixture及私有浏览器会话日志已清理，加密dump/ledger与分离密钥保留；详细hash见BACKUP-RECOVERY。操作证据在.local/*132*和服务器上述目录。
