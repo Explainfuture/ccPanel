@@ -1517,3 +1517,4 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 新增实际可分发SDK构建的独立子进程验收，父进程本机HTTP读取请求但不返回响应；不mock fetch/时钟。子进程用真实FileQueue，观察flush截止，再destroy/shutdown收尾；父进程检查真实exit、磁盘原ID/未确认行和锁释放。
 - 本机运行passed：flushElapsedMs10003、请求1、保留原ID未确认行1、真实子进程正常退出、未强杀。25秒看门狗仅作为失败终止，未触发。临时HTTP和子进程终态已确认，测试目录按受限文件列表与空目录方式清理。
 - 纳入CI verify步骤；不将受控慢磁盘单测替代此次真实网络/时钟证据，也不将本次扩展为OS磁盘永久挂起或事件循环阻塞验证。未改SDK产品源码/VPS012，没有新容量窗口。
+- CI Actions39951997545 verify/postgres全部success（243项测试、15套真实PG及既有检查）。Linux真实子进程验收实测flushElapsedMs10001、请求1、原ID未确认文件行保留、正常退出/未强杀/锁释放，详见verify任务日志；与Windows本机10003ms分别记录。
