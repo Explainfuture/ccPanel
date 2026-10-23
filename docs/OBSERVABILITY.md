@@ -39,3 +39,11 @@ Worker每10秒输出`worker_metrics`脱敏进程累计快照，正常关闭在co
 persist成功区分inserted/duplicate/suppressed，EventConflict记conflict，其余异常记failed；其他操作完成记completed，抛出记failed。错误仍按原路径重试/抛出，原异常对象不改变，不通过指标推进位点。重试会增加调用计数，故不是唯一事件数或最终DLQ数量；失败发布或索引不能被计为完成。固定非累计毫秒桶为1/5/10/25/50/100/250/500/1000/2500/5000/10000/30000及无界null，所有结果共享该操作耗时分布；单调时钟无效样本单独计数。in_flight可揭示尚未完成的长调用，当前时长不作为已完成样本。
 
 快照不含tenant/project/user/event ID、offset、错误文本或事件载荷；固定操作/结果标签避免随业务增长。日志失败和分类回调异常不能改变处理结果。SIGKILL可能丢最后窗口，重启计数归零，日志有旋转上限；当前无API跨进程读取或持久时序存储。DLQ未处理年龄、持久告警、PG进度耗时及全量监控仍未完成。单测验证观测器，尚未在VPS对本版Worker故障注入，不能据此宣称完整链路验收。
+
+## 步骤111：项目DLQ保留记录分类与年龄（尚未部署）
+
+管理员GET项目路径`/dlq-summary`读取单条SQL一致性快照，返回四类十进制count、oldest_created_at、oldest_age_seconds与数据库observed_at。范围仅当前公司/项目且创建时间未超过14天，无scope的DLQ不混入某公司。未登录401、非admin403、跨公司项目404，与DLQ载荷权限一致。
+
+优先级：载荷已redacted或有suppressed重放记录→suppressed；曾有stored/duplicate成功回执→resolved；否则有queued/published记录→replaying；其余→unresolved，包括没有重放及失败/拒绝重放。历史失败不覆盖成功回执；活动请求不等于成功。统计的是仍保留的原DLQ来源及其回执，不是唯一业务事件、永久故障累计、实时重放可行性或Kafka DLQ总量；同一事件可能产生多个来源，过期不代表修复。空类别count为0、时间/年龄null；未来时间年龄钳制0，年龄由数据库时间计算，避免工作站时钟差。
+
+仅返回四个固定类别及聚合时间，不返回payload/ID/原因文本。使用既有created_at与replay source索引，受PG 5秒statement timeout约束；大规模DLQ下的查询成本尚待容量验证，不声称无界规模可用。暂未接入监控UI/告警，下一步继续完成展示和运行验收。

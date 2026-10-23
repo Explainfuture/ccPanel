@@ -782,3 +782,9 @@ Worker主路径包装persist、DLQ发布、DLQ索引及Kafka checkpoint，固定
 150项单测、类型/构建通过。新增重叠调用、原异常身份、敏感内容不泄露、快照隔离、单调分桶/无效样本、分类器与日志失败不影响处理、关闭停止周期输出测试。SDK未变，未重复浏览器性能验收。CI待本分支，VPS仍m4-retention-002，未进行本版真实Worker故障注入。指标仅进程累计，非唯一事件/持久历史；DLQ未处理年龄、PG进度耗时、历史/告警及完整PRD生产门槛仍待完成。
 
 步骤110 CI补充：Actions39883132777（827c3ae）verify/postgres均success，150项完整单测、类型/构建、打包消费者、Node崩溃检查及5套PG控制器通过。同步preview/integration/草稿PR1。本轮CI没有启动真实Kafka Worker来验证新增指标，故该运行证据仍须部署后补齐。下一步项目内DLQ年龄统计必须明确区分“无成功重放回执”和“曾失败”，不以列表现存数量冒充未处理数量。
+
+### 步骤111：项目DLQ分类与年龄API（未部署）
+
+新增admin限定项目dlq-summary，单SQL按当前公司/项目与14天保留范围聚合unresolved/replaying/resolved/suppressed，明确优先级及回执口径；不返回载荷，未知/跨公司404。计数精确文本，空类别时间null，年龄按数据库时间且不负数。复用既有索引与5秒PG超时，无schema修改。界面与告警尚未接入。
+
+150项单测与构建通过，新增路由后类型检查发现动态项目参数可选，按已验证项目中间件断言修正后通过。真实PG控制器新增四类数据、失败仍未解决、过期/外公司排除、空结果及admin/analyst/viewer/foreign/匿名访问检查，待CI实际SQL执行。未把单测冒充SQL结果，公网仍m4-retention-002。

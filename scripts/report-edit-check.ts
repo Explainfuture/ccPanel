@@ -26,6 +26,20 @@ try{
   assert.deepEqual(telemetryBody.processing,{in_flight:0,max_in_flight:2,at_capacity:false});
   for(const actor of [viewer,analyst])assert.equal((await req(actor,root+'/ingest-status')).status,403);
   assert.equal((await req(foreign,root+'/ingest-status')).status,404);assert.equal((await app.request(root+'/ingest-status')).status,401);assert.equal(intakeReads,1);
+  for(const actor of [viewer,analyst])assert.equal((await req(actor,root+'/dlq-summary')).status,403);
+  assert.equal((await req(foreign,root+'/dlq-summary')).status,404);assert.equal((await app.request(root+'/dlq-summary')).status,401);
+  const sources=['unresolved','replaying','resolved','suppressed','expired'];
+  for(const name of sources)await pool.query(`INSERT INTO dlq_records(id,tenant_id,project_id,reason,payload,created_at) VALUES($1,$2,$3,'fixture',$4,CURRENT_TIMESTAMP-($5::int*interval '1 day'))`,[name,a,project,JSON.stringify(name==='suppressed'?{redacted:true}:{}),name==='expired'?15:2]);
+  await pool.query("INSERT INTO dlq_records(id,tenant_id,project_id,reason,payload) VALUES('foreign',$1,$2,'fixture','{}')",[b,otherProject]);
+  for(const [name,status]of [['replaying','published'],['resolved','stored'],['unresolved','failed']]){
+    const job=randomUUID();await pool.query("INSERT INTO replay_jobs(id,tenant_id,project_id,user_id,request_hash,reason) VALUES($1,$2,$3,$4,'fixture','fixture')",[job,a,project,admin]);
+    await pool.query("INSERT INTO replay_items(tenant_id,project_id,job_id,record_id,event_id,payload_hash,status) VALUES($1,$2,$3,$4,$5,'fixture',$6)",[a,project,job,name,randomUUID(),status]);
+  }
+  const dlqResponse=await req(admin,root+'/dlq-summary');assert.equal(dlqResponse.status,200);const dlq=await dlqResponse.json();assert.equal(dlq.scope,'project');assert.equal(dlq.categories.length,4);
+  for(const category of dlq.categories){assert.equal(category.count,'1');assert.ok(Number(category.oldest_age_seconds)>=172800);assert.ok(Number(category.oldest_age_seconds)<172900);}
+  assert.ok(!JSON.stringify(dlq).includes('fixture'));assert.ok(!JSON.stringify(dlq).includes(otherProject));
+  await pool.query('DELETE FROM replay_items WHERE project_id=$1',[project]);await pool.query('DELETE FROM replay_jobs WHERE project_id=$1',[project]);await pool.query('DELETE FROM dlq_records WHERE project_id=ANY($1::uuid[])',[[project,otherProject]]);
+  const emptyDlq=await (await req(admin,root+'/dlq-summary')).json();for(const category of emptyDlq.categories){assert.equal(category.count,'0');assert.equal(category.oldest_age_seconds,null);assert.equal(category.oldest_created_at,null);}
   for(const id of [a,b,project,otherProject])assert.ok(!JSON.stringify(telemetryBody).includes(id));
   const day=Math.floor(Date.now()/86400000)*86400000,first=day-86400000-1800000;
   const range={from:new Date(day-3*86400000).toISOString(),to:new Date(day).toISOString()};
