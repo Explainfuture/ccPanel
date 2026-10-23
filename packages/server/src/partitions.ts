@@ -18,6 +18,9 @@ export async function maintainPartitions(db:PoolClient):Promise<'busy'|'complete
   try{
     await db.query("SET LOCAL statement_timeout='3s'");await db.query("SET LOCAL lock_timeout='200ms'");await db.query("SET LOCAL timezone='UTC'");
     if(!(await db.query('SELECT pg_try_advisory_xact_lock(169202610) AS held')).rows[0].held){await db.query('ROLLBACK');return 'busy';}
+    // Expiry reads the partitioned parent in its transaction. Coordinate before
+    // taking the parent lock instead of periodically colliding with that reader.
+    if(!(await db.query('SELECT pg_try_advisory_xact_lock(169202635) AS held')).rows[0].held){await db.query('ROLLBACK');return 'busy';}
     await db.query('LOCK TABLE ONLY public.events IN ACCESS EXCLUSIVE MODE NOWAIT');
     const now=new Date((await db.query('SELECT CURRENT_TIMESTAMP AS now')).rows[0].now);
     const children=(await db.query(`SELECT c.relname AS name,pg_get_expr(c.relpartbound,c.oid) AS bound
@@ -44,12 +47,22 @@ export async function maintainPartitions(db:PoolClient):Promise<'busy'|'complete
 
 export function startPartitions(){
   if(process.env.RETENTION_ENABLED!=='true')return()=>{};
-  let busy=false,stopped=false,next=0;
-  const timer=setInterval(async()=>{
-    if(stopped||busy||Date.now()<next)return;busy=true;let db:PoolClient|undefined;
-    try{db=await pool.connect();const result=await maintainPartitions(db);next=Date.now()+(result==='busy'?60000:3600000);}
-    catch{next=Date.now()+60000;console.error(JSON.stringify({code:'partition_maintenance_retry'}));}
-    finally{db?.release();busy=false;}
-  },15000);
-  timer.unref();return()=>{stopped=true;clearInterval(timer);};
+  let stopped=false,timer:ReturnType<typeof setTimeout>;
+  const jitter=(base:number,spread:number)=>base+Math.floor(Math.random()*spread);
+  const schedule=(delay:number)=>{if(stopped)return;timer=setTimeout(()=>void tick(),delay);timer.unref();};
+  const tick=async()=>{
+    if(stopped)return;let db:PoolClient|undefined,delay=jitter(60000,15000);
+    try{
+      db=await pool.connect();const result=await maintainPartitions(db);
+      delay=result==='busy'?jitter(15000,15000):jitter(3600000,30000);
+      console.log(JSON.stringify({code:result==='busy'?'partition_maintenance_busy':'partition_maintenance_completed'}));
+    }catch(error){
+      const raw=(error as {code?:unknown}).code,sqlstate=typeof raw==='string'&&/^[0-9A-Z]{5}$/.test(raw)?raw:undefined;
+      if(sqlstate==='55P03'){delay=jitter(15000,15000);console.log(JSON.stringify({code:'partition_maintenance_busy',sqlstate}));}
+      else console.error(JSON.stringify({code:'partition_maintenance_retry',sqlstate,topology_mismatch:error instanceof Error&&error.message==='partition_topology_mismatch'}));
+    }finally{db?.release();schedule(delay);}
+  };
+  // Self-scheduled jitter avoids repeatedly aligning with the 5-second expiry
+  // loop; at most one timer/transaction is live and stop prevents re-scheduling.
+  schedule(jitter(15000,5000));return()=>{stopped=true;clearTimeout(timer);};
 }

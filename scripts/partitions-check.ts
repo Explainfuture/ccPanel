@@ -13,6 +13,7 @@ try{
   const db=await pool.connect(),block=await pool.connect();
   try{
     await block.query('BEGIN');await block.query('SELECT pg_advisory_xact_lock(169202610)');assert.equal(await maintainPartitions(db),'busy');await block.query('ROLLBACK');
+    await block.query('BEGIN');await block.query('SELECT pg_advisory_xact_lock(169202635)');assert.equal(await maintainPartitions(db),'busy');await block.query('ROLLBACK');
     await block.query('BEGIN');await block.query('LOCK TABLE ONLY public.events IN ROW EXCLUSIVE MODE');
     await assert.rejects(maintainPartitions(db),(error:unknown)=>(error as {code:string}).code==='55P03');await block.query('ROLLBACK');
     assert.equal(await maintainPartitions(db),'completed');
@@ -22,5 +23,5 @@ try{
     assert.equal((await pool.query("SELECT to_regclass('public.events_unmanaged_archive') AS name")).rows[0].name,'events_unmanaged_archive');
     assert.equal(await maintainPartitions(db),'completed');
   }finally{await block.query('ROLLBACK');block.release();db.release();}
-  console.log(JSON.stringify({passed:true,future_partition_created:true,migration_lock_skips:true,writer_lock_nowait_rolls_back:true,empty_old_partition_reclaimed:true,nonempty_old_partition_retained:true,unknown_partition_retained:true,idempotent:true}));
+  console.log(JSON.stringify({passed:true,future_partition_created:true,migration_lock_skips:true,retention_lock_skips:true,writer_lock_nowait_rolls_back:true,empty_old_partition_reclaimed:true,nonempty_old_partition_retained:true,unknown_partition_retained:true,idempotent:true}));
 }finally{await pool.end();}
