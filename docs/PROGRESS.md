@@ -1511,3 +1511,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 完整243项测试、typecheck/build/两个SDK tarball仓库外验证通过。新增忽略AbortSignal慢fetch、共享超时视图/无并发重发/迟到ACK恢复，以及初始化慢storage无网络请求、无未处理reject和恢复后可继续调用；受控Promise与fake clock，不声称真实磁盘/OS挂死验证。188真实文件锁与晚确认用例继续通过。
 - Chrome155重新验证本机原生pagehide HTTP+IndexedDB恢复、原生beacon false配额/重载恢复，两场景passed。浏览器及接收端关闭；未动VPS012、未运行容量窗口，完整设备/生产容量仍未通过。
 - CI Actions39951320748 verify/postgres均成功，包含243项测试、15套真实PG及既有打包/进程故障/部署保护检查。
+
+### 步骤 190：真实 Node 进程和 HTTP 超时验收
+
+- 新增实际可分发SDK构建的独立子进程验收，父进程本机HTTP读取请求但不返回响应；不mock fetch/时钟。子进程用真实FileQueue，观察flush截止，再destroy/shutdown收尾；父进程检查真实exit、磁盘原ID/未确认行和锁释放。
+- 本机运行passed：flushElapsedMs10003、请求1、保留原ID未确认行1、真实子进程正常退出、未强杀。25秒看门狗仅作为失败终止，未触发。临时HTTP和子进程终态已确认，测试目录按受限文件列表与空目录方式清理。
+- 纳入CI verify步骤；不将受控慢磁盘单测替代此次真实网络/时钟证据，也不将本次扩展为OS磁盘永久挂起或事件循环阻塞验证。未改SDK产品源码/VPS012，没有新容量窗口。

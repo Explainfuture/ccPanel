@@ -57,3 +57,5 @@ Node 沿用 endpoint 边界：拒绝 URL 用户名密码、查询串和片段；
 `shutdown()` 开始后立即拒绝新的 `track/trackFor`（rejected/shutdown），重复调用共享同一个退出结果。发送及文件关闭总等待预算为10秒；超时reject `Error('shutdown_timeout')` 并调用onError，停止定时/新采集。它不伪造确认、不清除未确认事件，也不会为超时另起发送。底层未结束的原生I/O或在途发送不能被该JS截止时间强制取消，文件锁只在真实关闭完成后释放；原操作稍后完成仍按真实结果收尾，已返回的超时不变为成功。调用方应处理reject，并自行决定进程最终退出策略；该预算不是对阻塞事件循环/内核I/O的强制杀进程保证。
 
 Node `flush()` 另有10秒整体调用截止时间（含慢存储），超时reject flush_timeout并回调；网络AbortSignal仍保留。超时不取消底层原生I/O或释放并发槽：同一操作未结束时所有flush调用共享同一超时Promise，不另发批次；操作实际结束后才能开始新一轮。迟到确认仍按原ID和真实回执处理，不将已经返回的超时改记成功。初始化/定时/换钥等内部触发会处理该reject，避免未处理Promise异常。shutdown使用原始底层操作收尾，自己的10秒截止与文件锁规则不变。JS定时截止无法抢占阻塞事件循环或内核I/O，getQueueStatus等其他存储API也不因此获得全局截止。
+
+可运行 `pnpm build` 后的 `node scripts/node-sdk-real-timeout-check.mjs` 验证真实Node子进程/本机HTTP无响应场景：不替换fetch或时钟，确认整体flush约10秒reject、无并发重发、原ID持久保留、shutdown收尾释放锁且子进程自然退出。测试有25秒父进程看门狗，若需强制终止则失败；9000～16000ms是测试调度容差，不改变SDK10000ms常量。该测试不是内核I/O永久挂起、事件循环阻塞或强制退出保证。
