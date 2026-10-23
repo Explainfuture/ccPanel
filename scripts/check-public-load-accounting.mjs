@@ -4,9 +4,13 @@ import {spawn} from 'node:child_process';
 import {mkdir,mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
+import {build} from 'esbuild';
 await mkdir('.local',{recursive:true});const root=path.resolve('.local'),dir=await mkdtemp(path.join(root,'load-accounting-'));
 const preload=path.join(dir,'fake-fetch.mjs');
 try{
+  const verifier=path.join(dir,'workload-report.mjs');
+  await build({entryPoints:['scripts/capacity-workload-report.ts'],outfile:verifier,bundle:true,platform:'node',target:'node22',format:'esm',packages:'external'});
+  const {capacityWorkloadReport}=await import(pathToFileURL(verifier).href);
   await writeFile(preload,`
 import {writeFile} from 'node:fs/promises';
 const rows=new Map(),bytes=[],slow=process.env.CCPANEL_ACCOUNTING_CASE==='negative';let posts=0;
@@ -39,6 +43,7 @@ globalThis.fetch=async(input,options={})=>{
       assert.equal(w.ingest_body_bytes_total,captured.bytes.reduce((a,b)=>a+b,0));assert.equal(w.ingest_body_bytes_min,Math.min(...captured.bytes));assert.equal(w.ingest_body_bytes_max,Math.max(...captured.bytes));assert.equal(w.ingest_body_bytes_mean,w.ingest_body_bytes_total/w.ingest_attempts);
       assert.equal(w.query_opportunities,w.query_attempts+w.query_skipped_busy);assert.equal(w.query_attempts,w.query_successes+w.query_failures);assert.ok(w.visibility_requests>0);
       assert.equal(result.passed,mode==='positive');assert.equal(w.query_schedule_coverage,mode==='positive');
+      const verified=capacityWorkloadReport(result,11);assert.equal(verified.evidenceValid,true,JSON.stringify(verified));assert.equal(verified.dataLoadPass,mode==='positive');
       if(mode==='negative'){assert.equal(w.ingest_failed_requests,1);assert.ok(w.ingest_attempted_events>11);assert.equal(w.query_skipped_busy,1);}else{assert.equal(w.ingest_failed_requests,0);assert.equal(w.query_skipped_busy,0);assert.equal(w.ingest_attempted_events,11);}
       resolve();
     }catch(error){reject(error);}});
