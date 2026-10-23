@@ -1,7 +1,7 @@
 import {query} from './db';
 export async function readQueryStatus(tenant:string,project:string){
   const rows=await query(`WITH visible AS (
-    SELECT q.* FROM query_jobs q JOIN projects p ON p.tenant_id=q.tenant_id AND p.id=q.project_id
+    SELECT q.id,q.status,q.created_at,q.started_at,q.finished_at FROM query_jobs q JOIN projects p ON p.tenant_id=q.tenant_id AND p.id=q.project_id
     WHERE q.tenant_id=$1 AND q.project_id=$2 AND q.expires_at>CURRENT_TIMESTAMP AND q.privacy_epoch=p.privacy_epoch
       AND EXISTS(SELECT 1 FROM tenant_memberships m WHERE m.tenant_id=q.tenant_id AND m.user_id=q.user_id)
   ), states(status) AS (VALUES('queued'),('running'),('succeeded'),('failed'),('cancelled'))
