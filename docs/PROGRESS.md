@@ -1567,3 +1567,4 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - GlpWmb首轮通过，补总任务数断言后n0ffhQ复核通过：新PID重放原ID，raw/dedup/jobs/processed/贡献各2、duplicates1、DLQ0，PG/Kafka/source分区0均2，空分区未消费按-1保留。
 - 暂停期间主库44表指纹同，临时topic/group/DB/env清理，原服务ready；主库raw2/dedup3/DLQ0、总位点15618、临时DB0、013未变。结果双方保留；CI只增加脚本语法守护，真实broker/PG演练来自VPS。
 - 与195合并覆盖当前构建三个指定提交边界，仍不扩展为掉电/磁盘/多副本HA或容量证明；测试使用私网明文协议一次性代理，主服务计划暂停。具体方法见FAULT-DRILL步骤196。
+- CI Actions39988476816 verify/postgres全部success：243项测试、15套真实PG及既有进程/打包/主机保护、新脚本语法检查通过。VPS最终结果SHA256 eeace3cf91b3159f6e0b4eccbed7065468c1484d926a3198a0f40b249ccb4468，真实代理/强杀证据不归为CI broker演练。
