@@ -4,6 +4,20 @@ async (page) => {
   for(const other of context.pages())if(other!==page)await other.close();
   await page.goto(origin+'/sdk-lab.html');
   const check=(value,message)=>{if(!value)throw new Error(message);};
+  const literalConsent=await page.evaluate(async()=>{
+    const {createAnalytics}=await import('/sdk/ccpanel.js');let sent=0;
+    const client=createAnalytics({endpoint:location.origin+'/v1/batch',projectId:'literal-'+Date.now(),writeKey:'public-browser-fixture',consent:'false',flushInterval:60000,fetch:async()=>{sent++;return new Response('',{status:503});}});
+    try{
+      await client.flush();const denied=await client.track('must_not_collect');
+      if(denied.reason!=='consent_required'||sent!==0||(await client.getQueueStatus()).count!==0)throw new Error('nonboolean initial consent collected');
+      await client.setConsent(true);const granted=await client.track('explicit_true');
+      if(granted.status!=='queued-persistent')throw new Error('explicit true not persistent');
+      await client.setConsent('false');
+      if((await client.track('withdrawn')).reason!=='consent_required'||(await client.getQueueStatus()).count!==0)throw new Error('nonboolean update did not withdraw');
+      return true;
+    }finally{client.destroy();}
+  });
+  check(literalConsent,'literal consent failed');
   await context.route('**/v1/batch',async route=>{const b=route.request().postDataJSON();await route.fulfill({status:202,contentType:'application/json',body:JSON.stringify({accepted_event_ids:b.events.map(e=>e.event_id)})});});
   const init=async(p,id,ack=false)=>p.evaluate(async({id,ack})=>{
     const {createAnalytics}=await import('/sdk/ccpanel.js');window.__sent=[];
@@ -34,6 +48,6 @@ async (page) => {
   const restored=await reopened.evaluate(async()=>({queue:await window.__sdk.getQueueStatus(),sent:window.__sent,ua:navigator.userAgent}));
   check(restored.sent.includes(oldId),'persisted ID not replayed');check(restored.queue.count===0,'confirmed queue not cleared');
   await reopened.evaluate(()=>window.__sdk.destroy());
-  return {passed:true,actual_indexeddb:true,cross_tab_revocation:true,reopened_revocation:true,explicit_grant_only:true,close_reopen_stable_id:true,ack_clears_queue:true,transport:'mock 503/202, not Kafka',user_agent:restored.ua};
+  return {passed:true,literal_true_consent:literalConsent,actual_indexeddb:true,cross_tab_revocation:true,reopened_revocation:true,explicit_grant_only:true,close_reopen_stable_id:true,ack_clears_queue:true,transport:'mock 503/202, not Kafka',user_agent:restored.ua};
 }
 

@@ -46,7 +46,7 @@ export class Analytics {
     this.identityKey=`ccpanel:identity:${url.origin}${url.pathname}:${options.projectId}`;
     this.consentKey=this.identityKey+':consent';
     this.consentMarker=this.readConsentMarker();
-    this.consent=options.consent&&!this.consentMarker?.startsWith('revoked:');
+    this.consent=options.consent===true&&!this.consentMarker?.startsWith('revoked:');
     this.queue=options.queue??(typeof indexedDB!=='undefined'?new IndexedQueue(this.identityKey+':queue'):this.memory);
     if(this.consent)this.loadIdentity();
     this.timer=setInterval(()=>{void this.flush();},options.flushInterval??3000);
@@ -118,6 +118,8 @@ export class Analytics {
   reset(){this.user=undefined;this.anonymous=this.hasConsent()?crypto.randomUUID():'';if(this.consent)this.saveIdentity();}
   setConsent(value:boolean){return this.changeConsent(value,true);}
   private changeConsent(value:boolean,publish:boolean){
+    // Runtime callers may bypass TypeScript; only explicit true grants collection.
+    value=value===true;
     const version=++this.epoch;this.consent=false;this.snapshot=[];
     const prior=this.readConsentMarker();
     if(!value&&publish)try{localStorage.setItem(this.consentKey,'revoked:'+crypto.randomUUID());}catch{/* cross-tab synchronization unavailable */}
