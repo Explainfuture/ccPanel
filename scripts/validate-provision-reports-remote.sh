@@ -16,19 +16,23 @@ assert meta['loadFinishedAt']<=time.time()*1000
 assert hashlib.sha256((root/'samples-finished.jsonl').read_bytes()).hexdigest()==meta['samplesSha256']
 PY
 version=${CCPANEL_VALIDATION_VERSION:-16}
-[[ "$version" =~ ^(15|16|17|18|19|20)$ ]]
+[[ "$version" =~ ^(15|16|17|18|19|20|21)$ ]]
+bootstrap_version=$version
 stage="/opt/ccpanel/shared/validation-v$version"
 case "${CCPANEL_VALIDATION_SUITE:-all}" in
   all) suites='company-provision report-edit query-export';;
   company-provision) suites=company-provision;;
   report-edit) suites=report-edit;;
   query-export) suites=query-export;;
-  retention) [[ "$version" = 17 || "$version" = 18 || "$version" = 19 || "$version" = 20 ]]; suites=retention;;
-  partitions) [[ "$version" = 17 || "$version" = 18 || "$version" = 19 || "$version" = 20 ]]; suites=partitions;;
-  operational-alerts) [[ "$version" = 19 || "$version" = 20 ]]; suites=operational-alerts;;
-  operational-history) [[ "$version" = 18 || "$version" = 19 || "$version" = 20 ]]; suites=operational-history;;
-  project-retention) [[ "$version" = 20 ]]; suites=project-retention;;
-  retention-recovery) [[ "$version" = 20 ]]; suites=retention-recovery;;
+  retention) [[ "$version" -ge 17 ]]; suites=retention;;
+  partitions) [[ "$version" -ge 17 ]]; suites=partitions;;
+  operational-alerts) [[ "$version" -ge 19 ]]; suites=operational-alerts;;
+  operational-history) [[ "$version" -ge 18 ]]; suites=operational-history;;
+  project-retention) [[ "$version" -ge 20 ]]; suites=project-retention;;
+  retention-recovery) [[ "$version" -ge 20 ]]; suites=retention-recovery;;
+  pressure-alerts) [[ "$version" = 21 ]]; suites=pressure-alerts;;
+  pressure-persistence) [[ "$version" = 21 ]]; suites=pressure-persistence;bootstrap_version=20;;
+  schema-upgrade) [[ "$version" = 21 ]]; suites=schema-upgrade;bootstrap_version=19;;
   *) echo 'Unsupported isolated validation suite' >&2;exit 1;;
 esac
 # The parent /app source mount is read-only. Docker needs the nested mount
@@ -47,7 +51,7 @@ for suite in $suites; do
   [[ "$db" =~ ^ccpanel_restore_[0-9]{14}_[a-f0-9]{8}$ ]]
   printf 'DATABASE_URL=%s/%s\n' "${DATABASE_URL%/*}" "$db" >"$dir/test.env"
   docker compose exec -T postgres createdb -U ccpanel "$db";created=true
-  docker compose run --rm -T --no-deps --env-from-file "$dir/test.env" -v "$stage:/app/scripts/validation:ro" api node "scripts/validation/migrate-v$version.mjs"
+  docker compose run --rm -T --no-deps --env-from-file "$dir/test.env" -v "$stage:/app/scripts/validation:ro" api node "scripts/validation/migrate-v$bootstrap_version.mjs"
   # A fresh empty database exports its own fresh source ledger. This is not
   # an old backup and never overrides the running database recovery gate.
   docker compose run --rm -T --no-deps --env-from-file "$dir/test.env" -v "$stage:/app/scripts/validation:ro" api node scripts/validation/deletion-ledger.mjs export >"$dir/ledger.json"

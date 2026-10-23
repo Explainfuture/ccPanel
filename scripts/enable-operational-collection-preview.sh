@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Enable only after the trusted schema19/20 upgrade reconciles original data.
+# Enable only after a trusted supported upgrade reconciles original data.
 set -euo pipefail
 umask 077
 exec 8>/opt/ccpanel/shared/deploy.lock
@@ -16,7 +16,7 @@ upgrade=$(realpath -e "$CCPANEL_UPGRADE_DIR")
 [[ "$upgrade" =~ ^/opt/ccpanel/shared/product-upgrade\.[A-Za-z0-9]{6}$ ]]
 test "$(cat "$upgrade/target-release.txt")" = "$CCPANEL_EXPECTED_RELEASE"
 schema=$(cat "$upgrade/target-schema.txt")
-[[ "$schema" = 19 || "$schema" = 20 ]]
+[[ "$schema" = 19 || "$schema" = 20 || "$schema" = 21 ]]
 test -s "$upgrade/backup-verified.json"
 cmp "$upgrade/before.jsonl" "$upgrade/after.jsonl"
 cd /opt/ccpanel/current/infra

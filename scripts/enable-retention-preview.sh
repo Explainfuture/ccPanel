@@ -15,10 +15,11 @@ upgrade=$(realpath -e "${CCPANEL_UPGRADE_DIR:?Set verified trusted upgrade evide
 [[ "$upgrade" =~ ^/opt/ccpanel/shared/product-upgrade\.[A-Za-z0-9]{6}$ ]]
 test "$(cat "$upgrade/target-release.txt")" = "$CCPANEL_EXPECTED_RELEASE"
 schema=$(cat "$upgrade/target-schema.txt")
-[[ "$schema" = 17 || "$schema" = 18 || "$schema" = 19 || "$schema" = 20 ]]
+[[ "$schema" = 17 || "$schema" = 18 || "$schema" = 19 || "$schema" = 20 || "$schema" = 21 ]]
 test -s "$upgrade/backup-verified.json"
 cmp "$upgrade/before.jsonl" "$upgrade/after.jsonl"
 cd /opt/ccpanel/current/infra
+test "$(cat ../dist/schema-version.txt)" = "$schema"
 test "$(docker compose exec -T postgres psql -X -U ccpanel -d ccpanel -Atqc 'SELECT max(version) FROM schema_migrations')" = "$schema"
 docker compose run --rm -T --no-deps api node dist/deletion-ledger.mjs check
 docker compose run --rm -T --no-deps api node dist/consumer-progress.mjs check
