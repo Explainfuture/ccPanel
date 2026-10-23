@@ -37,6 +37,7 @@ export async function withBackupSnapshot<T>(connectionString:string,options:{exp
   const stop=(code:string)=>{interrupt(new BackupSnapshotError(code));controller.abort();};
   db.on('error',()=>stop('backup_snapshot_connection_lost'));
   const timer=setTimeout(()=>stop('backup_snapshot_timeout'),timeout);
+  let pending:Promise<T>|undefined;
   try{
     const operation=async()=>{
       await db.connect();await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
@@ -52,11 +53,14 @@ export async function withBackupSnapshot<T>(connectionString:string,options:{exp
       // Prove exporter still owns a live transaction before returning success.
       await db.query('SELECT 1');await db.query('ROLLBACK');return result;
     };
-    return await Promise.race([operation(),stopped]);
+    pending=operation();return await Promise.race([pending,stopped]);
   }catch(error){
     if(error instanceof BackupSnapshotError)throw error;
     throw new BackupSnapshotError('backup_snapshot_failed');
   }finally{
     clearTimeout(timer);controller.abort();await db.end().catch(()=>{});
+    // Cancellation requests are bounded, but ownership is retained until the
+    // callback has actually settled (e.g. its archive writer has closed).
+    await pending?.catch(()=>{});
   }
 }

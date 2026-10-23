@@ -73,9 +73,11 @@ try{
   });
   const invalid=await dump(expired);assert.notEqual(invalid.code,0,'exported snapshot must expire after transaction ends');
   await assert.rejects(withBackupSnapshot(source.href,{expectedSchema:999},async()=>{throw Error('must not run');}),/backup_schema_mismatch/);
-  await assert.rejects(withBackupSnapshot(source.href,{expectedSchema:22,timeoutMs:1000},async snapshot=>new Promise((_resolve,reject)=>snapshot.signal.addEventListener('abort',()=>reject(Error('aborted')),{once:true}))),/backup_snapshot_timeout/);
+  let callbackCleaned=false;
+  await assert.rejects(withBackupSnapshot(source.href,{expectedSchema:22,timeoutMs:1000},async snapshot=>new Promise((_resolve,reject)=>snapshot.signal.addEventListener('abort',()=>{setTimeout(()=>{callbackCleaned=true;reject(Error('aborted'));},150);},{once:true}))),/backup_snapshot_timeout/);
+  assert.equal(callbackCleaned,true,'timeout must wait for actual callback cleanup before releasing ownership');
   assert.equal((await admin.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE application_name='ccpanel_backup_snapshot'")).rows[0].n,0);
-  console.log(JSON.stringify({passed:true,shared_pg_snapshot:true,concurrent_insert_update_delete_committed:true,live_fingerprint_differs:true,existing_operator_sql_matches:true,actual_pg_dump_restore:true,restored_fingerprints_exact:true,recovery_gate_rows:0,expired_snapshot_rejected:true,schema_mismatch_rejected:true,timeout_aborted_callback:true,exporter_sessions_remaining:0,...result}));
+  console.log(JSON.stringify({passed:true,shared_pg_snapshot:true,concurrent_insert_update_delete_committed:true,live_fingerprint_differs:true,existing_operator_sql_matches:true,actual_pg_dump_restore:true,restored_fingerprints_exact:true,recovery_gate_rows:0,expired_snapshot_rejected:true,schema_mismatch_rejected:true,timeout_aborted_callback:true,timeout_waited_for_callback_cleanup:true,exporter_sessions_remaining:0,...result}));
 }finally{
   if(restoreConnected)await restoreDb.end();await writer.end();
   if(created)await admin.query(`DROP DATABASE ${restored} WITH (FORCE)`);await admin.end();
