@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {pool} from '../packages/server/src/db';
-import {changeProjectRetention} from '../packages/server/src/project-retention';
+import {changeProjectRetention,readProjectRetention} from '../packages/server/src/project-retention';
 import {persist,EventConflict} from '../packages/server/src/consume';
 import {retainNext} from '../packages/server/src/retention';
 import {lockProjectPrivacy} from '../packages/server/src/privacy';
@@ -119,6 +119,35 @@ try{
   }finally{await busy.query('ROLLBACK');busy.release();}
   await assert.rejects(withQuerySnapshot(tenant,project,async run=>{await run('SELECT pg_sleep(6)');}),{status:504,message:'query_timeout'});
   await update(4,6); // SQL timeout also rolls back and releases the shared lock.
+  const viewerSecret=token(),viewerCsrf=token();
+  await pool.query("INSERT INTO sessions VALUES($1,$2,$3,now()+interval '1 hour')",[digest(viewerSecret),viewer,digest(viewerCsrf)]);
+  const viewerHeaders={...headers,cookie:`ccpanel_session=${viewerSecret}`,'x-csrf-token':viewerCsrf};
+  const policyApi=(body?:unknown,h=headers,path=root+'/retention')=>app.request(path,{method:body===undefined?'GET':'PATCH',headers:h,...(body===undefined?{}:{body:JSON.stringify(body)})});
+  const readable=await policyApi(undefined,viewerHeaders);assert.equal(readable.status,200);assert.equal(readable.headers.get('cache-control'),'no-store');
+  const policy=await readable.json();assert.equal(policy.policy.raw_days,4);assert.equal(policy.policy.version,7);assert.equal(policy.limits.dedup_days,45);assert.equal(policy.limits.dlq_days,14);assert.ok(Date.parse(policy.policy.effective_from)<=Date.parse(policy.observed_at));
+  assert.equal((await app.request(root+'/retention')).status,401);
+  assert.equal((await policyApi({raw_days:3,expected_version:7},{...headers,'x-csrf-token':'invalid'})).status,403);
+  assert.equal((await policyApi({raw_days:3,expected_version:7},{...headers,origin:'https://foreign.invalid'})).status,403);
+  assert.equal((await policyApi({raw_days:3,expected_version:7},viewerHeaders)).status,403);
+  assert.equal((await policyApi(undefined,headers,`/api/tenants/${tenant}/projects/${other}/retention`)).status,404);
+  assert.equal((await policyApi(undefined,headers,`/api/tenants/${foreign}/projects/${other}/retention`)).status,404);
+  assert.equal((await policyApi(undefined,headers,root+'/retention?tenant_id='+foreign)).status,400);
+  for(const body of[{raw_days:31,expected_version:7},{raw_days:1.5,expected_version:7},{raw_days:3,expected_version:7,tenant_id:foreign}])assert.equal((await policyApi(body)).status,400);
+  assert.equal((await app.request(root+'/retention',{method:'PATCH',headers,body:'{'})).status,400);
+  assert.equal((await app.request(root+'/retention',{method:'PATCH',headers,body:'x'.repeat(1025)})).status,413);
+  const unchanged=await policyApi({raw_days:4,expected_version:7});assert.equal(unchanged.status,200);assert.equal((await unchanged.json()).changed,false);
+  const auditBeforeRace=await audits();
+  const outcomes=await Promise.all([policyApi({raw_days:3,expected_version:7}),policyApi({raw_days:2,expected_version:7})]);assert.deepEqual(outcomes.map(r=>r.status).sort(),[200,409]);
+  assert.equal((await state()).retention_version,8);assert.equal(await audits(),auditBeforeRace+1);
+  const current=await state();
+  for(let i=0;i<3;i++)assert.equal((await policyApi({raw_days:current.retention_days,expected_version:8})).status,200);
+  const limited=await policyApi({raw_days:1,expected_version:8});assert.equal(limited.status,429);assert.equal(limited.headers.get('retry-after'),'60');assert.equal((await state()).retention_version,8);
+  await pool.query('DELETE FROM tenant_memberships WHERE tenant_id=$1 AND user_id=$2',[tenant,viewer]);
+  assert.equal((await policyApi(undefined,viewerHeaders)).status,404);
+  await assert.rejects(readProjectRetention(tenant,project,viewer),{status:404});
+  await pool.query("UPDATE tenant_memberships SET role='viewer' WHERE tenant_id=$1 AND user_id=$2",[tenant,admin]);
+  assert.equal((await policyApi({raw_days:1,expected_version:8})).status,403);assert.equal((await state()).retention_version,8);
+  console.log(JSON.stringify({retention_settings_http:true,company_member_read:true,admin_only_write:true,csrf_origin_checked:true,scope_hidden:true,strict_input_and_size:true,concurrent_version_single_audit:true,removed_member_denied:true,revoked_admin_denied:true}));
   console.log(JSON.stringify({query_snapshot:true,repeatable_rows_and_clock:true,ingestion_during_read:true,policy_write_busy_during_read:true,post_snapshot_policy_commit_rejected:true,foreign_snapshot_hidden:true,sync_trend_and_behavior_busy_http:true,error_and_timeout_release_locks:true}));
   console.log(JSON.stringify({passed:true,schema20:true,fresh_authorization:true,foreign_scope_hidden:true,no_op_no_audit:true,version_conflict:true,privacy_lock_busy:true,logical_expiry_immediate:true,extension_no_resurrection:true,expired_consumer_dedup:true,expired_identify_no_link:true,audit_atomic_rollback:true,physical_expiry_keeps_45_day_dedup:true,replay_admission_and_queued_recheck:true,http_batch_all_or_nothing:true,old_result_and_download_hidden:true}));
 }finally{await pool.end();}
