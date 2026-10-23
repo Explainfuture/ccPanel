@@ -28,6 +28,7 @@ case "${CCPANEL_VALIDATION_SUITE:-all}" in
   operational-alerts) [[ "$version" = 19 || "$version" = 20 ]]; suites=operational-alerts;;
   operational-history) [[ "$version" = 18 || "$version" = 19 || "$version" = 20 ]]; suites=operational-history;;
   project-retention) [[ "$version" = 20 ]]; suites=project-retention;;
+  retention-recovery) [[ "$version" = 20 ]]; suites=retention-recovery;;
   *) echo 'Unsupported isolated validation suite' >&2;exit 1;;
 esac
 # The parent /app source mount is read-only. Docker needs the nested mount

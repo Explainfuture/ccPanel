@@ -58,7 +58,15 @@ WHERE c.table_schema='public' AND c.table_name NOT IN ('schema_migrations','reco
 SQL
   docker compose exec -T postgres psql -X -U ccpanel -d ccpanel -At -v ON_ERROR_STOP=1 <"$dir/fingerprint.sql" >"$dir/before.jsonl"
   bash /opt/ccpanel/shared/backup-remote.sh >"$dir/backup.path"
-  docker compose run --rm -T --no-deps api node dist/deletion-ledger.mjs export >"$dir/source-ledger.json"
+  if [ "$source_schema:$target_schema" = 20:20 ]; then
+    # Use the SHA-verified target CLI to include the new v2 retention inventory
+    # even when the old schema20 runtime can only export legacy v1 ledgers.
+    tar -xOf /opt/ccpanel/shared/release.tar.gz dist/deletion-ledger.mjs >"$dir/source-ledger-exporter.mjs"
+    chmod 644 "$dir/source-ledger-exporter.mjs"
+    docker compose run --rm -T --no-deps -v "$dir/source-ledger-exporter.mjs:/app/dist/deletion-ledger.mjs:ro" api node dist/deletion-ledger.mjs export >"$dir/source-ledger.json"
+  else
+    docker compose run --rm -T --no-deps api node dist/deletion-ledger.mjs export >"$dir/source-ledger.json"
+  fi
   echo "Upgrade prepared; services offline; verify an off-host encrypted backup and isolated restore before apply: $dir"
 elif [ "$mode" = apply ]; then
   if [ "$target_schema" = 19 ] || [ "$target_schema" = 20 ]; then
