@@ -217,3 +217,15 @@ VPS只读确认m4-recovery-008/schema20、无活动容量任务后，独立stage
 最终CI39922202944成功：202单测/56文件、类型/构建/SDK/CLI/Python及14套真实PG。新增真实HTTP覆盖所有7种重放状态/优先级、错公司回执不解决、无归属和15天来源仍触发、未来记录未知、响应无载荷/公司标识、读取不修改行、最新撤权/成员/共享限流；临时重命名索引表证明拒绝者不查询该表，合资格读SQL失败仅返回通用503。
 
 VPS隔离验收归档SHA 929f5acb750cf8b3596b91505822c9869ae5403ad9e1977c7514dd6534f2f5b9，stage validation-dlq159，只在新临时PG运行SQL/认证Hono factory，非公开Nginx新端点。首次因新release缺scripts/validation挂载目录在容器启动前失败，trap清库/凭证；补空目录并核对归档字节后重跑通过。证据dlq-health-check.ZKOSXE；37个主库非动态监控关系指纹一致，root schema21/raw2/dedup3/DLQ0/operators0、位点7182/7230，临时库/凭证/一次性容器0，四服务restart0/OOMfalse/ready。新功能尚未发布，线上仍m4-pressure-009；DLQ风险持久历史与独立外部通知、备份等规则仍待实现。
+
+## 步骤160：DLQ风险持久层与读取（源码，未部署）
+
+schema22新增dlq_alert_states固定两规则与dlq_alert_history。API既有30秒采集/单在途/独立max1池在原采样、四规则、压力写入后评估DLQ；Worker不评估，关闭采集不建池/回调。新增每周期一次PG汇总查询，不新增定时器或Kafka探针，不影响业务确认；SQL/锁/连接预算保持原约束，失败固定无载荷日志、销毁监控连接并等待下周期。代价需在新版容量窗口量化，不能仅由冒烟推断免费。
+
+DLQ评估在独立全局try-lock 169202640事务内直接读PG，不接受客户端观测/旧API缓存，因此多API按同一数据库的评估时间拒绝倒序或同刻冲突，忙时跳过。两状态必须完整/同hash与时间，修订BigInt检查溢出。状态/原因/策略/观察中断变化记录历史，持续unknown不反复gap；稳定状态刷新源证据但不增修订。源90秒有效期不从写入/读取时刷新。历史14天/最多5000条，过期和容量每批分别最多删100，与两状态更新和历史插入同事务；不足以有界清理则整次回滚。
+
+纯校验共享到server/web，PG聚合移到只接受PoolClient的模块，采集不依赖业务授权读池。GET dlq-alert-history沿用当前公司admin+有效platform_operator、事务内资格锁/no-store/禁止query，以及跨公司共享每API每用户12/min历史预算。单SQL快照读两状态/最近50历史，随后DB时钟判断源到期，ID按bigint排序后输出字符串；历史state_at_assessment与current_state分列。重新验证固定证据/策略/full-frame与policy哈希，异常最新行隐藏、非法历史丢弃计数，不直接展开DB JSON；只返回固定脱敏汇总。历史发生时间不等于修复，零保留待处理仍不是事件成功的证据。尚无历史页面或外部通知。
+
+CI39924356532核心成功（202/15），加入读取后的最终39924920059（fa729b2）全部success：204单测/57文件、构建/SDK/CLI/Python及15套真实PG。第15套从实际已发布cf8fb5a952aa1c245d7d0ac40ccf0385da31a15b的schema21引导，验证22失败整体回滚、旧自定义7天/version4/floor/epoch及原压力/监控/事件字段保留、重复迁移、状态/原因/unknown/gap/policy、满表插入失败恢复淘汰行、5000上限/超限拒绝/过期删100、溢出拒绝。原19/20旧源专项随最新版本检查至22。真实调度检查Worker0/ API2状态2历史，关闭采集无新增池；真实HTTP读取验证精确修订、50数值顺序、失权/跨scope/共享限流、异常哈希隐藏。单测明确源TTL边界、旧firing当前unknown、异常证据不泄露额外JSON。
+
+VPS只在两个独立临时库验证schema21→22持久故障专项及schema22认证Hono factory即时/历史接口。归档SHA eeffb23915f77b65a45dd235ab751f954d19ea8ff70e8288b46f2c6139011905，stage validation-dlq160，证据dlq-persistence-check.we2zmi。37个主库非动态监控关系指纹完全相同，schema21/raw2/dedup3/DLQ0/operators0、位点7182/7230，主库仍无新DLQ两表；临时库/env/ledger/一次性容器0，四容器running/restart0/OOMfalse、HTTPSready。未重建运行服务或迁移主库，可信升级工具继续只支持至21并拒绝22。需历史页面和受控升级/备份恢复/上线验证完成后再启用，资源/HA/异机同步和其他规则/独立通知缺口保留。

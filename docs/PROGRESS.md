@@ -1246,3 +1246,13 @@ Chrome合成HTTP的双规则、精确9007199254740995、自然过期/2秒延迟�
 VPS只读挂载新bundle，在独立临时schema21 PG运行同SQL/Hono factory专项。第一次容器因release009没有嵌套scripts/validation空挂载点而启动失败；trap清理临时库/env，补目录并核对stage归档字节后重跑成功，未替换运行文件/重建服务。证据dlq-health-check.ZKOSXE，test log SHA 0417dd0a386aa7ff9306bee67f6f47bc10fef796b4c22a1302cb5795a90c1b77，归档SHA见OBSERVABILITY。最终37个非动态监控关系全同，schema21/raw2/dedup3/DLQ0/operators0、位点7182/7230、临时库/凭证/一次性容器0，四容器running/restart0/OOMfalse且HTTPSready，安全摘要.local/dlq159-final-preservation.json。
 
 新接口/页面仅源码及隔离验收，线上仍m4-pressure-009。DLQ风险持久化/独立外部通知、备份规则、自动异机最新状态同步、资源/HA/设备矩阵等仍未完成，目标继续进行。
+
+### 步骤160：DLQ风险持久化、API采集与保护读取（未部署）
+
+108a6a0共享纯校验、分离PoolClient-only聚合；f53abbc新增schema22固定两状态/14天5000历史/原子有界裁剪和既有API周期采集；cee0853新增第15 PG并固定真实schema21源cf8fb5a...；fa729b2新增dlq-alert-history与严格证据解码。稳定状态不增revision、状态/原因/策略/gap记录，unknown不反复gap，忙/倒序/不完整/overflow/full拒绝，源TTL不重置。新增一笔每30秒的PG聚合，不增pool/timer或Kafka探测；业务确认路径不调用，成本仍待实际新版容量验证。
+
+本地204单测/57文件、类型/构建通过。核心CI39924356532（202/15）成功，最终39924920059（204/15）全部success。实际21→22失败trigger回滚至21且无新表，自定义7天/version4/floor/epoch、原压力/四告警/事件等旧字段指纹保留；clear/firing/reason/unknown/gap/policy、缺JSON约束、状态完整性、5000写入失败恢复状态/淘汰行、超限拒绝/过期只删100和revision溢出通过。真实30秒采集验证Worker不评估/API落两状态两历史并关池。认证HTTP历史读证明双资格先于状态表查询、fresh两状态、9007199254740993修订、120同刻记录取最近50数值顺序、坏hash隐藏最新、不动来源/回执、撤权拒绝和跨公司用户共享预算。单测过期仍保留历史firing而当前unknown，额外DB JSON不透传。
+
+VPS新归档/私有wrapper在两个临时库分别运行旧21引导的持久化和当前22引导的即时+历史HTTP，均通过；新stage只读，挂载点先检查创建，不改运行代码。证据/归档见OBSERVABILITY。最终37非动态监控关系全同，root21/raw2/dedup3/DLQ0/operators0、位点7182/7230，新DLQ持久表在主库仍不存在；临时库/凭证/一次性容器0，四服务running/restart0/OOMfalse/ready。安全摘要.local/dlq160-final-preservation.json；持久test log SHA 9f993543d29400f1cbb37b34a028bf783c8302d2d0129d204d268542161e51cb，HTTP log SHA 71e665434d9a9ccceed746942cc2d9478edeb554c5637dbd45649c87c4b764d0。
+
+线上仍m4-pressure-009/schema21；源码22不能绕过仍至21的可信升级工具。DLQ历史页面、22受控升级与实际发布、独立外部通知/备份规则、资源/HA/持续异机最新状态同步和浏览器真机矩阵等仍未完成，目标继续进行。
