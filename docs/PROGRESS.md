@@ -1148,3 +1148,11 @@ SQL证明raw/dedup/job各2个原ID、已处理2/桶贡献2、DLQ0，集合SHA da
 本地182单测/类型检查/构建通过，新纯函数覆盖完整格式、边界篡改/跨删除scope、旧短策略延长、时钟/更严格floor及版本冲突。新增第11套真实PG使用CLI子进程验证v1/清单缺失/跨公司/过时版本拒绝、审计失败回滚/闭门、旧raw隐藏/其他公司数据保留、删除屏障恢复、旧结果清除、重试幂等、在线租约拒绝和合法延长不误删。第一轮eb6611c的CI39908924810成功；含升级包装脚本的最终CI待确认。没有连接/修改VPS，线上仍m4-retention-007的旧CLI；后续须隔离演练和发布，持续异机同步/容量/其他PRD门槛未完成。
 
 步骤151最终CI39909130070（e8ab337）全部success，182单测、构建/CLI/Python和11套真实PG通过。恢复专项日志各项true，原schema19迁移套件仍以v1在旧库开门后升级，schema20新库使用v2；没有因兼容测试绕过schema20格式检查。实现、CLI/PG验证、可信升级导出和格式强制分别提交；同步集成分支/草稿PR。下一步先在VPS隔离库运行新CLI，再通过20→20可信升级发布，不能让源码验收代替实际运行验证。
+
+### 步骤152：VPS隔离CLI与真正旧快照恢复演练
+
+重新只读核对线上m4-retention-007/schema20、raw2/dedup3、PG7180/7228、ready和无活动容量任务后，在validation-v20只读挂载新CLI/迁移/retention-recovery套件。远端隔离验证全部通过并删除临时库，包含闭门/事务回滚/幂等/在线租约、跨公司和合法延长保护；线上没有迁移或停服务。
+
+进一步在两个独立临时PG库执行真实pg_dump/pg_restore：原源先持有默认30天/三条合成raw及旧缓存，备份后通过真实事务服务将A项目改1天，并从该原源导出最新v2；还原旧dump的目标未自导出清单。旧快照公共关系指纹逐项一致，目标迁移后门禁关闭、旧A可见2；导入最新原源后A可见1，raw/dedup各3保持，B公司可见1，旧缓存清零。精确raw ID集合SHA d51a04dfd1327a2cadef5f647f562e8afce32342519ad3be33f18b04213f4eb5，dump SHA cdf67fb16912617d2453f657dd38ccd9c8c68af587e4e2c983eea38ad320e9ea，最新ledger SHA 9dfa6830db45339330faf0e75411ec4307631bdd7f99000a82148637398e3f9c。
+
+证据/opt/ccpanel/shared/retention-restore.VpNAyA及.local/restore152.log，完成后两个临时库、env/明文ledger/dump由受限路径trap清理；演练不接Kafka、不改变线上原业务数据。下一阶段候选.local/release-recovery152.tar.gz（131文件/544873字节，SHAc177b4d6bfe1981732d018e255ee92f7d4dc2878abd308d16f5d7b46acff719e）与151已验收源码一致，尚待新备份/恢复证明后发布；没有新的容量通过结论。
