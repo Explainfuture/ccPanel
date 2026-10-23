@@ -71,7 +71,7 @@ EXIT/TERM/INT有恢复启动保护；失败时保留fixture和日志便于检查
 | --- | --- |
 | commit-crash-check-remote.sh | worker-commit-kill-remote.sh（步骤195） |
 | checkpoint-live-check-remote.sh | checkpoint-window-remote.sh（步骤196） |
-| pressure-live-check-remote.sh | CAPACITY.md；没有此历史演练的当前等价入口 |
+| pressure-live-check-remote.sh | pressure-sdk-window-remote.sh（步骤199当前降级链路，不是完整容量验收） |
 | retention-live-check-remote.sh | retained-gap-window-remote.sh（步骤198新补当前版本实测） |
 
 check-retired-drills.py 在空PATH下执行四个入口，要求退出64、无标准输出且错误指引匹配；Linux CI和VPS独立临时目录验证该行为。本次仅更新仓库及后续发布源，没有覆盖当前不可变013发布目录；013归档内旧入口仍可能存在，运维请使用本节指引及194–196新控制器。此防误用检查不增加业务故障或容量通过项。
@@ -85,3 +85,11 @@ check-retired-drills.py 在空PATH下执行四个入口，要求退出64、无�
 启动真实API，两次间隔请求都必须503、reason正确且Retry-After为正。再次启动Worker仍非零退出，再次启动API仍拒收；三次检查要求原事故完整行（含detected_at/details）相同、paused审计仅1条、PG两分区进度仍0、raw/dedup/jobs/DLQ均0、Kafka提交与真实高低位均不变、DLQ高位0。没有调用事故确认、bootstrap或修改完整性门禁；此测试证明缺口被显式阻断，不代表已经删除的事件恢复。
 
 2026-10-24实测2Lm0f9通过，安全结果双方保存，SHA256 e1290a74199d06e5d9ed8ccfc28dd1d24d110bd20abcbc4e6574ade59de74e23。测试topic/group/DB/env/ledger清理，主服务暂停期间44个public关系指纹全同，随后013/HTTPS ready。本轮仅在隔离命名空间注入已确认记录丢失，主预览有计划暂停；不提供自然保留计时、磁盘损坏、掉电、完整容量或HA结论。197时尚无当前等价入口的缺口由本次补充，不追认旧构建历史验收。
+
+## 当前013压力拒收、SDK退避与恢复（步骤199）
+
+`pressure-sdk-window-remote.sh` 沿用198保护控制器，只创建临时DB、随机 `ccpanel.drill.pressuresdk.<16hex>` topics/group和受限证据目录。实际当前Worker先初始化进度再停止；API、Worker依次运行，测试API仅监听容器内回环3198。协调器导入当前发布的 `dist/web/sdk/ccpanel.js`；在Node里无IndexedDB，使用SDK默认有界内存队列，不把它描述为浏览器持久化证明。
+
+从真实只读host telemetry复制出仅测试API读取的原子文件，压力期仅将两种磁盘availableBytes改为0，持续跟随真实探针更新时间；没有填满磁盘或更改主遥测/生产配置。当前API按真实admission路径返回503/disk_space_low及Retry-After30秒，SDK保留原事件；3秒后强制flush也不得提前发送。撤去测试字段后，不更换SDK/API进程，不修改时钟或mock HTTP响应，等待SDK定时重试收到真实202。两次HTTP完整载荷逐字节相同，队列在确认后为0；再手动重发原载荷，真实Worker消费两条后必须只有raw/dedup/jobs/processed/桶贡献各1、duplicates1、DLQ0，原event_id精确相同，完整性门禁全行不变。
+
+2026-10-24 JZElxI通过：状态[503,202]，实际重试间隔30678ms，Retry-After30000ms。结果双方保存，SHA256 c4df2b05cbdd6971354dbe907b9eefd5462bcba320fea84385b555655b73b80e；暂停期间主库44关系指纹一致，临时topic/group/DB/env/ledger清理，主服务恢复ready。测试遥测留在独立证据目录，不用于线上探针。该项是压力信号到退避/恢复的当前版本证据，不是实际磁盘满写失败、浏览器关闭/持久化、无中断、高并发容量或HA证明。

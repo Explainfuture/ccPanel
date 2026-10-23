@@ -1585,3 +1585,10 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 临时topic/group/DB/env/ledger清理，主库暂停期间44关系指纹相同，013/HTTPS ready。结果已下载，SHA256 e1290a74199d06e5d9ed8ccfc28dd1d24d110bd20abcbc4e6574ade59de74e23。本轮仅运维演练源文件，未覆盖线上发布目录；CI新增语法检查，真实broker故障仅VPS执行。
 - 更新历史保留入口指引到新控制器；完整容量/设备矩阵、异机自动备份与最新删除策略同步、独立通知及HA仍未通过。
 - CI Actions39990847398 verify/postgres均success，既有构建/测试/真实PG/SDK进程与打包、新演练语法及历史入口空PATH检查通过；主库最终raw2/dedup3/DLQ0、总位点15618、临时DB0。
+
+### 步骤199：当前SDK/API压力降级恢复
+
+- 013实际Browser SDK构建在Node默认有界内存模式，连接当前真实API；仅私有API读取复制遥测的磁盘availableBytes0，真实503/disk_space_low/Retry-After30秒。3秒后手动flush不提前发送；撤去合成字段后同SDK/API定时恢复202，两次完整载荷一致、原ID不变、确认后队列0。
+- JZElxI实测间隔30678ms；再重发原载荷，当前Worker最终raw/dedup/jobs/processed/桶贡献各1、duplicates1、DLQ0、完整性门禁全行未变。未填满磁盘、无HTTP/时钟mock，不称真实浏览器持久化或完整容量通过。
+- 主库暂停期间44关系指纹同，临时topics/group/DB/env/ledger清理，主服务013/ready；安全日志已下载，SHA256 c4df2b05cbdd6971354dbe907b9eefd5462bcba320fea84385b555655b73b80e。历史压力入口指向新控制器，CI仅增加脚本语法检查，真实broker链路在VPS执行。
+- 用户已明确暂时没有离机目的地，先完成可配置方案；持续异机执行仍未启用，不等待或猜测外部资源。容量/设备矩阵/独立通知/HA门槛保持。
