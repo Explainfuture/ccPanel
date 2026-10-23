@@ -1575,3 +1575,5 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 四个依赖staged-*-v10的历史入口改为启动即退出64，读取配置/外部命令之前给出当前脚本或文档指引，旧实现保留Git历史。压力和保留演练明确没有当前等价入口，不升级历史结果。
 - 新增空PATH回归检查并接入Linux CI；VPS独立目录/opt/ccpanel/shared/legacy197实测四项通过，HTTPS ready。仅上传测试副本，没有覆盖013不可变发布目录或修改业务数据；旧归档内脚本不因此自动更新。
 - 本轮是运维入口防误用修复，容量、设备矩阵、异机自动备份/通知及HA门槛保持。
+
+- CI Actions39989711885: verify/postgres succeeded, including the empty-PATH guard and existing build, tests, real PostgreSQL, SDK process and package checks. Source-only change; live release remains 013.
