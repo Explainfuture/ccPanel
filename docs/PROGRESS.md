@@ -1322,3 +1322,13 @@ VPS证据 `/opt/ccpanel/shared/kafka-durability-check.pE6b96`：候选只读CLI�
 本次新dump及v2完整两项目保留清单离机AES-GCM加密/解密，均逐字节一致；回传解密dump实际临时数据库恢复3秒，全部public关系行数/指纹一致、临时数据库删除。明文SHA256 `b7557aab5e4395a005f84cd2b7ed56d6b7bcaf34727ea8ccc660ccb0d53bd1db`，密文 `3f6440e2c71b5420e91b61f8948ef1cedf093da8cf1cbb1612478ee8864f50ae`，指纹文件 `2bfa21ca1747fdafe2db7655523424b50842ce51db2c2136dd3120fd593aa52d`。密钥留在工作站，未上传服务器。
 
 候选只读确认检查使用服务器实际runtime配置（没有-e覆盖RF/minISR）通过1/1策略，两个topic可读且满足新保护。源最终CI39933366900通过；新版本升级与启用/真实SDK对账另外记录。当前为受控有中断升级，不宣称连续服务、新版容量或HA已通过。
+
+### 步骤166b：确认策略保护实际发布与完整对账（2026-10-23）
+
+22→22可信升级原字段完整指纹一致，保留已有DLQ状态/历史；API/Worker实际启动并通过确认策略检查，正式预览现为m4-durability-011/schema22。部署重建期间短暂连接重置后恢复ready，仍有已有topic创建请求错误日志，后续分区/确认策略检查通过且无新增分区；不据此宣称零中断或故障恢复。维护和采样分别重新开启，两进程均true。线上新只读CLI直接使用实际runtime配置，返回1/1、两topic通过。
+
+真实HTTPS Node SDK双用户各1事件、原ID整批重发202，持久队列排空；SQL精确ID raw/dedup/聚合任务/已处理贡献各2、DLQ0，异步趋势2。事件集合SHA256 `620d734e0378c908abc06ab2c1a5c4687144f7e439608cbffbd88488c550ddd4`。普通admin平台接入/压力/DLQ风险/历史均403，项目查询200；本次没有临时平台运维授权。前端代码未变化，线上HTML和两个入口资源均与冻结构建逐字节相同，HTML SHA256 `9cb46f0b95f3caaa25c1b18480b2a0840387afc44dd56b57b142358ea47322ff`；不是重新执行全部浏览器/设备矩阵。
+
+清理后33个原业务关系完全一致，原1418采样/54告警历史/639压力历史/6条DLQ历史的完整行前缀均保持，只有消费进度与监控当前/新增历史变化。root raw2/dedup3/DLQ0/operators0、临时恢复库/合成公司0，两个项目仍默认策略。PG=Kafka committed=high7184/7236、lag0，恰由测试四条消息尝试推进。恢复/完整性门禁open、四容器running/restart0/OOMfalse、HTTPS ready；受控recreate不能解释为服务连续。
+
+两端dump/清单临时明文、测试账号及浏览器cookie文件已核验后删除；加密dump和清单均保留、密钥留工作站。备份证明提交00888fc的[Actions39933926119](https://github.com/Explainfuture/ccPanel/actions/runs/39933926119)通过211测试/15套PG及既有保护/构建/打包检查。最终记录仍在product-upgrade.kBen5w；没有新的完整容量窗口，旧资源门槛仍未通过，独立备份同步/通知/运行策略漂移监控与HA仍未完成。
