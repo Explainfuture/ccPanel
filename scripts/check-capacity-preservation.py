@@ -28,3 +28,44 @@ with tempfile.TemporaryDirectory(prefix='ccpanel-preservation-') as folder:
     try:module.main(['verify',*[str(file) for file in files],str(report)]);raise AssertionError('Expected overwrite rejection')
     except FileExistsError:pass
 print('Exact int64, original monitor subsets, business rows, inventories and conservative partition checks passed')
+
+for groups in [module.GROUPS[:1],module.GROUPS]:
+    b=dict(before);a=dict(after)
+    for state,history,count in groups:
+        b[state]=(count,11);b[history]=(7,9223372036854775806)
+        a[state]=(count,12);a[history]=(10,22)
+    _,prefixes,_=module.layout(b);p={name:b[name] for name in prefixes}
+    value=module.compare(b,a,p);assert value['preserved'] and len(value['original_monitor_rows'])==2+len(groups)
+    sql=module.prefix_sql(b)
+    for state,history,count in groups:
+        assert history+' ORDER BY id LIMIT 7' in sql
+        for damage in ('original_history','history_decreased','state_missing','state_partial','state_empty','state_extra'):
+            aa=dict(a);pp=dict(p)
+            if damage=='original_history':pp[history]=(7,9223372036854775805)
+            if damage=='history_decreased':aa[history]=(6,33)
+            if damage=='state_missing':
+                del aa[state]
+                try:module.compare(b,aa,pp);raise AssertionError('Expected missing monitor rejection')
+                except ValueError:continue
+            if damage=='state_partial':aa[state]=(count-1,12)
+            if damage=='state_empty':aa[state]=(0,0)
+            if damage=='state_extra':aa[state]=(count+1,12)
+            assert not module.compare(b,aa,pp)['preserved'],damage
+        bb=dict(b);aa=dict(a);bb[state]=(0,0);aa[state]=(0,0)
+        assert module.compare(bb,aa,p)['preserved']
+        aa[state]=(count,12);assert not module.compare(bb,aa,p)['preserved']
+    for missing in ('history','prefix'):
+        bb=dict(b);pp=dict(p);state,history,_=groups[-1]
+        if missing=='history':del bb[history]
+        else:del pp[history]
+        try:module.compare(bb,a,pp);raise AssertionError('Expected incomplete group rejection')
+        except ValueError:pass
+print('Schema21/22 exact history preservation, fixed/disabled inventories and incomplete group rejection passed')
+for incomplete in [
+    {**before,'public.pressure_signal_states':(3,1)},
+    {**before,'public.dlq_alert_states':(2,1),'public.dlq_alert_history':(0,0)},
+]:
+    try:module.prefix_sql(incomplete);raise AssertionError('Expected incomplete schema rejection')
+    except ValueError:pass
+unexpected=dict(after);unexpected.update({'public.pressure_signal_states':(3,1),'public.pressure_signal_history':(0,0)})
+assert not module.compare(before,unexpected,prefix)['preserved']
