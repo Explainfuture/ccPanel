@@ -21,6 +21,7 @@ jobs:
       - run: python3 scripts/check-upgrade-guards.py
       - run: python3 scripts/check-schema21-upgrade.py
       - run: python3 scripts/check-schema21-activation.py
+      - run: python3 scripts/check-schema22-postmigration.py
       - run: python3 scripts/check-operational-collection-env.py
       - run: python3 scripts/check-capacity-preservation.py
       - run: pnpm --dir packages/sdk-browser pack --pack-destination ../../artifacts

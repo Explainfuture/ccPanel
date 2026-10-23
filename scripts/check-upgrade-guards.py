@@ -4,7 +4,7 @@ import hashlib, io, json, os, pathlib, subprocess, tarfile, tempfile
 assert os.name == 'posix', 'Linux CI only; requires POSIX paths and shell tools'
 source = pathlib.Path(__file__).with_name('upgrade-product-preview.sh').read_text()
 cases = ['unsupported_pair', 'archive_hash', 'archive_schema', 'helper_hash', 'active_capacity', 'retention_enabled', 'source_schema']
-pairs=[(19,20),(20,21),(21,21)]
+pairs=[(19,20),(20,21),(21,21),(21,22),(22,22)]
 for source_version,target_version in pairs:
     for case in cases:
         with tempfile.TemporaryDirectory(prefix='ccpanel-upgrade-guard-') as folder:
