@@ -1417,3 +1417,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 新增可复现的 Playwright CLI run-code 脚本与 docs/SDK-BROWSER-CHECKS.md。实测源码 b54da1b 的 Browser 构建 SHA256 40788b0b6152ba4dd5a6a16a6a1376f5b79b1a9531698539f06cdbf8b7173d2b，Chrome 155.0.8059.85。
 - 真实 IndexedDB 保存后 reload，同 ID/业务时间/载荷恢复；真实 sendBeacon 只发未过期项、每周期一次且不确认删除；普通清理 expired=1；destroy 禁止发送。Result passed=true，node --check 通过。初始 Markdown 导航触发下载，改为根页面后完整断言通过。
 - 接收端 Playwright route 拦截 503/202，测试推进 Date.now，直接调用 beacon；不等于真实关窗/设备矩阵或线上 Kafka 投递。测试后专用浏览器与本地服务均已终止；VPS 保持 012，未运行新容量窗口。
+
+### 步骤 176：原生 pagehide 后的未确认事件恢复
+
+- 新增 scripts/browser-sdk-pagehide-recovery.cjs，经真实导航而非手动 dispatch/beacon 触发 Chrome 155.0.8059.85 生命周期。pagehide isTrusted=true/persisted=false；包装仅记录原生 sendBeacon 返回值并委托原实现，queued=true。
+- 退出请求未被 Playwright 拦截器观察到（初次等待 30 秒超时，context route 复核仍为 0）；不认定退出送达或推断必然未发。分开报告 native_beacon_queued 与 exit_delivery_proven，scope 仅为生命周期及未确认恢复。
+- 导航后直接读取真实 IndexedDB：原事件仍在；再初始化 SDK，普通 202 后清空，恢复请求 1，完整事件 ID/时间/载荷逐字相同。无模拟时钟，接收端仍为路由模拟。node --check 通过；原生生命周期/恢复断言通过，不通过完整设备矩阵或 A05。浏览器/本地服务关闭；VPS 012 未变。
