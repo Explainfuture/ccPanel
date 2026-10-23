@@ -1,0 +1,18 @@
+import pg from 'pg';
+import {startOperationalCollector} from './operational-collector';
+import {storeOperationalSnapshot} from './operational-history';
+import type {OperationalSnapshot} from './operational-snapshot';
+
+export function startOperationalCollection(snapshot:()=>OperationalSnapshot){
+  // Dedicated one-connection pool: monitoring cannot occupy business pool slots.
+  const pool=new pg.Pool({connectionString:process.env.DATABASE_URL,max:1,connectionTimeoutMillis:500,idleTimeoutMillis:10000,statement_timeout:1000,query_timeout:2000,application_name:'ccpanel_operational_history'});
+  const failed=()=>console.error(JSON.stringify({code:'operational_history_write_failed'}));
+  pool.on('error',failed);
+  const stop=startOperationalCollector({snapshot,failed,write:async value=>{
+    const client=await pool.connect();let broken=false;
+    try{const result=await storeOperationalSnapshot(client,value);if(result.status==='conflict'||result.status==='full')console.error(JSON.stringify({code:'operational_history_write_rejected',reason:result.status}));}
+    catch(error){broken=true;throw error;}
+    finally{client.release(broken);}
+  }});
+  return async()=>{await stop();await pool.end();};
+}

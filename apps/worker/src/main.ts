@@ -1,3 +1,4 @@
+import {startOperationalCollection} from '../../../packages/server/src/operational-collection';
 import { kafka, ensureTopics, eventsTopic, dlqTopic,consumerGroup } from '../../../packages/server/src/kafka';
 import { persist, EventConflict } from '../../../packages/server/src/consume';
 import { validateEvent, type StoredEnvelope } from '../../../packages/schema/src/index';
@@ -75,6 +76,7 @@ await consumer.run({ autoCommit: false, eachBatchAutoResolve: false, eachBatch: 
 } });
 console.log(JSON.stringify({ code: 'worker_ready' }));
 const stopMetrics=startWorkerMetricLog(metrics);
+const stopOperationalCollection=startOperationalCollection(()=>metrics.snapshot());
 const stopAggregations=startAggregations();
 const stopRetention=startRetention();
 const stopPartitions=startPartitions();
@@ -86,4 +88,4 @@ const progressTimer=setInterval(async()=>{
   finally{checking=false;}
 },5000);
 progressTimer.unref();
-for (const signal of ['SIGTERM','SIGINT'] as const) process.once(signal, async () => { stopPartitions();stopRetention();stopAggregations();clearInterval(progressTimer);await consumer.disconnect();stopMetrics(); await producer.disconnect();await progressAdmin.disconnect();await releaseRecoveryLease();await pool.end(); process.exit(0); });
+for (const signal of ['SIGTERM','SIGINT'] as const) process.once(signal, async () => { stopPartitions();stopRetention();stopAggregations();clearInterval(progressTimer);await consumer.disconnect();stopMetrics(); await stopOperationalCollection(); await producer.disconnect();await progressAdmin.disconnect();await releaseRecoveryLease();await pool.end(); process.exit(0); });

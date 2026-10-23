@@ -4,6 +4,7 @@ import {pool} from '../packages/server/src/db';
 import {IntakeMetrics} from '../packages/server/src/intake-metrics';
 import {WorkerMetrics} from '../packages/server/src/worker-metrics';
 import {storeOperationalSnapshot,operationalHistoryLimit} from '../packages/server/src/operational-history';
+import {startOperationalCollection} from '../packages/server/src/operational-collection';
 try{
   assert.match((await pool.query('SELECT current_database() AS name')).rows[0].name,/^ccpanel_restore_[0-9]{14}_[a-f0-9]{8}$/);
   assert.equal((await pool.query('SELECT max(version) AS n FROM schema_migrations')).rows[0].n,18);
@@ -27,6 +28,15 @@ try{
     await pool.query('DROP TRIGGER operational_fail ON operational_samples;DROP FUNCTION fail_operational_insert()');
     const latest=new IntakeMetrics().snapshot(),capped=await storeOperationalSnapshot(db,latest);assert.equal(capped.status,'stored');assert.equal(capped.capacity_deleted,1);assert.equal(await count(),operationalHistoryLimit);assert.equal((await pool.query('SELECT 1 FROM operational_samples WHERE instance_id=$1',[latest.instance_id])).rowCount,1);
     const invalid=new IntakeMetrics().snapshot() as unknown as Record<string,unknown>;invalid.secret='must-not-store';await assert.rejects(storeOperationalSnapshot(db,invalid as never),/invalid_operational_snapshot/);assert.equal(await count(),operationalHistoryLimit);
-    console.log(JSON.stringify({operational_history:true,schema18:true,precise_counters:true,idempotent:true,immutable_conflict:true,lock_contention_skips:true,expiry_prunes:true,global_cap:operationalHistoryLimit,failed_insert_restores_evicted_row:true,invalid_payload_no_write:true}));
+    const collected=new WorkerMetrics(),instance=collected.snapshot().instance_id;
+    const stop=startOperationalCollection(()=>collected.snapshot());
+    try{
+      const deadline=Date.now()+45000;let stored=false;
+      while(Date.now()<deadline){if((await pool.query('SELECT 1 FROM operational_samples WHERE instance_id=$1',[instance])).rowCount){stored=true;break;}await new Promise(resolve=>setTimeout(resolve,250));}
+      assert.equal(stored,true,'real collector must persist its scheduled snapshot');
+    }finally{await stop();}
+    assert.equal(await count(),operationalHistoryLimit);
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE application_name='ccpanel_operational_history' AND datname=current_database()")).rows[0].n,0,'collector pool must close');
+    console.log(JSON.stringify({operational_history:true,schema18:true,precise_counters:true,idempotent:true,immutable_conflict:true,lock_contention_skips:true,expiry_prunes:true,global_cap:operationalHistoryLimit,failed_insert_restores_evicted_row:true,invalid_payload_no_write:true,scheduled_collection:true,collector_pool_closed:true}));
   }finally{await blocker.query('ROLLBACK');blocker.release();db.release();}
 }finally{await pool.end();}

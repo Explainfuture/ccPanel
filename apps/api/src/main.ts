@@ -1,5 +1,6 @@
 import { serve } from '@hono/node-server';
 import { createApp } from './app';
+import {startOperationalCollection} from '../../../packages/server/src/operational-collection';
 import {IntakeMetrics,startIntakeMetricLog} from '../../../packages/server/src/intake-metrics';
 import { kafka, ensureTopics, eventsTopic } from '../../../packages/server/src/kafka';
 import { pool } from '../../../packages/server/src/db';
@@ -55,6 +56,7 @@ producer.on('producer.disconnect',()=>{connected=false;});
 producer.on('producer.connect',()=>{connected=true;});
 const intakeMetrics=new IntakeMetrics();
 const stopIntakeMetrics=startIntakeMetricLog(intakeMetrics);
+const stopOperationalCollection=startOperationalCollection(()=>intakeMetrics.snapshot());
 const app=createApp({maxIntakeInFlight:Number(process.env.INGEST_MAX_INFLIGHT??16),ready:()=>connected,observeIntake:value=>intakeMetrics.observe(value),intakeStatus:()=>intakeMetrics.snapshot(),hostResourceStatus:()=>hostResources.snapshot(),admissionStatus:()=>admission.status(),publish:records=>publishWithAdmission(admission,records.length,async()=>{
   await producer.send({topic:eventsTopic,acks:-1,timeout:8000,messages:records.map(r=>({key:r.project_id+':'+r.event.distinct_id,value:JSON.stringify(r)}))});
 })});
@@ -68,4 +70,4 @@ const stopReplay=startReplayJobs((raw,key)=>publishWithAdmission(admission,1,asy
   if(!receipt||receipt.baseOffset===undefined)throw new Error('missing_replay_receipt');
   return {topic:receipt.topicName,partition:receipt.partition,offset:receipt.baseOffset};
 }));
-for(const signal of ['SIGTERM','SIGINT'] as const) process.once(signal,()=>{stopJobs();stopDeletions();stopReplay();clearInterval(probe);server.close(async()=>{stopIntakeMetrics();await admin.disconnect();await producer.disconnect();await releaseRecoveryLease();await pool.end();process.exit(0);});});
+for(const signal of ['SIGTERM','SIGINT'] as const) process.once(signal,()=>{stopJobs();stopDeletions();stopReplay();clearInterval(probe);server.close(async()=>{stopIntakeMetrics();await stopOperationalCollection();await admin.disconnect();await producer.disconnect();await releaseRecoveryLease();await pool.end();process.exit(0);});});
