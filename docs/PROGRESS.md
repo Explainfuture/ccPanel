@@ -1502,3 +1502,4 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 后台原操作允许按真实结果收尾，文件锁仅真实close完成释放；不会把已返回超时改成成功。JS预算不强制取消原生I/O/杀进程；普通flush整体慢存储截止仍是未完成项，不声称完整Node超时要求完成。
 - 241项测试、typecheck/build/两SDK pnpm tarball仓库外检查通过。新增正常/幂等shutdown、关闭后拒绝、忽略AbortSignal的慢fetch/晚确认、诊断回调抛错及慢FileQueue.close。真实文件锁在模拟close延迟期间仍存在，释放延迟后才消失；时间用fake timers，慢操作用受控Promise，非真实磁盘挂起。包产物也检查shutdown后两入口拒绝事件。
 - 未动Browser SDK/VPS012或运行新容量窗口，Node生命周期改动仅源码/包验证。
+- CI Actions 39950566632 verify/postgres均成功：241项测试、15套真实PG及既有打包/进程故障/部署保护检查通过。
