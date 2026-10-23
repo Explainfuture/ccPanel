@@ -840,3 +840,5 @@ Worker主路径包装persist、DLQ发布、DLQ索引及Kafka checkpoint，固定
 投递监控接入query-status，抽为独立展示组件，所有有效公司角色可见当前项目任务五状态及最老年龄，另列running已执行时间、三个终态有效耗时样本/最大值。格式化整数用BigInt，小数拆分保留精度而不转Number；空任务/无样本/未知分别呈现，快照/排队与执行/取消非SQL中断/可见范围边界均明确。沿用可选15秒可见轮询、10秒请求时限、scope卸载abort；失败/401/403/404清除旧任务数据，项目计数失败也清除。
 
 153项单测、类型/生产构建通过。Chrome生产构建mock API验证大整数9007199254740993、小数3000.125ms、running20s、空样本/空任务、缺失状态不推断0、503/404失败与恢复、A/B公司切换不保留旧耗时，viewer能读查询而不请求admin DLQ。桌面/390px截图已查看，无文档溢出；浏览器和静态服务已关闭。mock UI不冒充真实SQL/公网（接口SQL见116），CI待本分支。VPS仍m4-observability-003，115–117尚未部署，无新容量结论。
+
+步骤117 CI补充：Actions39886347853（9a9b84f）verify/postgres均success，153项单测、类型/构建、SDK产物消费者/Node进程崩溃及5套PG控制器通过。同步preview/integration/草稿PR1。保留UI模拟、SQL控制器与当前VPS旧版本的证据边界，持久历史/告警及PRD其余生产门槛继续推进。
