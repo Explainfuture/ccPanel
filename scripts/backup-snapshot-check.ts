@@ -1,10 +1,15 @@
 // Dedicated CI PG service only. A fresh source DB is supplied by the CI runner.
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {randomBytes,randomUUID} from 'node:crypto';
-import {readFile} from 'node:fs/promises';
+import {randomBytes,randomUUID,createHash} from 'node:crypto';
+import {readFile,mkdtemp,unlink,rmdir} from 'node:fs/promises';
+import {createReadStream} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {Readable} from 'node:stream';
 import pg from 'pg';
 import {withBackupSnapshot,readBackupFingerprints} from '../packages/server/src/backup-snapshot';
+import {captureBackupArchive} from '../packages/server/src/backup-archive';
 assert.equal(process.env.GITHUB_ACTIONS,'true');
 const source=new URL(process.env.DATABASE_URL!);
 assert.ok(['127.0.0.1','localhost'].includes(source.hostname));assert.equal(source.username,'ccpanel_ci');
@@ -17,21 +22,24 @@ const admin=new pg.Client({connectionString:adminUrl.href,statement_timeout:1000
 const writer=new pg.Client({connectionString:source.href,statement_timeout:5000,options:'-c timezone=UTC'});
 const restoreDb=new pg.Client({connectionString:target.href,statement_timeout:10000,options:'-c timezone=UTC'});
 let created=false,restoreConnected=false;
-function command(args:string[],input?:Buffer,signal?:AbortSignal):Promise<{code:number|null;signal:NodeJS.Signals|null;data:Buffer}>{
+const archiveDirectory=await mkdtemp(join(tmpdir(),'ccpanel-shared-archive-')),archivePath=join(archiveDirectory,'database.dump');
+let archiveCreated=false;
+function command(args:string[],input?:Buffer|Readable,signal?:AbortSignal):Promise<{code:number|null;signal:NodeJS.Signals|null;data:Buffer}>{
   return new Promise((resolve,reject)=>{
     const child=spawn('docker',['exec','-i',container,...args],{stdio:['pipe','pipe','pipe']});
-    const chunks:Buffer[]=[];let bytes=0,overflow=false;
+    const chunks:Buffer[]=[];let bytes=0,overflow=false,inputFailed=false;
     child.stdout.on('data',(chunk:Buffer)=>{bytes+=chunk.length;if(bytes>8*1024*1024){overflow=true;child.kill('SIGKILL');}else chunks.push(chunk);});
     // Keep diagnostics private: PG stderr can include identifiers/SQL.
     child.stderr.resume();child.stdin.on('error',()=>{});
     const cancel=()=>{child.kill('SIGKILL');};signal?.addEventListener('abort',cancel,{once:true});if(signal?.aborted)cancel();
     const timer=setTimeout(cancel,30000);
     child.once('error',error=>{clearTimeout(timer);signal?.removeEventListener('abort',cancel);reject(error);});
-    child.once('close',(code,term)=>{clearTimeout(timer);signal?.removeEventListener('abort',cancel);if(overflow)reject(Error('backup_fixture_output_overflow'));else resolve({code,signal:term,data:Buffer.concat(chunks)});});
-    child.stdin.end(input);
+    child.once('close',(code,term)=>{clearTimeout(timer);signal?.removeEventListener('abort',cancel);if(input instanceof Readable)input.destroy();if(overflow||inputFailed)reject(Error('backup_fixture_stream_failed'));else resolve({code,signal:term,data:Buffer.concat(chunks)});});
+    if(input instanceof Readable){input.on('error',()=>{inputFailed=true;cancel();});input.pipe(child.stdin);}else child.stdin.end(input);
   });
 }
-const dump=(id:string,signal?:AbortSignal)=>command(['pg_dump','-U','ccpanel_ci','-d',source.pathname.slice(1),'--format=custom','--no-owner','--no-acl','--exclude-table-data=public.recovery_gate','--exclude-table-data=public.recovery_import_scopes','--snapshot='+id],undefined,signal);
+const dumpArgs=(id:string)=>['pg_dump','-U','ccpanel_ci','-d',source.pathname.slice(1),'--format=custom','--no-owner','--no-acl','--exclude-table-data=public.recovery_gate','--exclude-table-data=public.recovery_import_scopes','--snapshot='+id];
+const dump=(id:string,signal?:AbortSignal)=>command(dumpArgs(id),undefined,signal);
 try{
   await admin.connect();await writer.connect();
   assert.equal((await writer.query('SELECT count(*)::int AS n FROM tenants')).rows[0].n,0);
@@ -52,14 +60,16 @@ try{
     const independently=await command(['psql','-X','-A','-t','-q','-v','ON_ERROR_STOP=1','-U','ccpanel_ci','-d',source.pathname.slice(1)],Buffer.from(`BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;\nSET TRANSACTION SNAPSHOT '${snapshot.snapshotId}';\nSET LOCAL TIME ZONE 'UTC';\n${operatorSql}\nROLLBACK;\n`),snapshot.signal);
     assert.equal(independently.code,0);assert.equal(independently.signal,null);
     assert.deepEqual(independently.data.toString('utf8').trim().split('\n'),snapshot.fingerprints,'new fingerprint implementation must match existing operator SQL');
-    const archive=await dump(snapshot.snapshotId,snapshot.signal);assert.equal(archive.code,0);assert.equal(archive.signal,null);assert.ok(archive.data.length>0);
-    const restoredResult=await command(['pg_restore','-U','ccpanel_ci','-d',restored,'--single-transaction','--exit-on-error','--no-owner','--no-acl'],archive.data,snapshot.signal);
+    const archive=await captureBackupArchive({output:archivePath,command:'docker',args:['exec','-i',container,...dumpArgs(snapshot.snapshotId)],maxBytes:8*1024*1024,timeoutMs:30000,signal:snapshot.signal});archiveCreated=true;
+    assert.equal(archive.status,'captured_unverified');assert.ok(archive.bytes>0);
+    const independentlyHashed=createHash('sha256');for await(const chunk of createReadStream(archivePath))independentlyHashed.update(chunk);assert.equal(archive.sha256,independentlyHashed.digest('hex'));
+    const restoredResult=await command(['pg_restore','-U','ccpanel_ci','-d',restored,'--single-transaction','--exit-on-error','--no-owner','--no-acl'],createReadStream(archivePath),snapshot.signal);
     assert.equal(restoredResult.code,0);assert.equal(restoredResult.signal,null);
     await restoreDb.connect();restoreConnected=true;
     assert.deepEqual(await readBackupFingerprints(restoreDb),snapshot.fingerprints);
     assert.deepEqual((await restoreDb.query('SELECT id::text,name FROM tenants ORDER BY id')).rows,[{id:kept,name:'before'},{id:deleted,name:'deleted-after-snapshot'}].sort((a,b)=>a.id.localeCompare(b.id)));
     assert.equal((await restoreDb.query('SELECT count(*)::int AS n FROM recovery_gate')).rows[0].n,0,'old snapshot cannot restore an open recovery gate');
-    return {relations:snapshot.fingerprints.length,bytes:archive.data.length};
+    return {relations:snapshot.fingerprints.length,bytes:archive.bytes,streamed_archive:true,archive_hash_independently_verified:true,restore_input_streamed:true};
   });
   const invalid=await dump(expired);assert.notEqual(invalid.code,0,'exported snapshot must expire after transaction ends');
   await assert.rejects(withBackupSnapshot(source.href,{expectedSchema:999},async()=>{throw Error('must not run');}),/backup_schema_mismatch/);
@@ -69,4 +79,5 @@ try{
 }finally{
   if(restoreConnected)await restoreDb.end();await writer.end();
   if(created)await admin.query(`DROP DATABASE ${restored} WITH (FORCE)`);await admin.end();
+  if(archiveCreated)await unlink(archivePath);await rmdir(archiveDirectory);
 }

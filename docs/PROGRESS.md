@@ -1614,3 +1614,10 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - typecheck通过；实际PG17.7导出/恢复与异常路径待CI。CI使用同一个PG17.7服务容器内的客户端，避免宿主pg_dump版本不匹配；仅随机临时DB，不接VPS/真实生产数据。迁移/DDL外层锁、流式有界落盘与可信最新状态自动同步仍待执行器接入。
 - 首轮Actions39994183333 verify/postgres通过，实际dump122307字节、43关系指纹一致，原两记录恢复，过期/schema/超时路径通过，导出连接0。随后补独立psql导入同一快照执行既有backup-fingerprint.sql，要求与新指纹逐字一致，避免仅以同一新函数前后自比作唯一口径证明；加强检查待新CI。
 - 加强版Actions39994704481 verify/postgres全部success：既有SQL独立psql、新函数快照、实际恢复三方43关系指纹完全相同；本轮dump122308字节，实际并发insert/update/delete、过期/schema/超时及导出连接0均通过。包含既有测试/构建/打包与16套实际PG验收；两轮字节数分别保留，不混为同一归档。未更改VPS013或启用自动离机备份。
+
+### 步骤203：备份输出有界流式落盘
+
+- 新增captureBackupArchive，受信任命令无shell启动、流式背压/字节上限/SHA256、私有POSIX目录与0600随机排他文件、有界超时/AbortSignal、终止进程组后等待实际close。拒绝空/非零/超限输出，错误码不回显stderr/路径/凭证。
+- 文件fsync后hard-link排他发布并目录fsync；竞争输出不覆盖，回执只为captured_unverified。发布后持久化不确定则显式失败并保留归档，不能当备份完成；未发布失败清理已知临时字节。Windows ACL未支持则拒绝写入。
+- 第16套PG验收改用该原语捕获实际pg_dump，文件独立流式复核hash，再流式输入真实pg_restore，保留43关系/既有SQL交叉核对；没有将归档整体收集到Buffer。新原生子进程测试覆盖精确限额、非零/空/超限、超时、取消、竞争与目录保护。
+- typecheck通过；Windows本机2项拒绝路径通过、9项POSIX测试明确跳过，Linux真实写入及PG衔接待CI。无VPS改动，无调度/加密传输/最新状态执行器或自动备份完成声明。

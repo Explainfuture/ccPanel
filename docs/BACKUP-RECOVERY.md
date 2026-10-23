@@ -16,6 +16,10 @@ Kafka 中已确认但尚未写入 PG 的事件不包含在 PG 备份中。本流
 
 指纹中的bigint hash保留PG文本，不经过JavaScript JSON number精度转换。该范围不包含recovery_gate/recovery_import_scopes的数据，也不覆盖序列值、角色、整机文件或Kafka；MVCC快照不能用来声称并发序列状态同样是历史时间点。恢复仍须可信最新清单和关闭门禁。
 
+步骤203的 `captureBackupArchive` 是受信任命令适配器的输出捕获原语，不接受shell表达式。仅支持已验证POSIX私有目录（当前有效用户拥有、无组/其他权限、realpath匹配），以0600/O_EXCL随机临时文件流式写入，按实际字节限额并计算SHA256。原生进程超时或AbortSignal会终止独立进程组并等待实际close；stderr不保存/回显。空输出、非零退出、超限和写入失败均不发布归档，并清理已知临时文件。Windows ACL未验证则拒绝写入。
+
+正常完成须文件fsync、排他hard-link发布、移除临时名及目录fsync；已有文件/竞争发布者绝不覆盖。回执仅为captured_unverified/bytes/hash，尚需共享快照回调整体成功、加密、目的地往返及真实恢复核验后，外层才能发布verified manifest。hard-link已发生但后续失败时返回archive_publish_uncertain，保留可能存在的不可变文件，不能据其存在登记成功或盲目重写。调用方须保留证据再处理。内核不可中断I/O、宿主掉电、恶意同UID修改私有目录和远程docker exec内部进程的异常终止不由此原语验收；CI的取消用真实本地Node写进程，PG导出成功路径用服务容器客户端。
+
 1. 将 `scripts/backup-fingerprint.sql` 放在当前发布目录的 scripts/ 中，以 root 执行 `bash scripts/backup-remote.sh`。输出受限备份目录，不输出凭证。该演练要求安静窗口，前后指纹不同则停止并重试，不宣称完成对账；pg_dump 本身仍使用一致性快照。
 2. 用校验过主机密钥的 SFTP 下载 database.dump、fingerprint.jsonl、completed-at.txt 到受限的离机目录。
 3. 在备份机器运行 `node scripts/encrypt-backup.mjs encrypt INPUT OUTPUT KEY_FILE`。密钥首次生成后复用，输出不得已存在；使用 GCM 验证头部和内容，篡改时不保留解密结果。
