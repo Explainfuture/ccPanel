@@ -1592,3 +1592,4 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - JZElxI实测间隔30678ms；再重发原载荷，当前Worker最终raw/dedup/jobs/processed/桶贡献各1、duplicates1、DLQ0、完整性门禁全行未变。未填满磁盘、无HTTP/时钟mock，不称真实浏览器持久化或完整容量通过。
 - 主库暂停期间44关系指纹同，临时topics/group/DB/env/ledger清理，主服务013/ready；安全日志已下载，SHA256 c4df2b05cbdd6971354dbe907b9eefd5462bcba320fea84385b555655b73b80e。历史压力入口指向新控制器，CI仅增加脚本语法检查，真实broker链路在VPS执行。
 - 用户已明确暂时没有离机目的地，先完成可配置方案；持续异机执行仍未启用，不等待或猜测外部资源。容量/设备矩阵/独立通知/HA门槛保持。
+- CI Actions39991992869 verify/postgres全部success；新增演练语法、旧入口空PATH及既有构建/测试/真实PG/SDK进程与打包通过。线上SDK/API/Worker哈希再次匹配013冻结构建；主库最终raw2/dedup3/DLQ0、总位点15618、临时DB0。
