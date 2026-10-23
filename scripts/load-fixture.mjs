@@ -23,11 +23,16 @@ try{
     const owned=await pool.query("SELECT 1 FROM tenants t JOIN projects p ON p.tenant_id=t.id JOIN tenant_memberships m ON m.tenant_id=t.id JOIN users u ON u.id=m.user_id WHERE t.id=$1 AND p.id=$2 AND m.user_id=$3 AND u.email=$4 AND u.email LIKE 'public-load-%@integration.invalid' AND t.name='CAPACITY EXTERNAL TEMP'",[f.tenant,f.project,f.user,f.email]);assert.equal(owned.rowCount,1,'expected isolated capacity fixture and its own user');
     if(mode==='verify'){
       const result=JSON.parse(await readFile(process.argv[3],'utf8'));
-      assert.equal(result.tenant,f.tenant);assert.equal(result.project,f.project);assert.equal(new Set(result.event_ids).size,result.generated);
+      assert.equal(result.tenant,f.tenant);assert.equal(result.project,f.project);
+      assert.ok(Number.isInteger(result.generated)&&result.generated>0&&result.generated<=3600,'bounded generated count');
+      assert.ok(Array.isArray(result.event_ids)&&result.event_ids.length===result.generated&&result.event_ids.every(id=>typeof id==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)),'valid exact event set');
+      assert.equal(new Set(result.event_ids.map(id=>id.toLowerCase())).size,result.generated);
       const counts=await pool.query('SELECT (SELECT count(*)::int FROM events WHERE tenant_id=$1 AND project_id=$2) AS events,(SELECT count(*)::int FROM event_dedup WHERE tenant_id=$1 AND project_id=$2) AS dedup,(SELECT count(*)::int FROM aggregation_jobs WHERE tenant_id=$1 AND project_id=$2) AS aggregate_jobs,(SELECT count(*)::int FROM dlq_records WHERE tenant_id=$1 AND project_id=$2) AS dlq',( [f.tenant,f.project] ));
       const matched=await pool.query('SELECT count(*)::int AS count FROM event_dedup WHERE tenant_id=$1 AND project_id=$2 AND event_id=ANY($3::uuid[])',[f.tenant,f.project,result.event_ids]);
+      const exact=await pool.query('SELECT (SELECT count(*)::int FROM events WHERE tenant_id=$1 AND project_id=$2 AND event_id=ANY($3::uuid[])) AS raw_ids_matched,(SELECT count(*)::int FROM aggregation_jobs WHERE tenant_id=$1 AND project_id=$2 AND event_id=ANY($3::uuid[])) AS job_ids_matched',[f.tenant,f.project,result.event_ids]);
       for(const name of ['events','dedup','aggregate_jobs'])assert.equal(counts.rows[0][name],result.generated,name);
       assert.equal(counts.rows[0].dlq,0);assert.equal(matched.rows[0].count,result.generated);
+      assert.equal(exact.rows[0].raw_ids_matched,result.generated,'exact raw event IDs');assert.equal(exact.rows[0].job_ids_matched,result.generated,'exact aggregation job IDs');
       let aggregates;
       if((await pool.query("SELECT to_regclass('public.event_count_buckets') AS name")).rows[0].name){
         const deadline=Date.now()+15000;
@@ -38,7 +43,8 @@ try{
         }while(Date.now()<deadline);
         assert.equal(aggregates.processed,result.generated,'active aggregate jobs drained');assert.equal(Number(aggregates.bucket_events),result.generated,'visible bucket count reconciled');
       }
-      console.log(JSON.stringify({passed:true,unique_ids_matched:matched.rows[0].count,...counts.rows[0],...(aggregates?{aggregates}:{})}));
+      const event_ids_sha256=createHash('sha256').update(JSON.stringify(result.event_ids.map(id=>id.toLowerCase()).sort())).digest('hex');
+      console.log(JSON.stringify({passed:true,tenant:f.tenant,project:f.project,event_ids_sha256,unique_ids_matched:matched.rows[0].count,...exact.rows[0],...counts.rows[0],...(aggregates?{aggregates}:{})}));
     }else if(mode==='cleanup'){
       const buckets=(await pool.query("SELECT to_regclass('public.event_count_buckets') AS name")).rows[0].name;
       if(buckets)await pool.query('DELETE FROM event_count_buckets WHERE tenant_id=$1',[f.tenant]);
