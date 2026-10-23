@@ -1411,3 +1411,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - beacon 仅同步过滤过期记录，不读取 IndexedDB、不把过滤视为确认或清理、不提前累计 expired；普通过期清理统一计数。destroy 后不再允许手动 beacon 发送。仍保持每隐藏周期最多一次及无确认不删除。
 - 227 项测试、typecheck、build 和两个 pnpm tarball 仓库外检查通过。覆盖新旧混合、全过期、七天精确边界、恢复快照在失败 flush 后继续老化、过期只计一次及 destroy。网络/beacon 为 stub，IndexedDB 为 fake-indexeddb；不是设备矩阵或线上验收。VPS 保持 012、容量仍未通过。
 - CI Actions 39944640260 verify/postgres 均 success：227 项测试、15 套真实 PG 集成及既有打包和部署保护检查通过。
+
+### 步骤 175：真实 Chrome 验证业务时间与退出 TTL
+
+- 新增可复现的 Playwright CLI run-code 脚本与 docs/SDK-BROWSER-CHECKS.md。实测源码 b54da1b 的 Browser 构建 SHA256 40788b0b6152ba4dd5a6a16a6a1376f5b79b1a9531698539f06cdbf8b7173d2b，Chrome 155.0.8059.85。
+- 真实 IndexedDB 保存后 reload，同 ID/业务时间/载荷恢复；真实 sendBeacon 只发未过期项、每周期一次且不确认删除；普通清理 expired=1；destroy 禁止发送。Result passed=true，node --check 通过。初始 Markdown 导航触发下载，改为根页面后完整断言通过。
+- 接收端 Playwright route 拦截 503/202，测试推进 Date.now，直接调用 beacon；不等于真实关窗/设备矩阵或线上 Kafka 投递。测试后专用浏览器与本地服务均已终止；VPS 保持 012，未运行新容量窗口。
