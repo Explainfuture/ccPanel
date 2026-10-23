@@ -8,6 +8,8 @@
 
 ## 当前里程碑
 
+当前预览为 m4-sdk-013/schema22（步骤193）；发布源码4899d25。容量门槛仍未通过。
+
 - M1 工程与协议：已完成基础版本。
 - M1 SDK：开发预览已打包；Chrome 离线关闭/重开补发通过，完整浏览器矩阵、性能及异常窗口验收仍在进行。
 - M1 SDK、鉴权、Kafka/PG 闭环：基础闭环与浏览器联调通过；完整异常/浏览器矩阵待验收。
@@ -1531,3 +1533,14 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 冻结源码4899d25，重新typecheck/build，生成m4-sdk-013候选归档（156文件/634782字节），SHA256 d90de9d92753a9d0ad5ae53ee85778f40c72961ea8033d0126169a820a5d828b。Browser发布SDK SHA256 449f14f4719751a13ef1a666ff141511dd223ddc93b246968d87bf2688c4b661，gzip6620字节；Node gzip7749字节。
 - 本机及服务器实际比较API/Worker束均与正在运行012逐字节一致，schema22；归档已上传新独立路径、校验通过，证据sdk192-stage.json明确not_applied=true。没有覆盖当前release目录或canonical release.tar.gz。
 - 服务器当前012/HTTPS ready，可用约329MiB、磁盘约13GiB，无活动容量采样器。未关闭采集/保留或API，尚未进入停机备份/恢复/应用阶段；以上预检不等于容量通过。
+
+### 步骤193：013受控发布、备份恢复及线上SDK验收
+
+- 使用192冻结归档，当前指向m4-sdk-013/schema22，未覆盖旧release。先关闭物理保留，停API/Worker冻结原字段指纹，生成最新备份/完整v2清单；在工作站AES256-GCM加解密并逐字节比较，解密dump返回服务器实际隔离恢复3秒通过。备份范围为backup-fingerprint.sql覆盖关系，排除recovery_gate/recovery_import_scopes；不是整机切流/连续异机同步证明。
+- 证据product-upgrade.lbVVi5，备份20261023T122724Z-177a4741，dump365008字节；plainSHA fb2046e69c911d9da6d0e947dfb3362afa4dcc850108d0c43c5652351ef8c07c，cipherSHA fd91638e56c38c3389739a021a9c8e4a5e3bd5e2d974db9b700ca0d226203db6。v2清单含2个retention范围，加解密一致；密钥只在工作站。
+- 应用前后原字段/记录数一致，再重新启用RETENTION/OPERATIONAL_COLLECTION；API/Worker两标记实际均true。API/Worker束与012再次cmp一致，四容器running/restart0/OOMfalse，门禁open，HTTPS ready。Topic已存在的CreateTopics日志及启动瞬时curl reset后均通过后续明确检查，不将中间错误忽略为成功。
+- 线上HTML/入口CSS/JS逐字节匹配冻结build；HTML SHA f311faf29558b3ba13357c11199a82ee028b9a288e214af21e15794d76449a6a。实际公开SDK SHA449f14f4719751a13ef1a666ff141511dd223ddc93b246968d87bf2688c4b661，与归档相同。Chrome155从线上同源导入SDK，真实pagehide、显式昨天业务时间，恢复前真实API可见；IndexedDB仍1，再用原ID普通确认1/队列0。
+- 查询夹具第一次替换顺序错误查了错误事件名而超时，修正脚本后原事件可见；没有重造事件。CLI执行环境不支持Node动态import，改为私有生成脚本且日志留本地后清理，未输出测试凭证。
+- 客户端原ID精确对账：raw/dedup/jobs/processed/bucket各1，DLQ0，集合SHA01f2bc5ad22633e77aee4eaea04bdc344d95a3b3cb0cc2765ee8366592a8985e。从备份COPY数据独立取得原位点15616，新位点15618；PG=Kafka committed=high7725/7893，lag0。
+- 夹具清理后33原业务关系及旧2047采样/68告警/1584压力/10DLQ历史前缀一致，root raw2/dedup3/DLQ0/operators0、临时公司/恢复库0。四运维告警最后读数clear/age27秒，不扩大为连续健康证明。两端临时明文dump/清单和夹具/私有日志已校验后清理，加密副本/安全证据双方保留，浏览器关闭；Kafka合成消息仍按保留策略存在。
+- 本次为有短暂停机的受控升级和一个真实事件两次上报，不是新容量窗口、全设备矩阵或生产HA认证。Node SDK仍为源码/打包验证，未发布npm；服务器主要发布Browser SDK及前端构建。
