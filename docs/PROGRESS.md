@@ -736,3 +736,5 @@ schema17增加逻辑30天事件视图、全局过期索引及可显式启用的W
 新增IntakeMetrics按实例启动累计BigInt字符串，独立instance_id、时间、api_instance_aggregate和bucket/counter语义标签；API每10秒一份脱敏累计日志，正常排空停服末份，admin ingest-status附快照。接收路径不增加PG指标写入；同步/异步指标回调失败不能撤回Kafka确认。此为运行遥测：SIGKILL可能损失末窗口、重启清零/换ID、日志会旋转，持久时序/多实例汇总及告警尚未实现，不能当业务账本。详见OBSERVABILITY.md。
 
 139项单测、类型和构建通过：固定标签/未知样本/快照不共享/实例重置；实际Hono响应413/400/401/403/202/503、无敏感字段、同步/异步指标失败仍202、并发批次逆序完成各自计数正确。真实PG报表控制器追加admin读取、viewer/analyst403、外公司404、无会话401及授权前不取全局快照/无公司项目ID检查；新断言待本分支CI。当前公网仍m4-retention-002/schema17，无本次遥测/步骤104UI部署。
+
+步骤105实测补充：Actions39878477463（c421914）verify/postgres均success，139项完整单测及5套真实PG控制器通过，新增实例遥测admin/非admin/外公司/无会话与授权前不读快照检查已执行。当前代码同步preview/integration及草稿PR1；公网仍m4-retention-002，无本轮代码部署。后续复核接入前的并发预算：现有PG连接池max4/连接等待5秒，但解析/鉴权前未见POST请求并发闸门，该风险需独立实现与验证，不将生产高并发视为已满足。
