@@ -1064,3 +1064,5 @@ public CLI记录接入尝试/成功/失败/尝试事件数及UTF-8请求体字�
 增强capacity-report输出CPU分项和四容器memory high/max、CPU限流次数/微秒累计差；缺失可选计数=null，回退使证据无效，不放宽资源条件。类型检查及173单测通过，新增加权分项/大安全整数差/可选计数缺失/窗口中重置反例。原冻结样本生成独立diagnostic-report，不覆盖原resource-report；CPU iowait0.28%、steal0.07%，四容器high/max/throttle增量0，resource verdict仍false，未找到直接调整容器上限的证据。
 
 窗口外04:45:53运行当前release的只读memory-diagnostic，Swap占226552KiB，cgroup Kafka132.14MiB/PG7.42/API4.16/Worker0；占用不是窗口I/O归因，详见MEMORY-DIAGNOSTIC。第一次共享脚本路径不存在后改用release脚本，未改服务配置。没有swapoff/drop_caches/heap或副本调整、停安全服务或重跑压测；下一步继续按证据定位资源问题及其他PRD缺口，CI待本分支。
+
+步骤143 CI39902344956（05840fb）success，173单测、构建/CLI/Python及8套真实PG通过。261.718秒低业务活动双快照观察host pswpin28页/pswpout0/major fault29，API/Kafka major fault4/17，不能等同Swap归因或外推原窗口；计数存在/非递减、容器身份/启动/重启数与冻结边界相同。报告和快照双方另存，原报告未覆盖，资源门槛仍未通过。同步集成分支/草稿PR，没有服务器调参、重新压测或生产就绪结论。

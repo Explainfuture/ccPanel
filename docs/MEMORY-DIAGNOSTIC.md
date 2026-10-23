@@ -19,3 +19,5 @@
 capacity-report现在返回cpuBreakdownPercent及containerPressureDeltas；可选计数任何帧缺失就返回null，不填0。可选计数在窗口内回退使证据无效，新增诊断在无效窗口全部null。分项使用完整区间累计差，不平均每帧百分比；诊断字段不放宽既有保守资源门槛。增强报告在.local/capacity-alerts139-diagnostic-report.json，原capacity-alerts139-resource-report.json保持原样，conservativeResourcePass仍false。
 
 窗口外UTC04:45:53只读快照：可用307636KiB、Swap占226552KiB；cgroup Swap API4.16MiB/Worker0/PG7.42/Kafka132.14。Java进程VmSwap118784KiB，其RSS含共享页；不能与cgroup数强行相等或将全部宿主机Swap归因Kafka。该快照晚于正式窗口，且发生在集合验证/清理之后，不定位窗口内Swap I/O来源，也不证明减heap或改内存限制有效。服务器配置、内存/heap/确认/副本和安全服务均未改，未重跑同配置追求绿色。快照保存在服务器/opt/ccpanel/shared/memory-diagnostic143.json和本机.local/memory-diagnostic143.json。
+
+第二次快照143b距首次261.718秒，后台采集/维护仍运行，称低业务活动观察而非严格空闲对照。宿主机pswpin增28页、pswpout0、pgmajfault29；cgroup major fault API4、Worker0、PG0、Kafka17。相关字段存在且非递减，容器id/startedAt/restartCount重新核对与冻结边界一致。major fault可能含文件页故障，采集本身和宿主机其他进程也有开销，不能将这些数直接等同Swap I/O或外推正式30分钟归因。143b同名文件保存双方，增强diagnostic-report已另存原容量证据目录，原冻结文件和资源结论未改。
