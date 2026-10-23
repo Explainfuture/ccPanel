@@ -239,3 +239,17 @@ capacity-workload-report读取最终public CLI结果，核对完整目标时长/
 pnpm exec esbuild scripts/capacity-workload-report-cli.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=.local/capacity-workload-report.mjs
 node .local/capacity-workload-report.mjs final-load.json workload-report.json 1800
 ```
+
+## 步骤141：清理后的原关系保留核对
+
+capacity-preservation.py离线比较试验前/清理后关系指纹，以及单独查询的原监控记录子集。Python整数精确保留PG有符号64位hash；不经JS浮点解析。业务表要求行数/hash均相同；只允许空的events_YYYY_MM维护分区出现/消失，未知关系或有数据的分区变化拒绝。消费位点允许内容推进但分区行数不能变，四条告警状态允许评估更新但规则行数必须4；这两项仍需独立位点及告警状态证据。
+
+监控采样按received_at/source/instance_id/observed_at取试验前条数，告警历史按id取试验前条数，原子集hash必须与基线相同，不能仅把整张监控表排除。如果保留/容量清理移除了旧记录，核对会失败，需人工解释和额外证据，不自动当作保留成功。比较时间点仍依赖外部受控流程：原负载终态、冻结资源后、清理夹具后才能取得after和prefix，不能用运行中快照验收。
+
+```sh
+python scripts/capacity-preservation.py sql before.jsonl > original-prefix.sql
+# 在冻结窗口/清理后，用同一PG的只读psql执行original-prefix.sql得到original-prefix.jsonl。
+python scripts/capacity-preservation.py verify before.jsonl after-cleanup.jsonl original-prefix.jsonl preservation-report.json
+```
+
+报告绑定三份输入SHA256、拒覆盖，不读取业务载荷或凭证。独立精确事件ID集合、Kafka/PG位点/lag、门禁和资源报告仍必须另外验收。步骤139的基线包含160条采样和8条告警历史；本工具尚未用于该运行中的窗口最终核对。
