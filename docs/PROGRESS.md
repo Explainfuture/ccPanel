@@ -862,3 +862,9 @@ Worker主路径包装persist、DLQ发布、DLQ索引及Kafka checkpoint，固定
 仅给经公司/项目/邮箱标识检查的合成测试账号临时插入平台资格并审计，HTTP平台汇总200且intake实例可读、Chrome真实展示分桶；撤销后me false/HTTP403。浏览器保持旧能力但刷新会清除计量，重载后平台保护/计量均不显示，本公司查询/DLQ仍正常。未更改任何真实账号权限。截图已检查，浏览器关闭；临时平台记录/测试审计、PG公司/用户/会话/事件/查询、两端fixture与浏览器凭证、Node outbox、备份/解密dump和源ledger明文清理；保留分开的密文/密钥。测试审计sequence按两条合成动作前进，不回退序列。
 
 最后原表旧字段/数量指纹一致，仅consumer_progress按2正常+2重复推进：p0=5609、p1=5117，总10726；临时数据库/测试公司0，四服务running、保留true、完整性passed、门禁open、HTTPS ready。Kafka合成消息按流保留存在。本步不是容量/完整回归或故障恢复新认证；schema16持续Swap失败、设备矩阵、持续离机备份/删除事故状态同步、持久监控告警、自助策略及生产HA等门槛仍未完成。
+
+### 步骤120：宿主机/容器Swap来源只读诊断
+
+新增memory-diagnostic.py，仅读取固定容器PID/cgroup v2、宿主机meminfo/vmstat/PSI和前20个已换出进程的名称/RSS/Swap，不读args/env或完整inspect。实际运行成功；各容器独立值与宿主机值分开，失败明确抛出，禁止缺失补0。说明及一次真实结果见MEMORY-DIAGNOSTIC.md。
+
+UTC02:06:27最新预览可用内存约322MiB、Swap约105MiB；API/Worker无容器Swap，PG4.58MiB、Kafka20.37MiB，host的fail2ban/更新/容器运行时也有换出页。四个短增量vmstat无活动，不替代长期验收。未改任何服务/内存/Swap/安全更新配置，未重复部署。下一步只对从未正式测过的m4-telemetry-auth-004做一次固定配置30分钟容量测试，不重复测试同版本直到“碰巧通过”，也不放宽Swap门槛。
