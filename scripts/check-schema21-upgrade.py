@@ -46,7 +46,7 @@ esac
             assert json.loads((evidence/'source-ledger.json').read_text())==ledger
             assert (evidence/'target-schema.txt').read_text().strip()=='21'
             for p in (shared/'runtime.env',infra/'.env'):
-                assert p.read_text()==initial.replace('OPERATIONAL_COLLECTION_ENABLED=true','OPERATIONAL_COLLECTION_ENABLED=false')
+                assert p.read_text()=='RETENTION_ENABLED=false\nPUBLIC_ORIGIN=https://synthetic.invalid\nOPERATIONAL_COLLECTION_ENABLED=false\n'
                 assert p.stat().st_mode & 0o777 == 0o600
             assert not any('deploy-remote' in c or 'compose up ' in c for c in calls)
             assert result.returncode==0 if ledger_kind=='complete' else result.returncode!=0,(ledger_kind,result.stderr)
