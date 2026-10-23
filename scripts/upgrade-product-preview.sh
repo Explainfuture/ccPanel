@@ -64,6 +64,11 @@ SQL
     tar -xOf /opt/ccpanel/shared/release.tar.gz dist/deletion-ledger.mjs >"$dir/source-ledger-exporter.mjs"
     chmod 644 "$dir/source-ledger-exporter.mjs"
     docker compose run --rm -T --no-deps -v "$dir/source-ledger-exporter.mjs:/app/dist/deletion-ledger.mjs:ro" api node dist/deletion-ledger.mjs export >"$dir/source-ledger.json"
+    python3 - "$dir/source-ledger.json" <<'PY'
+import json,pathlib,sys
+ledger=json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert ledger.get('schema_version')==2 and isinstance(ledger.get('retention'),list),'Schema20 upgrade requires a complete v2 source ledger'
+PY
   else
     docker compose run --rm -T --no-deps api node dist/deletion-ledger.mjs export >"$dir/source-ledger.json"
   fi
