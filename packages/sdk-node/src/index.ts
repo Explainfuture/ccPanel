@@ -1,8 +1,8 @@
 import { mkdir,open,rename,readFile,unlink } from 'node:fs/promises';
 import { dirname,resolve } from 'node:path';
-import { Analytics,type AnalyticsOptions,type EventMap,type TypedAnalytics } from '../../sdk-browser/src/index';
-import { MemoryQueue,type QueueRow,type RestoredRow } from '../../sdk-browser/src/queue';
-import { validateEvent,type AnalyticsEvent } from '../../schema/src/index';
+import { Analytics,type AnalyticsOptions,type EventMap,type TypedAnalytics } from '../../sdk-browser/src/index.js';
+import { MemoryQueue,type QueueRow,type RestoredRow } from '../../sdk-browser/src/queue.js';
+import { validateEvent,type AnalyticsEvent } from '../../schema/src/index.js';
 export class FileQueue extends MemoryQueue {
   override readonly persistent=true;
   private path:string;private ready:Promise<void>|undefined;private chain:Promise<unknown>=Promise.resolve();

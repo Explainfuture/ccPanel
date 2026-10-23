@@ -43,3 +43,11 @@ SDK以接入端点及项目隔离一个不含用户信息的本地授权标记�
 本地Chrome155真实IndexedDB验证通过：双页撤回清空并拒绝采集、重开保持撤回、显式重新授权而其他页不自动恢复；关闭前事件重开后保留原ID，模拟202确认后队列为空。传输使用503/202 stub，证明浏览器队列行为，不替代Kafka持久接收证据。复现函数scripts/browser-sdk-lifecycle-check.cjs须由Playwright CLI在本地sdk-lab.html执行，拒绝非localhost/127.0.0.1，不能用真实业务数据。完整跨浏览器及真实移动设备矩阵仍待补齐。
 
 步骤97最终性能复测：同一Windows/Chrome155，20个逻辑处理器、浏览器报告16GiB，10秒未加载+10秒空闲+60秒20EPS，共1200次全部持久入队，同步p95/p99=0.4/0.6ms、持久完成p95/p99=3.4/6.5ms，长任务/诊断/内存降级/最终队列均0，全程可见，passed:true。Browser gzip5882字节、Node6845字节。传输仍为内存202，不能解释为公网或Kafka性能。GitHub Actions39874079796的130项完整单测与5套真实PG验收通过。
+
+## 步骤107：pnpm包独立消费者与ESM声明修复（2026-10-23）
+
+实际pnpm Node包在仓库外NodeNext/ES2022无DOM消费者上先报TS2834（相对声明导入缺扩展名），仅修扩展后又报TS2304 IDBFactory。现SDK源码相对导入显式.js，IndexedDB实现拆为独立模块、共享Queue/MemoryQueue声明不加载DOM，私有测试导入同步调整。Node包声明Node22.12+，运行接口仍ESM。
+
+check-packed-sdks.py验证真实pnpm tarballs：有界解包到OS临时目录且确认不在仓库下，NodeNext无DOM、Browser Bundler/NodeNext有DOM均strict/skipLibCheck=false；错误事件/属性/缺必填属性负例必须产生编译错误。SDK模块只从消费者node_modules加载，编译器/Node开发类型复用工作区已安装版本，不作注册表依赖安装。实际包名导入、Node文件队列持久入队/稳定ID确认清空/shutdown释放锁通过，Browser ESM在Node的无事件导入仅smoke，不冒充浏览器验收。加入CI打包检查。
+
+Chrome155/Windows/20逻辑处理器/浏览器报告16GiB，实际IndexedDB跨页撤回与关闭重开流程passed；最终SDK gzip Browser5882/Node6845字节，大小相同但运行产物hash改变，故重新测量。1200条20EPS均持久入队，同步p95/p99=0.5/0.7ms，入队完成3.5/6.5ms，长任务/诊断/内存降级/最终队列0，全程可见。网络仍stub。基线阶段并行进行过类型/单测工作，未做整机静默隔离；只作为该工作站主动阶段绝对成本观察，不从新版/旧版差值作因果性能结论，设备/浏览器矩阵仍未齐全。

@@ -16,6 +16,9 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - run: pnpm --dir packages/sdk-browser pack --pack-destination ../../artifacts
+      - run: pnpm --dir packages/sdk-node pack --pack-destination ../../artifacts
+      - run: python3 scripts/check-packed-sdks.py artifacts
       - run: node scripts/node-outbox-crash-check.mjs
       - run: python3 scripts/check-web-asset-retention.py
   postgres:

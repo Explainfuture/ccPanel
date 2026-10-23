@@ -748,3 +748,11 @@ createApp同步保留POST/v1/batch处理名额，默认16、配置1–128，非�
 Chrome生产构建模拟Kafka保护允许/处理16满载，页面正确暂停并说明并发预算，390px无文档溢出、截图已查看，浏览器/静态服务已关闭。客户端沿用503稳定ID重试，未改SDK。此为请求处理上界，非连接数/QPS/SLA认证，尚未在VPS做本轮负载；公网仍m4-retention-002。
 
 步骤106验收补充：Actions39879446105（51492cf）verify/postgres均success，143项完整单测及5套真实PG控制器通过，含admin processing快照预算字段断言。代码同步preview/integration/草稿PR1；公网仍m4-retention-002，尚无本轮部署或新容量结论。下一步从pnpm打包产物做独立Node ESM/TypeScript消费验证；当前monorepo采用Bundler/DOM配置，不能据此证明NodeNext/无DOM消费者可用，生成声明中的相对导入和IDB类型引用需实际复核。
+
+### 步骤 107：真实pnpm SDK产物NodeNext/无DOM消费修复（未发布部署）
+
+实际打包消费者复现Node声明TS2834；修ESM路径后进一步复现共享queue声明IDBFactory TS2304。源码相对import/export显式.js，把IndexedQueue及IDB辅助函数移入独立私有模块，纯Queue/MemoryQueue供Node声明引用，存储算法未改；Node包增加>=22.12.0 engines和ESM使用说明、Browser说明授权重开边界。
+
+新增有界tarball消费者检查，位于仓库外OS临时目录：NodeNext无DOM、Browser Bundler和NodeNext、严格库声明及3类泛型负例；真实包名导入、Node持久队列稳定ID确认/清空/关闭释放锁，Browser仅无事件ESM smoke，网络stub。清理前校验绝对临时父目录/专有前缀，拒绝包路径穿越/链接/超大解包。复用本仓库开发编译器/Node类型，不进行npm注册表安装。CI新增pnpm打包及检查命令。
+
+143项单测、类型/构建、独立产物检查本地通过；Chrome真实IndexedDB生命周期通过，80秒性能对照1200条持久、同步p95/p99=0.5/0.7ms，入队3.5/6.5ms、无诊断/长任务/剩余队列，详见SDK-PERFORMANCE含测试条件。SDK大小5882/6845字节，运行hash不同于旧产物所以确实重测，未假称字节相同。新CI打包与PG结果待本分支。浏览器及静态服务已关闭；当前公网仍m4-retention-002，无本次SDK/步骤104–106功能部署，npm未发布。Node共享实例的有状态identify不适合作多用户并发身份切换，每事件独立身份接口仍待补，未用示例承诺该能力。

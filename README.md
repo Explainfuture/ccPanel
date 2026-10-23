@@ -30,7 +30,10 @@ pnpm test
 pnpm build
 pnpm --dir packages/sdk-browser pack --pack-destination ../../artifacts
 pnpm --dir packages/sdk-node pack --pack-destination ../../artifacts
+python3 scripts/check-packed-sdks.py artifacts
 ```
+
+Windows使用`python`代替`python3`。SDK检查从pnpm包解出独立于仓库的消费者，复用已安装的TypeScript及Node开发类型，验证NodeNext无DOM、浏览器Bundler/NodeNext、泛型负例和包名实际导入/持久队列；不进行注册表安装或外网事件投递。Node包当前仅ESM/Node22.12+，详见其[接入说明](packages/sdk-node/README.md)。
 
 配置环境变量后运行 API/Worker；数据库、Kafka 和迁移操作见部署说明。前端开发入口 `pnpm dev:web`。管理账号通过一次性 bootstrap 创建，不开放公共注册，不复用 SSH 密码。凭据、会话文件及部署私钥不得提交。
 

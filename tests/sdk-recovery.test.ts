@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import{expect,it}from'vitest';
 import{Analytics}from'../packages/sdk-browser/src/index';
-import{IndexedQueue}from'../packages/sdk-browser/src/queue';
+import{IndexedQueue}from'../packages/sdk-browser/src/indexed-queue';
 it('migrates bounded memory events back to durable storage with unchanged IDs and retry state',async()=>{
   class FlakyQueue extends IndexedQueue{
     fail=true;

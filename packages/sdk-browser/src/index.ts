@@ -1,6 +1,7 @@
-import { byteLength, limits, validateEvent, type AnalyticsEvent, type Json } from '../../schema/src/index';
-import { IndexedQueue,MemoryQueue,type Queue,type QueueRow } from './queue';
-export type { AnalyticsEvent,Json } from '../../schema/src/index';
+import { byteLength, limits, validateEvent, type AnalyticsEvent, type Json } from '../../schema/src/index.js';
+import { MemoryQueue,type Queue,type QueueRow } from './queue.js';
+import {IndexedQueue} from './indexed-queue.js';
+export type { AnalyticsEvent,Json } from '../../schema/src/index.js';
 export interface AnalyticsOptions {
   endpoint:string;projectId:string;writeKey:string;consent:boolean;
   flushInterval?:number;batchSize?:number;queue?:Queue;fetch?:typeof globalThis.fetch;

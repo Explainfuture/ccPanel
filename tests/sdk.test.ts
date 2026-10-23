@@ -1,7 +1,8 @@
 import 'fake-indexeddb/auto';
 import { afterEach,describe,expect,it,vi } from 'vitest';
 import { Analytics } from '../packages/sdk-browser/src/index';
-import { IndexedQueue,MemoryQueue,type Queue } from '../packages/sdk-browser/src/queue';
+import { MemoryQueue,type Queue } from '../packages/sdk-browser/src/queue';
+import {IndexedQueue} from '../packages/sdk-browser/src/indexed-queue';
 import type { AnalyticsEvent } from '../packages/schema/src/index';
 const clients:Analytics[]=[];
 afterEach(()=>{for(const c of clients)c.destroy();clients.length=0;vi.restoreAllMocks();vi.unstubAllGlobals();});
