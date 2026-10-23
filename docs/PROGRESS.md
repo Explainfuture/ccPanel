@@ -1136,3 +1136,5 @@ VPS只读核对仍m4-alerts-006/schema19、四容器running、ready，项目2/ra
 SQL证明raw/dedup/job各2个原ID、已处理2/桶贡献2、DLQ0，集合SHA da666be32edfd8f2c87d3eeda0ad5e14b0fa06316864b2bb216675032d9da318。清理合成公司/用户/会话/策略审计及事件后，33个原业务关系保持，原541采样/8历史前缀指纹相同；动态变化仅消费进度、采样和告警状态/历史。root raw2/dedup3/DLQ0、两原项目默认策略、平台资格0、临时公司/数据库0。
 
 最终PG p0=7180/p1=7228，总14408=原14404+4（两唯一事件及两重复投递），Kafka committed/high逐分区一致、lag0；门禁open/ready，四规则clear且取样时10秒内，API/Worker采集与清理true，四容器restart0/OOMfalse/running。两端明文dump/源ledger/fixture及工作站浏览器认证文件已删除，Chrome关闭，密文和分离密钥保留。证据.local/retention150-*、product-upgrade.pCxanJ和shared/retention150；没有新容量窗口，schema19资源失败结论仍不能放宽，schema20生产容量未获认证。后续须补最新自定义策略/floor跨旧快照恢复、持续异机同步及其他PRD缺口。
+
+步骤150文档提交b2d5f21的CI39907977763全部success，177单测、构建/CLI/Python及10套真实PG通过；部署运行代码仍为149归档，未重写归档。恢复备份证明、实际升级、真实链路/页面/清理核对分别记录并推送；同步集成分支和草稿PR。审计确认当前deletion-ledger格式仅包含删除屏障项目epoch，不包含自定义保留策略/floor，下一步应补齐旧快照恢复约束，不能以当前默认策略源演练代替。
