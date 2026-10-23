@@ -1544,3 +1544,10 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 客户端原ID精确对账：raw/dedup/jobs/processed/bucket各1，DLQ0，集合SHA01f2bc5ad22633e77aee4eaea04bdc344d95a3b3cb0cc2765ee8366592a8985e。从备份COPY数据独立取得原位点15616，新位点15618；PG=Kafka committed=high7725/7893，lag0。
 - 夹具清理后33原业务关系及旧2047采样/68告警/1584压力/10DLQ历史前缀一致，root raw2/dedup3/DLQ0/operators0、临时公司/恢复库0。四运维告警最后读数clear/age27秒，不扩大为连续健康证明。两端临时明文dump/清单和夹具/私有日志已校验后清理，加密副本/安全证据双方保留，浏览器关闭；Kafka合成消息仍按保留策略存在。
 - 本次为有短暂停机的受控升级和一个真实事件两次上报，不是新容量窗口、全设备矩阵或生产HA认证。Node SDK仍为源码/打包验证，未发布npm；服务器主要发布Browser SDK及前端构建。
+
+### 步骤194：真实 Worker 同进程事务回滚/重试
+
+- 新增隔离DB/topics/group控制器与真实Worker探针，在去重/raw写入后、aggregation_jobs插入前通过PG触发器注入40001；非事务sequence证明到达故障位置。故障三表回滚为0、位点不前进且后续同分区事件阻塞；撤销开关后同PID恢复。
+- 首轮4yzjz9通过后补充pg_locks实际共享恢复租约后端断言，新资源D0Rwar再通过：3次实际失败/重试日志、两快照PG0/Kafka未提交；同PID/同共享锁后端恢复，raw/dedup/jobs/processed/桶贡献各2，DLQ0，精确事件集合一致。
+- 主库44个public关系（含恢复控制表）指纹全同；测试topic/group/DB/env/ledger清理，原API/Worker启动/HTTPS ready。结果双方保存；CI只加shell/JS语法检查，不称CI执行了broker演练。host无Node命令，JS使用容器/本地Node验证，无安装宿主依赖。
+- 本次主预览有计划暂停，未改产品构建013或资源门槛；不等同真实PG并发冲突/网络断连、COMMIT强杀、独立DLQ broker或容量/HA通过。方法与限定见FAULT-DRILL步骤194。

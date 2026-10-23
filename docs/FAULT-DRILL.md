@@ -23,3 +23,15 @@ EXIT/TERM/INT有恢复启动保护；失败时保留fixture和日志便于检查
 首次两轮的RF1/minISR2注入无效：消息正常得到确认，验证器超时，均记录失败，不作为A15通过证据。Kafka4.1.2的[实际Partition实现](https://github.com/apache/kafka/blob/4.1.2/core/src/main/scala/kafka/cluster/Partition.scala#L354-L360)将有效minISR取配置与副本数的较小值；仅把RF1的minISR配置为2不能制造缺副本拒收。后续改为明确验证过的消息上限拒收。最终实测见PROGRESS步骤164。
 
 本项证明的是DLQ对该记录拒收时不跳过，以及修复配置后新进程恢复；不证明独立DLQ broker网络断连、真实缺副本、磁盘满、同进程无限重试或高可用，A15其余条件仍按各自证据验收。
+
+## 同一 Worker 的真实瞬时事务回滚/重试（步骤194）
+
+`scripts/pg-transaction-retry-remote.sh` 沿用隔离演练控制器：核对精确release/schema22、HTTPS ready、无容量采样器、至少200MiB可用内存并持有deploy.lock，暂时停止主API/Worker。仅创建全新临时数据库和随机 ccpanel.drill.pgretry.<16hex> topics/group，运行已部署真实dist/worker.mjs，不修改主topic/位点或恢复门禁。先前最新备份/隔离恢复证据见步骤193。
+
+故障在临时库的aggregation_jobs BEFORE INSERT触发器中注入SQLSTATE40001；该位置在persist已插入去重/原始记录之后。非事务sequence统计确实到达触发器的尝试次数，开关表仅控制目标event_id。两个有效事件按同分区顺序发送，第一条故障期间第二条必须阻塞。Worker恢复租约通过pg_locks中的实际ShareLock检查，在启动/两次故障快照/恢复后要求同一PG后端；同时核对相同Worker PID仍存活。
+
+故障期至少两次实际触发、两份间隔快照要求raw/dedup/aggregation_jobs均0、PG消费位点0、Kafka未提交(-1或0)、DLQ高位0；撤销开关后不重启Worker，要求原PID/原共享租约后端消费至2、Kafka分区0提交2、两条精确event_id各一次、两个processed任务/两个桶贡献、DLQ0。空分区PG0/Kafka-1按未消费处理，不伪称已提交。
+
+2026-10-23 013实测两轮成功：第一轮4yzjz9证明同进程回滚/恢复；补充共享锁直接断言后，用全新资源D0Rwar复核成功。最终实际触发/数据库重试日志均3次，故障两快照三表均0、PG0/Kafka-1；恢复同PID/同租约后端，raw/dedup/jobs/processed/贡献各2，DLQ0。主库全部44个public关系（含恢复控制表）前后指纹完全相同，测试topics/group/临时库删除、受限env/ledger清理，原服务启动并HTTPS ready。安全结果日志已带回工作站。
+
+这补充了114未覆盖的“PG仍在线且持有有效租约时同进程事务错误重试”证据。错误为真实PG触发器注入的40001，不等于真实并发序列化冲突、网络断开、所有SQLSTATE/磁盘故障、COMMIT边界强杀或独立DLQ broker失败。主服务有计划暂停，不能用容器restart计数替代无中断/容量保证。
