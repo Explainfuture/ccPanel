@@ -39,6 +39,7 @@ const SchemaWorkspace = lazy(() => import('./SchemaWorkspace'));
 const PrivacyWorkspace = lazy(() => import('./PrivacyWorkspace'));
 const ReplayWorkspace = lazy(() => import('./ReplayWorkspace'));
 const UserTimeline = lazy(() => import('./UserTimeline'));
+const DeliveryMonitor = lazy(() => import('./DeliveryMonitor'));
 import { api, ApiError, setCsrf } from "./api";
 import {
   createAnalytics,
@@ -628,6 +629,7 @@ export default function App() {
             { id: "privacy", label: "隐私与删除", icon: ShieldCheck },
             { id: "replay", label: "失败消息重放", icon: RefreshCw },
             { id: "connect", label: "数据接入", icon: Code2 },
+            { id: "delivery", label: "投递监控", icon: Activity },
             { id: "members", label: "公司成员", icon: Users },
           ].filter(n=>!['privacy','replay'].includes(n.id)||tenant?.role==='admin').map((n) => (
             <button
@@ -712,6 +714,7 @@ export default function App() {
                     privacy: "隐私与数据删除",
                     replay: "失败消息重放",
                     connect: "连接你的数据",
+                    delivery: "投递监控",
                     members: "公司成员",
                   }[tab]
                 }
@@ -727,6 +730,7 @@ export default function App() {
                     privacy: "建立删除屏障，追踪数据库清理和保留期边界。",
                     replay: "修复失败原因，按原始事件重放并追踪处理结果。",
                     connect: "安装 SDK，让业务行为进入你的分析工作台。",
+                    delivery: "核对项目累计计数，了解接入保护与消费积压。",
                     members: "同一公司的成员，共享全部项目与分析数据。",
                   }[tab]
                 }
@@ -973,6 +977,7 @@ export default function App() {
               {tab === 'schemas' && project ? <Suspense fallback={<div className="chart-loading">正在读取事件规范…</div>}><SchemaWorkspace key={prefix} prefix={prefix} project={project} canEdit={tenant.role==='admin'} onSaved={reloadProjects}/></Suspense> : null}
               {tab === 'privacy' && project ? <Suspense fallback={<div className="chart-loading">正在读取删除任务…</div>}><PrivacyWorkspace key={prefix} prefix={prefix} projectName={project.name} canManage={tenant.role==='admin'}/></Suspense> : null}
               {tab === 'replay' && project ? <Suspense fallback={<div className="chart-loading">正在读取重放任务…</div>}><ReplayWorkspace key={prefix} prefix={prefix} canManage={tenant.role==='admin'}/></Suspense> : null}
+              {tab === 'delivery' && project ? <Suspense fallback={<div className="chart-loading">正在读取投递监控…</div>}><DeliveryMonitor key={prefix} prefix={prefix} canManage={tenant.role==='admin'}/></Suspense> : null}
               {tab === "events" && project ? (
                 <section className="panel">
                   <div className="panel-heading">
