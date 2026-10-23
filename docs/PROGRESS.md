@@ -1556,6 +1556,7 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 ### 步骤195：当前Worker原始COMMIT前/后实际强杀
 
 - 发现旧59/60提交强杀证据来自早期暂存Worker，新增当前013真实dist/worker隔离演练，原始事务聚合任务INSERT前及进度UPDATE前由PG触发器/实际advisory waiter定位；核对真实SIGKILL及新PID回放，不修改Worker业务代码/statement_timeout。
-- 9keKOT实测两次KILL通过：提交前raw/dedup/jobs0、进度0，杀后回滚并恢复2；原始提交后可见3/进度仍2，杀后保留3，新Worker重复识别原第三条并完成第四条。最终四表/任务/聚合贡献4、duplicates1、DLQ0，精确ID匹配，PG/Kafka/source分区0均4，空分区未消费如实保留。
+- 9keKOT实测两次KILL通过：提交前raw/dedup/jobs0、进度0，杀后回滚并恢复2；原始提交后可见3/进度仍2，杀后保留3，新Worker重复识别原第三条并完成第四条。最终raw/dedup/jobs/processed/桶贡献各4、duplicates1、DLQ0，精确ID匹配，PG/Kafka/source分区0均4，空分区未消费如实保留。
 - 主库暂停期间44个public关系指纹同，临时topic/group/DB/env清理，原服务恢复ready；主库raw2/dedup3/DLQ0、总位点15618/临时DB0、013未变。结果双方保留；CI加入脚本语法检查，不假称CI执行了真实broker故障。
 - 仅关闭当前版本原始COMMIT前/后这两个窗口缺口，不将历史进度已提交/Kafka未提交代理窗口直接升级为当前版本证明，不是掉电/磁盘/HA/容量验收。
+- CI Actions39956869364 verify/postgres全部success：243项测试、15套真实PG、既有进程/打包/主机保护及新脚本语法检查通过。当前构建真实强杀演练仅在VPS执行；安全结果SHA256 c675825eba2c89a2c27b16450b774628f069b4c34b0dd46c9e652990e944eb88。2026-10-24收尾再次核实仍013/HTTPS ready。
