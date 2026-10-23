@@ -682,3 +682,13 @@ schema17增加逻辑30天事件视图、全局过期索引及可显式启用的W
 新增精确30天边界/1毫秒过期、未来及混合范围单测，真实PG报表控制器补趋势和行为API过期元数据检查。132项单测、类型和构建通过。新增PG断言待本分支CI；UI真实浏览器提示尚待验证。服务器仍schema16，尚未部署。
 
 步骤99验收补充：Actions39874836265（43a9f0c）verify/postgres均success，132项测试与5套实际PG控制器通过，含趋势和漏斗API在30.5天起点返回expired_overlap/incomplete。Chrome本地生产构建、模拟API数据分别打开趋势/留存报表，均出现截止时间和“缺失不表示没有事件/转化”；390px文档无横向溢出，coverage99-mobile.png截图已查看。模拟结果有意注入不完整元数据，仅验证渲染，不将其宣称真实API端到端证据；真实API字段由独立PG控制器验证。浏览器及本地静态服务已关闭。服务器仍schema16，功能未部署。
+
+### 步骤 100：schema17维护/SDK/查询覆盖整合预览部署
+
+可信在线升级增加16→17白名单、仍有活动capacity sampler时拒绝部署、原字段对账前RETENTION_ENABLED必须缺省/false；.env.example显式默认false。归档2f953e40bdb830dc879d8c4d730404c4b8959a5c5a2b80ebff03a5f296a51f36，仅dist与受版本控制的部署文件，111文件/454274字节，无.env/本地凭据/node_modules，目录755/文件644。
+
+复核原m4-dashboard-001/schema16、门禁开放、raw2/dedup3、无活动容量任务后prepare停API/Worker。备份/opt/ccpanel/shared/backups/20261022T235745Z-005827e9，明文93706/密文93742字节，SHA039066c907b8622c5187036e4c4554ea6e450b9bef67dcb5a051bf9a52861b5b；工作站AESGCM独立解密回传并临时PG恢复3秒，全表数量/hash一致。fresh source删除清单另加密离机保存885字节，不把静态清单解释为持续新鲜同步/RPO保证。
+
+证明摘要核验后apply原会话退出0，当前/opt/ccpanel/releases/m4-retention-001/schema17。所有原字段/行数指纹保留，进度完整性通过、HTTPS ready；raw2/dedup3/可见桶2、聚合pending0/error0/临时库0，实际Worker physical_retention_enabled=false。新旧前端资源保留控制器首次真实执行owned11/previous11，未覆盖新资源。两端本次dump/解密dump/source-ledger明文删除，保留密文与独立工作站密钥；升级证据/opt/ccpanel/shared/product-upgrade.byZiqb，工作站pre-retention-20261023.*。
+
+步骤92–99代码已发布预览；物理保留及分区定时器尚未开启，待单独操作验收。容量仍未批准，schema16实测持续Swap失败不因发布成功而改变；当前版本未做新容量评估。持续异机备份/最新删除及事故状态同步、真实移动设备/多浏览器仍待补齐。

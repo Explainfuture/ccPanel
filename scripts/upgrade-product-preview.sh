@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Trusted live schema10 ->15 or schema15 ->16 preview upgrade. Never restore.
+# Trusted explicit live preview upgrades. Never restore an older database.
 set -euo pipefail
 umask 077
 mode=${1:?prepare or apply}
 source_schema=${CCPANEL_SOURCE_SCHEMA:-10}
 target_schema=${CCPANEL_TARGET_SCHEMA:-15}
-case "$source_schema:$target_schema" in 10:15|15:16) ;; *) echo 'Unsupported trusted upgrade pair' >&2;exit 1;; esac
+case "$source_schema:$target_schema" in 10:15|15:16|16:17) ;; *) echo 'Unsupported trusted upgrade pair' >&2;exit 1;; esac
 # A trusted live upgrade must retain its already-open gate and durable cursor.
 unset CCPANEL_PROGRESS_BOOTSTRAP_REASON CCPANEL_RECOVERY_LEDGER
 : "${CCPANEL_RELEASE:?Set a new release name}"
@@ -13,6 +13,18 @@ unset CCPANEL_PROGRESS_BOOTSTRAP_REASON CCPANEL_RECOVERY_LEDGER
 [[ "$CCPANEL_RELEASE" =~ ^[a-zA-Z0-9_-]+$ ]]
 [[ "$CCPANEL_ARCHIVE_SHA256" =~ ^[a-f0-9]{64}$ ]]
 test "$(sha256sum /opt/ccpanel/shared/release.tar.gz | cut -d' ' -f1)" = "$CCPANEL_ARCHIVE_SHA256"
+running_capacity=$(systemctl list-units --type=service --state=running 'ccpanel-capacity-*' --no-legend --plain)
+test -z "$running_capacity" || { echo 'Capacity sampler still running; defer deployment' >&2; exit 1; }
+# Physical expiry legitimately changes rows: keep it disabled until the
+# post-migration original-column reconciliation has completed.
+if [ "$target_schema" = 17 ]; then
+  python3 - <<'PY'
+from pathlib import Path
+lines=Path('/opt/ccpanel/shared/runtime.env').read_text().splitlines()
+values=[line.split('=',1)[1].strip().strip('\"\'') for line in lines if line.startswith('RETENTION_ENABLED=')]
+assert not values or values==['false'],'Disable physical retention before trusted upgrade'
+PY
+fi
 cd /opt/ccpanel/current/infra
 test "$(docker compose exec -T postgres psql -X -U ccpanel -d ccpanel -Atqc 'SELECT max(version) FROM schema_migrations')" = "$source_schema"
 if [ "$mode" = prepare ]; then
