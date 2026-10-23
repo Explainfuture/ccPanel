@@ -47,3 +47,5 @@ persist成功区分inserted/duplicate/suppressed，EventConflict记conflict，�
 优先级：载荷已redacted或有suppressed重放记录→suppressed；曾有stored/duplicate成功回执→resolved；否则有queued/published记录→replaying；其余→unresolved，包括没有重放及失败/拒绝重放。历史失败不覆盖成功回执；活动请求不等于成功。统计的是仍保留的原DLQ来源及其回执，不是唯一业务事件、永久故障累计、实时重放可行性或Kafka DLQ总量；同一事件可能产生多个来源，过期不代表修复。空类别count为0、时间/年龄null；未来时间年龄钳制0，年龄由数据库时间计算，避免工作站时钟差。
 
 仅返回四个固定类别及聚合时间，不返回payload/ID/原因文本。使用既有created_at与replay source索引，受PG 5秒statement timeout约束；大规模DLQ下的查询成本尚待容量验证，不声称无界规模可用。暂未接入监控UI/告警，下一步继续完成展示和运行验收。
+
+步骤112已在源码投递监控页面接入：仅管理员请求DLQ摘要，展示保留来源分类、精确数量、最老来源年龄（秒）及数据库快照时间。0条对应无记录，缺失对应未记录。手动刷新及可选可见时轮询，失败或失权清除旧DLQ数据；公司/项目切换卸载旧组件并中止请求。Chrome模拟API验证失败/恢复、公司切换、viewer不请求和窄屏布局；尚未部署VPS，也未完成持久告警及真实本版Worker运行验证。
