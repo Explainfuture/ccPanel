@@ -74,6 +74,7 @@ export type {TrackOptions} from '../../sdk-browser/src/index.js';
 export type NodeOptions=Omit<AnalyticsOptions,'source'|'queue'>&{outboxPath?:string};
 class NodeAnalytics extends Analytics{
   private shuttingDown=false;
+  drainForShutdown(){return this.flushOperation();}
   stopAccepting(){this.shuttingDown=true;}
   override track(name:string,properties:Record<string,Json>={},options?:TrackOptions):Promise<TrackResult>{
     return this.shuttingDown?Promise.resolve({status:'rejected',reason:'shutdown'}):super.track(name,properties,options);
@@ -103,7 +104,7 @@ export function createNodeAnalytics(options:NodeOptions):unknown{
       },10000);
       // The deadline bounds the caller's wait, not native I/O. Keep the lock
       // until in-flight writes settle; never release it early or fake an ack.
-      const finish=async()=>{try{await analytics.flush();}finally{analytics.destroy();if(queue instanceof FileQueue)await queue.close();}};
+      const finish=async()=>{try{await analytics.drainForShutdown();}finally{analytics.destroy();if(queue instanceof FileQueue)await queue.close();}};
       void finish().then(()=>{clearTimeout(timer);resolve();},error=>{clearTimeout(timer);reject(error);});
     });
   }});

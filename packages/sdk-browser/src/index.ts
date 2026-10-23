@@ -20,6 +20,7 @@ export class Analytics {
   private anonymous='';private user:string|undefined;
   private timer:ReturnType<typeof setTimeout>|undefined;
   private flight:Promise<{confirmed:number;pending:number}>|undefined;
+  private flightView:Promise<{confirmed:number;pending:number}>|undefined;
   private snapshot:{event:AnalyticsEvent;created:number}[]=[];
   private hiddenSent=false;private paused=false;private lastError:string|undefined;private epoch=0;
   private owner=crypto.randomUUID();private identityKey:string;
@@ -62,13 +63,13 @@ export class Analytics {
     this.queue=options.queue??(typeof indexedDB!=='undefined'?new IndexedQueue(this.identityKey+':queue'):this.memory);
     if(this.consent)this.loadIdentity();
     if(typeof window!=='undefined'){
-      const hidden=()=>{if(document.visibilityState==='hidden')this.beacon();else{this.hiddenSent=false;void this.flush();}};
-      const pagehide=()=>this.beacon();const online=()=>void this.flush();
+      const hidden=()=>{if(document.visibilityState==='hidden')this.beacon();else{this.hiddenSent=false;this.triggerFlush();}};
+      const pagehide=()=>this.beacon();const online=()=>this.triggerFlush();
       const storage=(e:StorageEvent)=>{if(e.key===this.consentKey)this.hasConsent();else if(e.key===this.identityKey&&this.hasConsent())this.loadIdentity();};
       document.addEventListener('visibilitychange',hidden);window.addEventListener('pagehide',pagehide);window.addEventListener('online',online);window.addEventListener('storage',storage);
       this.cleanup.push(()=>{document.removeEventListener('visibilitychange',hidden);window.removeEventListener('pagehide',pagehide);window.removeEventListener('online',online);window.removeEventListener('storage',storage);});
     }
-    void this.flush();
+    this.triggerFlush();
   }
   private error(code:string,details?:{event_ids:string[]}){
     if(code==='storage_error'&&this.queue.persistent)this.needsRecovery=true;
@@ -136,7 +137,7 @@ export class Analytics {
       if(!stored){this.snapshot=this.snapshot.filter(r=>r.event.event_id!==event.event_id);this.error('rejected_overflow');return{status:'rejected',reason:'rejected_overflow'};}
       const status=this.queue.persistent&&!(await this.memory.peek(100)).some(r=>r.event.event_id===event.event_id)?'queued-persistent':'queued-memory';
       this.schedule(true);
-      const stats=await this.getQueueStatus();if(stats.count>=this.batchSize||stats.bytes>=limits.batchBytes)queueMicrotask(()=>void this.flush());
+      const stats=await this.getQueueStatus();if(stats.count>=this.batchSize||stats.bytes>=limits.batchBytes)queueMicrotask(()=>this.triggerFlush());
       return{status,event_id:event.event_id};
     }finally{this.pendingWrites--;this.pendingBytes-=eventBytes;}
   }
@@ -168,14 +169,14 @@ export class Analytics {
         try{localStorage.setItem(this.consentKey,prior?.startsWith('revoked:')?'granted:'+prior.slice(8):prior??'granted:initial');}catch{/* local grant still works without web storage */}
       }
       this.consentMarker=this.readConsentMarker();
-      this.consent=value;if(value){this.loadIdentity();void this.flush();}
+      this.consent=value;if(value){this.loadIdentity();this.triggerFlush();}
     };
     const change=this.consentChanges.catch(()=>{}).then(async()=>{
       if(typeof navigator!=='undefined'&&navigator.locks)await navigator.locks.request(this.consentKey,async()=>{await apply();});else await apply();
     });
     this.consentChanges=change;return change;
   }
-  updateWriteKey(key:string){if(typeof key!=='string'||!key.trim()||key.length>256)throw new Error('invalid_key');this.options.writeKey=key;this.paused=false;void this.flush();}
+  updateWriteKey(key:string){if(typeof key!=='string'||!key.trim()||key.length>256)throw new Error('invalid_key');this.options.writeKey=key;this.paused=false;this.triggerFlush();}
   private envelope(events:AnalyticsEvent[]){return{write_key:this.options.writeKey,project_id:this.options.projectId,schema_version:1,events};}
   private async stores(){return this.queue===this.memory?[this.queue]:[this.queue,this.memory];}
   async getQueueStatus(){let count=0,bytes=0,persistent_count=0,memory_count=0,oldest:number|null=null;for(const q of await this.stores()){try{const s=await q.stats();count+=s.count;bytes+=s.bytes;if(q.persistent)persistent_count+=s.count;else memory_count+=s.count;if(s.oldest!==null)oldest=oldest===null?s.oldest:Math.min(oldest,s.oldest);}catch{this.error('storage_error');}}return{count,bytes,persistent_count,memory_count,oldest,counters:{...this.counters},pending_writes:this.pendingWrites,pending_bytes:this.pendingBytes,pending_limit_count:this.queue.persistent?1000:100,pending_limit_bytes:this.queue.persistent?5*1024*1024:512*1024,last_error:this.lastError,storage:this.needsRecovery?'memory-fallback':this.queue.persistent?'persistent-with-memory-fallback':'memory'};}
@@ -184,12 +185,23 @@ export class Analytics {
       if(this.timer!==undefined)clearTimeout(this.timer);this.timer=undefined;return;
     }
     if(this.timer!==undefined)return;
-    this.timer=setTimeout(()=>{this.timer=undefined;void this.flush();},this.flushInterval);
+    this.timer=setTimeout(()=>{this.timer=undefined;this.triggerFlush();},this.flushInterval);
     this.timer.unref?.();
   }
+  private triggerFlush(){void this.flush().catch(()=>{/* deadline already reported through onError */});}
   flush():Promise<{confirmed:number;pending:number}>{
+    const operation=this.flushOperation();
+    if(this.options.source!=='node')return operation;
+    if(this.flightView)return this.flightView;
+    return this.flightView=new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>{this.error('flush_timeout');reject(new Error('flush_timeout'));},10000);
+      void operation.then(result=>{clearTimeout(timer);resolve(result);},error=>{clearTimeout(timer);reject(error);});
+    });
+  }
+  // Retain actual ownership until I/O settles even after a caller deadline.
+  protected flushOperation():Promise<{confirmed:number;pending:number}>{
     if(this.flight)return this.flight;
-    this.flight=this.send().then(result=>{this.schedule(result.pending>0||this.pendingWrites>0||this.needsRecovery);return result;}).catch(()=>{this.error('send_error');this.schedule(true);return{confirmed:0,pending:0};}).finally(()=>{this.flight=undefined;});return this.flight;
+    this.flight=this.send().then(result=>{this.schedule(result.pending>0||this.pendingWrites>0||this.needsRecovery);return result;}).catch(()=>{this.error('send_error');this.schedule(true);return{confirmed:0,pending:0};}).finally(()=>{this.flight=undefined;this.flightView=undefined;});return this.flight;
   }
   private async send(){
     let confirmed=0;

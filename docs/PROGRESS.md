@@ -1503,3 +1503,10 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 241项测试、typecheck/build/两SDK pnpm tarball仓库外检查通过。新增正常/幂等shutdown、关闭后拒绝、忽略AbortSignal的慢fetch/晚确认、诊断回调抛错及慢FileQueue.close。真实文件锁在模拟close延迟期间仍存在，释放延迟后才消失；时间用fake timers，慢操作用受控Promise，非真实磁盘挂起。包产物也检查shutdown后两入口拒绝事件。
 - 未动Browser SDK/VPS012或运行新容量窗口，Node生命周期改动仅源码/包验证。
 - CI Actions 39950566632 verify/postgres均成功：241项测试、15套真实PG及既有打包/进程故障/部署保护检查通过。
+
+### 步骤 189：Node flush 整体调用截止
+
+- 补齐慢存储导致的Node flush无限等待：调用视图10秒超时flush_timeout并回调，但真实底层flight保留，未结束前复用同一超时Promise、不另起发送、不伪造确认。实际操作结束才释放槽/允许下一轮，迟到真实ACK仍正常处理。Browser普通flush返回语义保持不变。
+- 将内部初始化/定时/联网/阈值/授权/换钥触发统一处理超时reject，避免未处理Promise异常。Node shutdown走原始底层flight，保留自己的10秒等待截止和真实I/O完成才close/释放锁的语义，不因flush调用超时提前关闭。
+- 完整243项测试、typecheck/build/两个SDK tarball仓库外验证通过。新增忽略AbortSignal慢fetch、共享超时视图/无并发重发/迟到ACK恢复，以及初始化慢storage无网络请求、无未处理reject和恢复后可继续调用；受控Promise与fake clock，不声称真实磁盘/OS挂死验证。188真实文件锁与晚确认用例继续通过。
+- Chrome155重新验证本机原生pagehide HTTP+IndexedDB恢复、原生beacon false配额/重载恢复，两场景passed。浏览器及接收端关闭；未动VPS012、未运行容量窗口，完整设备/生产容量仍未通过。
