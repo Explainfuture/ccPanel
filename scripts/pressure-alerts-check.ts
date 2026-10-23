@@ -5,6 +5,7 @@ import {pool} from '../packages/server/src/db';
 import {createApp} from '../apps/api/src/app';
 import {digest,token} from '../packages/server/src/security';
 import {evaluatePressureAlerts} from '../packages/server/src/pressure-alerts';
+import {storePressureObservation} from '../packages/server/src/pressure-history-store';
 try{
   assert.match((await pool.query('SELECT current_database() AS name')).rows[0].name,/^ccpanel_restore_[0-9]{14}_[a-f0-9]{8}$/);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM tenants')).rows[0].n,0);
@@ -38,5 +39,25 @@ try{
   await pool.query("INSERT INTO tenant_memberships VALUES($1,$2,'admin')",[tenant,operator]);app=createApp(deps);
   const budgetStart=calls;for(let i=0;i<12;i++)assert.equal((await get()).status,200);const limited=await get();assert.equal(limited.status,429);assert.equal(limited.headers.get('retry-after'),'5');assert.equal(calls,budgetStart+12);
   assert.equal((await get(operator,root+'/metrics')).status,200,'platform read budget does not block project counters');
+  app=createApp(deps);const historyPath=root+'/pressure-history';
+  assert.equal((await app.request(historyPath)).status,401);
+  for(const id of[ordinary,viewer,foreignUser])assert.equal((await get(id,historyPath)).status,id===foreignUser?404:403);
+  assert.equal((await get(operator,root.replace(project,other)+'/pressure-history')).status,404);
+  assert.equal((await get(operator,historyPath+'?limit=10000')).status,400);
+  let historyResponse=await get(operator,historyPath);assert.equal(historyResponse.status,200);assert.equal(historyResponse.headers.get('cache-control'),'no-store');assert.equal((await historyResponse.json()).persistence_state,'unavailable');
+  const source=randomUUID(),started=new Date(Date.now()-180000).toISOString();
+  const observation=(at:number)=>({instance_id:source,started_at:started,assessment:evaluatePressureAlerts({startedAt:at,partitions:[{partition:0,low:'0',high:'9007199254740993',committed:'0',ageBoundary:'0'}],disks:['kafka','postgres'].map(kind=>({kind,sampledAt:at,totalBytes:'21474836480',availableBytes:'12884901888',totalInodes:'100000',availableInodes:'50000'}))},undefined,at)});
+  const db=await pool.connect();try{await storePressureObservation(db,observation(Date.now()-120000));}finally{db.release();}
+  let stored=await (await get(operator,historyPath)).json();assert.equal(stored.persistence_state,'expired');assert.ok(stored.states.every((r:{current_state:string})=>r.current_state==='unknown'));assert.equal(stored.states.find((r:{rule:string})=>r.rule==='kafka_backlog').state_at_assessment,'firing');
+  const fresh=await pool.connect();try{await storePressureObservation(fresh,observation(Date.now()));}finally{fresh.release();}
+  await pool.query("UPDATE pressure_signal_states SET revision=9007199254740993 WHERE rule='kafka_backlog'");
+  stored=await (await get(operator,historyPath)).json();assert.equal(stored.persistence_state,'fresh');assert.equal(stored.states.find((r:{rule:string})=>r.rule==='kafka_backlog').revision,'9007199254740993');assert.equal(stored.states.find((r:{rule:string})=>r.rule==='kafka_backlog').signal.max_lag_messages,'9007199254740993');assert.equal(stored.transitions.length,6);
+  await pool.query("DELETE FROM pressure_signal_states WHERE rule='storage_headroom'");
+  stored=await (await get(operator,historyPath)).json();assert.equal(stored.persistence_state,'invalid');assert.ok(stored.states.every((r:{current_state:string})=>r.current_state==='unknown'));
+  await pool.query('UPDATE platform_operators SET revoked_at=clock_timestamp() WHERE user_id=$1',[operator]);assert.equal((await get(operator,historyPath)).status,403);
+  await pool.query('UPDATE platform_operators SET revoked_at=NULL WHERE user_id=$1',[operator]);app=createApp(deps);
+  for(let i=0;i<6;i++){assert.equal((await get(operator,historyPath)).status,200);assert.equal((await get(operator,root+'/operational-alerts')).status,200);}
+  const historyLimited=await get(operator,historyPath);assert.equal(historyLimited.status,429);assert.equal(historyLimited.headers.get('retry-after'),'5');assert.equal((await get(operator,root+'/metrics')).status,200);
+  console.log(JSON.stringify({pressure_history_http:true,dual_role_and_foreign_scope:true,no_store:true,missing_history_unavailable:true,expired_history_current_unknown:true,historical_firing_retained:true,fresh_history_verified:true,partial_states_unknown:true,exact_revision_and_lag:true,revoked_grant_denied:true,shared_history_budget_12:true}));
   console.log(JSON.stringify({pressure_alerts_http:true,operator_and_company_admin_required:true,foreign_scope_hidden:true,callback_after_authorization_only:true,precise_large_counters:true,independent_kafka_disk_signals:true,no_store:true,error_no_payload:true,revoked_grants_and_membership_denied:true,read_budget_12:true,business_read_unaffected:true}));
 }finally{await pool.end();}

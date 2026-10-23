@@ -18,6 +18,7 @@ import { registerReplayRoutes } from '../../../packages/server/src/dlq-replay';
 import {readDeadLetterSummary} from '../../../packages/server/src/dlq-summary';
 import {readQueryStatus} from '../../../packages/server/src/query-status';
 import {readOperationalHistory,readOperationalAlerts,OperationalReadError,withOperationalRead} from '../../../packages/server/src/operational-history-read';
+import {readPressureHistory} from '../../../packages/server/src/pressure-history-read';
 import type {PressureAlerts} from '../../../packages/server/src/pressure-alerts';
 import type {HostResourceStatus} from '../../../packages/server/src/host-resource-status';
 import { registerInvitationAcceptance,registerCompanyInvitations,lockMembership,membershipAdmin } from '../../../packages/server/src/invitations';
@@ -594,6 +595,13 @@ export function createApp(deps: AppDeps) {
     if(new URL(c.req.url).search)return c.json({error:'invalid_alert_query'},400);
     try{return c.json(await readOperationalAlerts(c.get('userId'),c.get('tenantId'),c.req.param('project')!));}
     catch(error){if(error instanceof OperationalReadError)return c.json({error:'forbidden'},error.status);throw error;}
+  });
+  app.get(prefix+'/pressure-history',async c=>{
+    if(!allowed(c,['admin']))return c.json({error:'forbidden'},403);
+    if(new URL(c.req.url).search)return c.json({error:'invalid_history_query'},400);
+    if(!rate('operational-history:'+c.get('userId'),12,60000)){c.header('Retry-After','5');return c.json({error:'rate_limited'},429);}
+    try{return c.json(await readPressureHistory(c.get('userId'),c.get('tenantId'),c.req.param('project')!));}
+    catch(error){if(error instanceof OperationalReadError)return c.json({error:error.status===404?'not_found':'forbidden'},error.status);throw error;}
   });
   app.get(prefix+'/query-status',async c=>c.json(await readQueryStatus(c.get('tenantId'),c.req.param('project')!)));
   app.get(prefix+'/dlq-summary',async c=>{
