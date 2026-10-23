@@ -10,6 +10,8 @@ flock -n 9 || { echo 'Capacity export already running' >&2; exit 1; }
 python3 - "$dir" <<'PY'
 import datetime,hashlib,json,os,pathlib,subprocess,sys,time
 root=pathlib.Path(sys.argv[1]);load=json.loads((root/'load-result.json').read_text())
+termination=load.get('termination')
+assert 'termination' not in load or isinstance(termination,dict) and termination.get('state')=='completed','Aborted workloads require separate partial evidence; no full capacity export'
 end=datetime.datetime.fromisoformat(load['completed_at'].replace('Z','+00:00'))
 assert end.tzinfo is not None and end.utcoffset()==datetime.timedelta(0),'UTC completed_at required'
 finish=int((end-datetime.datetime(1970,1,1,tzinfo=datetime.timezone.utc))//datetime.timedelta(milliseconds=1))

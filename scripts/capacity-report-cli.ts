@@ -4,6 +4,7 @@ import {capacityReport} from './capacity-report';
 const [samplesPath,loadPath,baselinePath,finalPath,output]=process.argv.slice(2);
 if(!samplesPath||!loadPath||!baselinePath||!finalPath||!output)throw new Error('Usage: capacity-report samples.jsonl load.json baseline.json final.json output.json');
 const load=JSON.parse(readFileSync(loadPath,'utf8')),baseline=JSON.parse(readFileSync(baselinePath,'utf8')),final=JSON.parse(readFileSync(finalPath,'utf8'));
+if(load.termination!==undefined&&(!load.termination||typeof load.termination!=='object'||load.termination.state!=='completed'))throw new Error('aborted_or_invalid_workload');
 const bytes=readFileSync(samplesPath);
 if(!bytes.length||bytes.length>8*1024*1024||bytes.at(-1)!==10)throw new Error('incomplete_capacity_snapshot');
 if(typeof final.samplesSha256!=='string'||createHash('sha256').update(bytes).digest('hex')!==final.samplesSha256)throw new Error('capacity_snapshot_mismatch');

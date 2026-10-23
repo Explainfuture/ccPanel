@@ -19,6 +19,16 @@ export function capacityWorkloadReport(input:unknown,expectedEvents=1800){
   if(n.target_eps!==1||!number(n.generation_seconds)||n.generation_seconds<expectedEvents-1-.1||n.generation_seconds> (end!-start!)/1000||(end!-start!)<expectedEvents*1000||Math.abs(n.duration_seconds*1000-(end!-start!))>1000)reasons.add('invalid_timing');
   const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   if(!Array.isArray(n.event_ids)||n.event_ids.length!==n.generated||n.event_ids.some(id=>typeof id!=='string'||!uuid.test(id))||new Set(n.event_ids.map(id=>String(id).toLowerCase())).size!==n.generated)reasons.add('invalid_event_set');
+  if(n.termination!==undefined){
+    const t=n.termination;
+    if(!object(t)||!['completed','aborted'].includes(String(t.state))||t.planned_events!==expectedEvents||(t.state==='completed'?t.reason!==null:typeof t.reason!=='string'||!/^[a-z_]{1,64}$/.test(t.reason)))reasons.add('invalid_termination_evidence');
+    if(object(t)&&t.state==='aborted')reasons.add('aborted_workload');
+    if(!Array.isArray(n.confirmed_event_ids))reasons.add('missing_confirmed_event_set');
+  }
+  if(n.confirmed_event_ids!==undefined){
+    const accepted=n.confirmed_event_ids,generated=new Set(Array.isArray(n.event_ids)?n.event_ids.map(id=>String(id).toLowerCase()):[]);
+    if(!Array.isArray(accepted)||accepted.length!==n.acknowledged||accepted.some(id=>typeof id!=='string'||!uuid.test(id)||!generated.has(id.toLowerCase()))||new Set(accepted.map(id=>String(id).toLowerCase())).size!==accepted.length)reasons.add('invalid_confirmed_event_set');
+  }
   if(!Array.isArray(n.errors)||n.errors.some(e=>typeof e!=='string')||typeof n.passed!=='boolean')reasons.add('invalid_final_result');
   const eq=(a:number,b:number,d:number)=>BigInt(a)===BigInt(b)+BigInt(d);
   if(!eq(c.ingest_attempts,c.ingest_accepted_requests,c.ingest_failed_requests)||!eq(c.query_opportunities,c.query_attempts,c.query_skipped_busy)||!eq(c.query_attempts,c.query_successes,c.query_failures))reasons.add('request_accounting_mismatch');
@@ -29,7 +39,7 @@ export function capacityWorkloadReport(input:unknown,expectedEvents=1800){
   if(c.query_schedule_coverage!==coverage)reasons.add('query_coverage_claim_mismatch');
   for(const [key,count]of [['ingest_p95_ms',c.ingest_accepted_requests],['observed_visible_p95_ms',n.generated-n.not_yet_visible],['query_p95_ms',c.query_successes]] as const)if(count>0?!number(n[key]):n[key]!==null)reasons.add('invalid_latency_summary');
   const errors=Array.isArray(n.errors)?n.errors.length:0;
-  const declaredPass=n.generated===expectedEvents&&n.acknowledged===expectedEvents&&n.max_generation_lag_ms<1000&&n.not_yet_visible===0&&n.backlog===0&&n.duplicate_requests===Math.floor((expectedEvents-1)/50)&&errors===0&&number(n.ingest_p95_ms)&&n.ingest_p95_ms<1000&&number(n.observed_visible_p95_ms)&&n.observed_visible_p95_ms<10000&&coverage&&c.query_successes>0;
+  const declaredPass=!(object(n.termination)&&n.termination.state==='aborted')&&n.generated===expectedEvents&&n.acknowledged===expectedEvents&&n.max_generation_lag_ms<1000&&n.not_yet_visible===0&&n.backlog===0&&n.duplicate_requests===Math.floor((expectedEvents-1)/50)&&errors===0&&number(n.ingest_p95_ms)&&n.ingest_p95_ms<1000&&number(n.observed_visible_p95_ms)&&n.observed_visible_p95_ms<10000&&coverage&&c.query_successes>0;
   if(n.passed!==declaredPass)reasons.add('reported_pass_mismatch');
   if(BigInt(c.ingest_failed_requests)+BigInt(c.query_failures)>BigInt(errors))reasons.add('error_accounting_mismatch');
   return{evidenceValid:reasons.size===0,dataLoadPass:reasons.size===0&&declaredPass,reasons:[...reasons],expectedEvents,generated:n.generated,acknowledged:n.acknowledged,duplicates:n.duplicate_requests,durationSeconds:(end!-start!)/1000,queryAttempts:c.query_attempts,querySuccesses:c.query_successes,querySkipped:c.query_skipped_busy,bodyBytesTotal:c.ingest_body_bytes_total,bodyBytesMean:c.ingest_body_bytes_mean};

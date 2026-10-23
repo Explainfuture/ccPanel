@@ -9,3 +9,16 @@ it('refuses legacy evidence rather than inventing missing workload counters',()=
 it('rejects inconsistent counts, byte means, coverage claims, event IDs, windows and false pass flags',()=>{
   for(const change of [(v:ReturnType<typeof fixture>)=>{v.workload.query_successes=179;},(v:ReturnType<typeof fixture>)=>{v.workload.ingest_body_bytes_mean=999;},(v:ReturnType<typeof fixture>)=>{v.workload.query_schedule_coverage=false;},(v:ReturnType<typeof fixture>)=>{v.event_ids[1]=v.event_ids[0]!;},(v:ReturnType<typeof fixture>)=>{v.completed_at=v.started_at;},(v:ReturnType<typeof fixture>)=>{v.observed_visible_p95_ms=11000;},(v:ReturnType<typeof fixture>)=>{v.workload.ingest_attempts=Infinity;}]){const value=fixture();change(value);expect(capacityWorkloadReport(value).evidenceValid).toBe(false);}
 });
+it('rejects an aborted run even if all event and timing targets were reached',()=>{
+  const v=fixture(),termination={state:'aborted',reason:'resource_safety',planned_events:1800};
+  const report=capacityWorkloadReport({...v,passed:false,termination,confirmed_event_ids:v.event_ids});
+  expect(report.dataLoadPass).toBe(false);expect(report.reasons).toContain('aborted_workload');expect(report.reasons).not.toContain('reported_pass_mismatch');
+  expect(capacityWorkloadReport({...v,termination,confirmed_event_ids:v.event_ids}).reasons).toContain('reported_pass_mismatch');
+});
+it('checks the exact acknowledged subset and terminal metadata without rewriting legacy evidence',()=>{
+  const v=fixture(),termination={state:'completed',reason:null,planned_events:1800};
+  expect(capacityWorkloadReport({...v,termination,confirmed_event_ids:v.event_ids})).toMatchObject({evidenceValid:true,dataLoadPass:true});
+  for(const ids of [[...v.event_ids.slice(1),randomUUID()],[...v.event_ids.slice(1),v.event_ids[1]],v.event_ids.slice(1)])expect(capacityWorkloadReport({...v,termination,confirmed_event_ids:ids}).reasons).toContain('invalid_confirmed_event_set');
+  expect(capacityWorkloadReport({...v,termination}).reasons).toContain('missing_confirmed_event_set');
+  expect(capacityWorkloadReport({...v,termination:{...termination,planned_events:1799},confirmed_event_ids:v.event_ids}).reasons).toContain('invalid_termination_evidence');
+});
