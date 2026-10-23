@@ -7,6 +7,7 @@ import {token,digest} from '../packages/server/src/security';
 import {createApp} from '../apps/api/src/app';
 import {startQueryJobs} from '../packages/server/src/query-jobs';
 import {IntakeMetrics} from '../packages/server/src/intake-metrics';
+import type {OperationalAlert} from '../packages/server/src/operational-alerts';
 import {HostResourceStatus} from '../packages/server/src/host-resource-status';
 let stopJobs:(()=>void)|undefined;
 try{
@@ -25,6 +26,7 @@ try{
   const req=(user:string,path:string,body?:unknown,method=body?'POST':'GET')=>app.request(path,{method,headers:headers.get(user),...(body?{body:JSON.stringify(body)}:{})});
   assert.equal((await req(admin,root+'/ingest-status')).status,403);assert.equal(intakeReads,0);assert.equal(resourceReads,0);assert.equal((await (await req(admin,'/api/me')).json()).platform_operator,false);
   assert.equal((await req(admin,root+'/operational-history')).status,403);
+  assert.equal((await req(admin,root+'/operational-alerts')).status,403);
   await pool.query('INSERT INTO platform_operators(user_id) VALUES($1)',[admin]);
   const historySnapshot=intake.snapshot();
   // Synthetic SQL timestamps intentionally differ at microsecond precision to
@@ -35,6 +37,12 @@ try{
   assert.equal(new Set([...historyBody.samples,...nextHistory.samples].map(row=>row.observed_at)).size,53,'response timestamps preserve microseconds for stable UI row identities');
   assert.equal((await(await req(admin,root+'/operational-history?source=worker')).json()).samples.length,0);
   for(const suffix of ['?limit=100000','?source=api&source=worker','?cursor=broken'])assert.equal((await req(admin,root+'/operational-history'+suffix)).status,400);
+  await pool.query('DELETE FROM operational_samples WHERE instance_id=$1',[historySnapshot.instance_id]);
+  const alertNow=Date.now();
+  for(const [offset,failures]of [[30000,'9007199254740993'],[1000,'9007199254740995']] as const){const snapshot=structuredClone(historySnapshot);snapshot.started_at=new Date(alertNow-60000).toISOString();snapshot.observed_at=new Date(alertNow-offset).toISOString();snapshot.responses.find(row=>row.status==='500')!.batches=failures;await pool.query("INSERT INTO operational_samples(source,instance_id,started_at,observed_at,payload_hash,snapshot) VALUES('api',$1,$2,$3,$4,$5)",[snapshot.instance_id,snapshot.started_at,snapshot.observed_at,'0'.repeat(64),JSON.stringify(snapshot)]);}
+  const alertsResponse=await req(admin,root+'/operational-alerts');assert.equal(alertsResponse.status,200);assert.equal(alertsResponse.headers.get('cache-control'),'no-store');const alerts=await alertsResponse.json() as {scope:string;rules:OperationalAlert[]};assert.equal(alerts.scope,'platform_aggregate');assert.equal(alerts.rules.length,4);assert.equal(alerts.rules.find(row=>row.rule==='api_server_errors')!.increase,'2');assert.equal(alerts.rules.find(row=>row.rule==='api_server_errors')!.state,'firing');assert.equal(alerts.rules.find(row=>row.rule==='worker_sampling')!.reason,'missing_sample');assert.equal((await req(admin,root+'/operational-alerts?source=api')).status,400);
+  for(const user of [viewer,analyst])assert.equal((await req(user,root+'/operational-alerts')).status,403);
+  assert.equal((await req(foreign,root+'/operational-alerts')).status,404);assert.equal((await app.request(root+'/operational-alerts')).status,401);
   for(const user of [viewer,analyst])assert.equal((await req(user,root+'/operational-history')).status,403);
   assert.equal((await req(foreign,root+'/operational-history')).status,404);assert.equal((await app.request(root+'/operational-history')).status,401);
   assert.equal((await (await req(admin,'/api/me')).json()).platform_operator,true);
@@ -75,6 +83,7 @@ try{
   for(const id of [a,b,project,otherProject])assert.ok(!JSON.stringify(telemetryBody).includes(id));
   await pool.query('UPDATE platform_operators SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=$1',[admin]);assert.equal((await req(admin,root+'/ingest-status')).status,403);assert.equal(intakeReads,1);assert.equal(resourceReads,1);assert.equal((await (await req(admin,'/api/me')).json()).platform_operator,false);
   assert.equal((await req(admin,root+'/operational-history')).status,403);
+  assert.equal((await req(admin,root+'/operational-alerts')).status,403);
   await pool.query('DELETE FROM platform_operators WHERE user_id=$1',[admin]);
   const day=Math.floor(Date.now()/86400000)*86400000,first=day-86400000-1800000;
   const range={from:new Date(day-3*86400000).toISOString(),to:new Date(day).toISOString()};

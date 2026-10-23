@@ -1,4 +1,6 @@
 import {pool} from './db';
+import type {PoolClient} from 'pg';
+import {evaluateOperationalAlerts} from './operational-alerts';
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export class OperationalReadError extends Error{constructor(readonly status:400|403|404){super('operational_history_read_denied');}}
 export function parseOperationalHistoryQuery(params:URLSearchParams){
@@ -20,13 +22,8 @@ export function parseOperationalHistoryQuery(params:URLSearchParams){
   return{source,cursor};
 }
 export async function readOperationalHistory(user:string,tenant:string,project:string,params:URLSearchParams){
-  const {source,cursor}=parseOperationalHistoryQuery(params),db=await pool.connect();
-  try{
-    await db.query('BEGIN');
-    await db.query("SELECT set_config('lock_timeout','200ms',true),set_config('statement_timeout','1000ms',true)");
-    const membership=(await db.query('SELECT m.role FROM tenant_memberships m JOIN projects p ON p.tenant_id=m.tenant_id WHERE m.tenant_id=$1 AND m.user_id=$2 AND p.id=$3 FOR SHARE OF m,p',[tenant,user,project])).rows[0];
-    if(!membership)throw new OperationalReadError(404);if(membership.role!=='admin')throw new OperationalReadError(403);
-    if(!(await db.query('SELECT 1 FROM platform_operators WHERE user_id=$1 AND revoked_at IS NULL FOR SHARE',[user])).rowCount)throw new OperationalReadError(403);
+  const {source,cursor}=parseOperationalHistoryQuery(params);
+  return withOperationalRead(user,tenant,project,async db=>{
     const rows=(await db.query(`SELECT source,instance_id,started_at,observed_at,snapshot,to_char(observed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_time
       FROM operational_samples WHERE observed_at>=CURRENT_TIMESTAMP-interval '7 days' AND observed_at<=CURRENT_TIMESTAMP+interval '5 seconds'
       AND ($1::text IS NULL OR source=$1) AND source IN ('api','worker')
@@ -34,7 +31,27 @@ export async function readOperationalHistory(user:string,tenant:string,project:s
       ORDER BY observed_at DESC,source DESC,instance_id DESC LIMIT 51`,[source,...(cursor??[null,null,null])])).rows;
     const page=rows.slice(0,50),last=page.at(-1);
     const next=rows.length>50&&last?Buffer.from(JSON.stringify([last.cursor_time,last.source,last.instance_id])).toString('base64url'):null;
-    await db.query('COMMIT');
     return{scope:'platform_aggregate' as const,computed_at:new Date().toISOString(),retention_days:7,page_limit:50,samples:page.map(({cursor_time,...row})=>({...row,observed_at:cursor_time})),next_cursor:next};
+  });
+}
+export async function readOperationalAlerts(user:string,tenant:string,project:string){
+  return withOperationalRead(user,tenant,project,async db=>{
+    const rows=(await db.query(`SELECT s.source,p.snapshot FROM (VALUES ('api'),('worker')) AS s(source)
+      CROSS JOIN LATERAL (SELECT instance_id FROM operational_samples WHERE source=s.source AND observed_at>=CURRENT_TIMESTAMP-interval '7 days' AND observed_at<=CURRENT_TIMESTAMP+interval '5 seconds' ORDER BY observed_at DESC,instance_id DESC LIMIT 1) latest
+      CROSS JOIN LATERAL (SELECT snapshot FROM operational_samples WHERE source=s.source AND instance_id=latest.instance_id AND observed_at>=CURRENT_TIMESTAMP-interval '7 days' AND observed_at<=CURRENT_TIMESTAMP+interval '5 seconds' ORDER BY observed_at DESC LIMIT 2) p`)).rows;
+    const now=Date.now();return{scope:'platform_aggregate' as const,computed_at:new Date(now).toISOString(),freshness_ms:90000,rules:evaluateOperationalAlerts({api:rows.filter(r=>r.source==='api').map(r=>r.snapshot),worker:rows.filter(r=>r.source==='worker').map(r=>r.snapshot)},now)};
+  });
+}
+async function withOperationalRead<T>(user:string,tenant:string,project:string,read:(db:PoolClient)=>Promise<T>){
+  const db=await pool.connect();
+  try{
+    await db.query('BEGIN');
+    await db.query("SELECT set_config('lock_timeout','200ms',true),set_config('statement_timeout','1000ms',true)");
+    const membership=(await db.query('SELECT m.role FROM tenant_memberships m JOIN projects p ON p.tenant_id=m.tenant_id WHERE m.tenant_id=$1 AND m.user_id=$2 AND p.id=$3 FOR SHARE OF m,p',[tenant,user,project])).rows[0];
+    if(!membership)throw new OperationalReadError(404);if(membership.role!=='admin')throw new OperationalReadError(403);
+    if(!(await db.query('SELECT 1 FROM platform_operators WHERE user_id=$1 AND revoked_at IS NULL FOR SHARE',[user])).rowCount)throw new OperationalReadError(403);
+    const value=await read(db);
+    await db.query('COMMIT');
+    return value;
   }catch(error){await db.query('ROLLBACK');throw error;}finally{db.release();}
 }

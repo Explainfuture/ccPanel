@@ -13,7 +13,7 @@ import { registerDeletions } from '../../../packages/server/src/deletion-service
 import { registerReplayRoutes } from '../../../packages/server/src/dlq-replay';
 import {readDeadLetterSummary} from '../../../packages/server/src/dlq-summary';
 import {readQueryStatus} from '../../../packages/server/src/query-status';
-import {readOperationalHistory,OperationalReadError} from '../../../packages/server/src/operational-history-read';
+import {readOperationalHistory,readOperationalAlerts,OperationalReadError} from '../../../packages/server/src/operational-history-read';
 import type {HostResourceStatus} from '../../../packages/server/src/host-resource-status';
 import { registerInvitationAcceptance,registerCompanyInvitations,lockMembership,membershipAdmin } from '../../../packages/server/src/invitations';
 import { IngestionPaused,type AdmissionStatus } from '../../../packages/server/src/ingest-admission';
@@ -575,6 +575,14 @@ export function createApp(deps: AppDeps) {
     c.header('Cache-Control','no-store');
     try{return c.json(await readOperationalHistory(c.get('userId'),c.get('tenantId'),c.req.param('project')!,new URL(c.req.url).searchParams));}
     catch(error){if(error instanceof OperationalReadError)return c.json({error:error.status===400?'invalid_history_query':'forbidden'},error.status);throw error;}
+  });
+  app.get(prefix+'/operational-alerts',async c=>{
+    if(!allowed(c,['admin']))return c.json({error:'forbidden'},403);
+    if(!rate('operational-history:'+c.get('userId'),12,60000))return c.json({error:'rate_limited'},429);
+    c.header('Cache-Control','no-store');
+    if(new URL(c.req.url).search)return c.json({error:'invalid_alert_query'},400);
+    try{return c.json(await readOperationalAlerts(c.get('userId'),c.get('tenantId'),c.req.param('project')!));}
+    catch(error){if(error instanceof OperationalReadError)return c.json({error:'forbidden'},error.status);throw error;}
   });
   app.get(prefix+'/query-status',async c=>c.json(await readQueryStatus(c.get('tenantId'),c.req.param('project')!)));
   app.get(prefix+'/dlq-summary',async c=>{
