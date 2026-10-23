@@ -17,13 +17,16 @@ export interface LedgerBarrier {
   requested_at: string;
   blocked_before: string;
 }
-export interface DeletionLedger {
+import {retentionCutoff} from './retention-policy';
+import type {RetentionLedgerEntry} from './retention-recovery';
+export interface LegacyDeletionLedger {
   schema_version: 1;
   exported_at: string;
   projects: { tenant_id: string; id: string; privacy_epoch: number }[];
   jobs: LedgerJob[];
   barriers: LedgerBarrier[];
 }
+export type DeletionLedger=LegacyDeletionLedger|Omit<LegacyDeletionLedger,'schema_version'>&{schema_version:2;retention:RetentionLedgerEntry[]};
 const uuid = (v: unknown): v is string =>
   typeof v === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(v);
@@ -37,10 +40,10 @@ const fields = (v: unknown, keys: string[]) =>
   !Array.isArray(v) &&
   Object.keys(v).length === keys.length &&
   Object.keys(v).every((k) => keys.includes(k));
-export function parseDeletionLedger(
+function parseLegacyLedger(
   input: unknown,
   now = Date.now(),
-): DeletionLedger {
+): LegacyDeletionLedger {
   const fail = (): never => {
     throw new Error("invalid_deletion_ledger");
   };
@@ -54,7 +57,7 @@ export function parseDeletionLedger(
     ])
   )
     fail();
-  const b = input as DeletionLedger;
+  const b = input as LegacyDeletionLedger;
   if (
     b.schema_version !== 1 ||
     !time(b.exported_at) ||
@@ -150,4 +153,19 @@ export function parseDeletionLedger(
     if (!referencedScopes.has(project.tenant_id+':'+project.id))
       fail();
   return b;
+}
+export function parseDeletionLedger(input:unknown,now=Date.now()):DeletionLedger{
+  const b=input as Record<string,unknown>|null;
+  if(!b||b.schema_version!==2)return parseLegacyLedger(input,now);
+  const fail=():never=>{throw new Error('invalid_deletion_ledger');};
+  if(!fields(b,['schema_version','exported_at','projects','jobs','barriers','retention'])||!Array.isArray(b.retention)||b.retention.length>10000)fail();
+  const base=parseLegacyLedger({schema_version:1,exported_at:b.exported_at,projects:b.projects,jobs:b.jobs,barriers:b.barriers},now);
+  const retention=b.retention as RetentionLedgerEntry[],scopes=new Set<string>(),ids=new Set<string>();
+  for(const row of retention){
+    if(!fields(row,['tenant_id','project_id','raw_days','version','floor','effective_from'])||!uuid(row.tenant_id)||!uuid(row.project_id)||!time(row.effective_from)||ids.has(row.project_id))fail();
+    try{if(retentionCutoff(row,Date.parse(base.exported_at))!==row.effective_from)fail();}catch{fail();}
+    ids.add(row.project_id);scopes.add(row.tenant_id+':'+row.project_id);
+  }
+  for(const p of base.projects)if(!scopes.has(p.tenant_id+':'+p.id))fail();
+  return{...base,schema_version:2,retention};
 }

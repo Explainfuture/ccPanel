@@ -6,6 +6,7 @@ import { lockProjectPrivacy } from "./privacy";
 import { deleteBatch } from "./deletion-service";
 import { digest } from "./security";
 import { parseDeletionLedger } from "./deletion-ledger-format";
+import {recoveredRetention} from './retention-recovery';
 
 function readLedgerInput() {
   const chunks: Buffer[] = [];
@@ -52,12 +53,16 @@ async function run() {
           "SELECT tenant_id,project_id,identity_hash,deletion_job_id,requested_at,blocked_before FROM deletion_barriers ORDER BY project_id,identity_hash",
         )
       ).rows;
+      const hasRetention=(await db.query('SELECT max(version)>=20 AS ready FROM schema_migrations')).rows[0].ready===true;
+      const retention=hasRetention?(await db.query('SELECT tenant_id,id AS project_id,retention_days AS raw_days,retention_version AS version,retention_floor AS floor,project_retention_cutoff(retention_days,retention_floor) AS effective_from FROM projects ORDER BY id LIMIT 10001')).rows:undefined;
+      if(retention&&retention.length>10000)throw new Error('deletion_ledger_budget_exceeded');
       const ledger = {
-        schema_version: 1,
+        schema_version: hasRetention?2:1,
         exported_at: exportedAt,
         projects,
         jobs,
         barriers,
+        ...(retention?{retention}:{}),
       };
       const encoded = JSON.stringify(ledger);
       if (Buffer.byteLength(encoded) > 8 * 1024 * 1024)
@@ -91,6 +96,27 @@ async function run() {
     const text = readLedgerInput();
     const ledger = parseDeletionLedger(JSON.parse(text));
     const ledgerHash = digest(text);
+    const retentionHash=digest('retention:'+ledgerHash);
+    const hasRetention=(await db.query('SELECT max(version)>=20 AS ready FROM schema_migrations')).rows[0].ready===true;
+    if(hasRetention&&ledger.schema_version!==2)throw new Error('retention_ledger_required');
+    if(!hasRetention&&ledger.schema_version===2)throw new Error('retention_schema_required');
+    if(ledger.schema_version===2){
+      const target=(await db.query('SELECT tenant_id,id,retention_days,retention_version FROM projects ORDER BY id LIMIT 10001')).rows;
+      const source=new Map(ledger.retention.map(p=>[p.tenant_id+':'+p.project_id,p]));
+      if(target.length!==source.size||target.some(p=>!source.has(p.tenant_id+':'+p.id)))throw new Error('restore_scope_metadata_missing');
+      for(const p of target){const incoming=source.get(p.tenant_id+':'+p.id)!;if(incoming.version<p.retention_version)throw new Error('retention_ledger_version_stale');if(incoming.version===p.retention_version&&incoming.raw_days!==p.retention_days)throw new Error('retention_ledger_policy_conflict');}
+      for(const p of ledger.retention){
+        if((await db.query('SELECT 1 FROM recovery_import_scopes WHERE ledger_hash=$1 AND tenant_id=$2 AND project_id=$3',[retentionHash,p.tenant_id,p.project_id])).rowCount)continue;
+        await db.query('BEGIN');await lockProjectPrivacy(db,p.project_id,true);
+        const row=(await db.query('SELECT retention_days AS raw_days,retention_version AS version,retention_floor AS floor,clock_timestamp() AS now FROM projects WHERE tenant_id=$1 AND id=$2 FOR UPDATE',[p.tenant_id,p.project_id])).rows[0];
+        if(!row)throw new Error('restore_scope_metadata_missing');
+        const current={raw_days:row.raw_days,version:row.version,floor:row.floor?.toISOString()??null},next=recoveredRetention(current,p,row.now.getTime());
+        await db.query('UPDATE projects SET retention_days=$3,retention_version=$4,retention_floor=$5,privacy_epoch=privacy_epoch+1 WHERE tenant_id=$1 AND id=$2',[p.tenant_id,p.project_id,next.raw_days,next.version,next.floor]);
+        await db.query("UPDATE query_jobs SET status='cancelled',result=NULL,finished_at=clock_timestamp() WHERE tenant_id=$1 AND project_id=$2",[p.tenant_id,p.project_id]);
+        await db.query("INSERT INTO audit_logs(tenant_id,action,details) VALUES($1,'retention_ledger_applied',$2)",[p.tenant_id,JSON.stringify({project_id:p.project_id,source_exported_at:ledger.exported_at,before:current,after:next})]);
+        await db.query('INSERT INTO recovery_import_scopes VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[retentionHash,p.tenant_id,p.project_id]);await db.query('COMMIT');
+      }
+    }
     for (const p of ledger.projects) {
       const found = await db.query(
         "SELECT 1 FROM projects WHERE tenant_id=$1 AND id=$2",
@@ -212,8 +238,8 @@ async function run() {
       "SELECT 1 FROM deletion_jobs WHERE status='failed' LIMIT 1",
     );
     if (failed.rowCount) throw new Error("recovery_cleanup_failed");
-    await db.query("DELETE FROM recovery_import_scopes WHERE ledger_hash<>$1", [
-      ledgerHash,
+    await db.query("DELETE FROM recovery_import_scopes WHERE ledger_hash<>$1 AND ledger_hash<>$2", [
+      ledgerHash,retentionHash,
     ]);
     await db.query(
       "UPDATE recovery_gate SET blocked=false,ledger_exported_at=$1,updated_at=clock_timestamp() WHERE id=true",
