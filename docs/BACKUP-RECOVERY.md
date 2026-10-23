@@ -12,6 +12,10 @@ Kafka 中已确认但尚未写入 PG 的事件不包含在 PG 备份中。本流
 
 ## 操作流程
 
+共享快照源代码 `packages/server/src/backup-snapshot.ts` 是后续在线执行器原语，不替换下列安静窗口流程：只读REPEATABLE READ导出快照，按现有backup-fingerprint.sql范围生成精确文本指纹，持有导出事务直到回调完成。回调须给pg_dump传--snapshot并响应AbortSignal；正常返回前验证导出事务仍在线。超时/连接丢失不得发布成功，schema不符不进入回调。默认120秒，上限30分钟；迁移/DDL互斥仍须由外层部署锁保证。长事务可能增加VACUUM保留压力，不能无限延长。
+
+指纹中的bigint hash保留PG文本，不经过JavaScript JSON number精度转换。该范围不包含recovery_gate/recovery_import_scopes的数据，也不覆盖序列值、角色、整机文件或Kafka；MVCC快照不能用来声称并发序列状态同样是历史时间点。恢复仍须可信最新清单和关闭门禁。
+
 1. 将 `scripts/backup-fingerprint.sql` 放在当前发布目录的 scripts/ 中，以 root 执行 `bash scripts/backup-remote.sh`。输出受限备份目录，不输出凭证。该演练要求安静窗口，前后指纹不同则停止并重试，不宣称完成对账；pg_dump 本身仍使用一致性快照。
 2. 用校验过主机密钥的 SFTP 下载 database.dump、fingerprint.jsonl、completed-at.txt 到受限的离机目录。
 3. 在备份机器运行 `node scripts/encrypt-backup.mjs encrypt INPUT OUTPUT KEY_FILE`。密钥首次生成后复用，输出不得已存在；使用 GCM 验证头部和内容，篡改时不保留解密结果。

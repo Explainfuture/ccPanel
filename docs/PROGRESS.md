@@ -1606,3 +1606,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - disabled结构校验后立即返回0，不检查引用凭证、不联网、不创建文件/密钥。enabled只读检查配置/引用文件元数据；POSIX保护非普通文件/符号链接/过宽权限/大小，Windows ACL未支持则明确失败。即使检查通过仍退出2/transferEnabled=false，主机身份/故障域未验证，执行器尚不可用。
 - 35项针对性测试和typecheck通过，含真实CLI禁用/错误脱敏/无输出目录创建、真实文件长度与Windows权限未验证；POSIX权限/符号链接和完整元数据路径交给Linux CI实际执行。未安装VPS工具或更改013，不将本机检查称传输或自动备份验收。
 - CI Actions39993264980 verify/postgres全部success；Linux实际通过35项新测试，包括POSIX文件权限/符号链接、完整元数据预检仍退出2，及既有构建/测试/PG/进程/打包检查。日志确认68个测试文件通过。未进行真实SSH连接或目的地传输验收。
+
+### 步骤202：共享PG导出快照与实际恢复验收
+
+- 新增withBackupSnapshot：UTC只读REPEATABLE READ、schema绑定、现有指纹关系范围、精确bigint文本、pg_export_snapshot与有界回调生命周期；回调接AbortSignal，超时/连接丢失失败，正常返回前确认事务仍存活。不含传输/发布执行器，不替换线上旧安静窗口脚本。
+- 新增第16套真实PG CI验收：快照后另一连接实际提交insert/update/delete，live指纹必须改变；同快照pg_dump与真实pg_restore后，原指纹及原两条精确记录一致，恢复门禁数据0。另测快照结束后拒绝复用、schema不符拒绝回调、超时中断及导出连接清理。
+- typecheck通过；实际PG17.7导出/恢复与异常路径待CI。CI使用同一个PG17.7服务容器内的客户端，避免宿主pg_dump版本不匹配；仅随机临时DB，不接VPS/真实生产数据。迁移/DDL外层锁、流式有界落盘与可信最新状态自动同步仍待执行器接入。

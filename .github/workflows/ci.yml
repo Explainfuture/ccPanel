@@ -67,4 +67,5 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: node scripts/postgres-ci-check.mjs
         env:
+          CCPANEL_PG_CONTAINER: ${{ job.services.postgres.id }}
           CCPANEL_PG_TEST_URL: postgresql://ccpanel_ci:isolated-ci-fixture-only@127.0.0.1:5432/postgres
