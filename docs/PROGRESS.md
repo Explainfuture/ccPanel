@@ -852,3 +852,13 @@ Worker主路径包装persist、DLQ发布、DLQ索引及Kafka checkpoint，固定
 153项单测、类型/构建通过。Chrome生产构建mock验证大整数、桶比例50/100/25%、无界桶、失败清除/恢复、普通admin无平台请求/面板但保留DLQ、viewer无平台面板、桌面/390px截图已检查，文档无溢出（表格可横滚）。浏览器/本地服务关闭。真实PG新增普通admin403且遥测未读、平台授权后200、撤销403且未再读、me能力变化，待CI。尚未部署，VPS仍m4-observability-003；持久监控/告警与容量门槛仍未完成。
 
 步骤118 CI补充：Actions39886845490（4c1f226）verify/postgres均success，153项单测及5套真实PG控制器通过。实际普通公司admin访问平台汇总403、遥测读取0；显式平台授权后200、me能力true；撤销后403、读取仍1且me能力false。源码权限边界验证通过，尚未升级VPS；下一步优先17→17可信升级并实机验证普通公司admin无法取得平台汇总，不为已有账号自动提权。
+
+### 步骤119：权限修复可信升级与真实SDK/查询监控（已部署预览）
+
+部署m4-telemetry-auth-004/schema17，含115–118及受控演练脚本修正；archive SHA256 8f77816a60c1aad57a74e355ca10a151d4a493cdd817f6f7f51b5d30a9dec4bb，114文件/473091字节。核对旧release、故障服务已结束/无容量服务/ready，禁物理保留后冻结API/Worker。证据/opt/ccpanel/shared/product-upgrade.S3toQg；备份20261023T015941Z-9d1b80fb，93330字节、SHA256 fab4eeb20c775dfca884b80f7f643ac390c1557e8e7af75231d83ecedaacf8eb。工作站AES-GCM密文93366字节、解密逐字节一致、源ledger另加密885字节，回传隔离PG恢复3秒且全表指纹一致。apply后原字段一致、完整性/门禁通过，保留重新开启。
+
+真实HTTPS新合成公司admin的me平台资格false，ingest-status403，本公司DLQ/query-status200。当前Node构建实际文件队列trackFor两名用户，queued-persistent且pending排空/上限1000、身份不混合且无实例匿名关联，flush确认2并清空、shutdown释放锁；复发同载荷202，事件列表仅2个原ID。异步趋势任务真实执行成功，结果value2、query-status成功任务1，页面实际显示完成耗时及统计。
+
+仅给经公司/项目/邮箱标识检查的合成测试账号临时插入平台资格并审计，HTTP平台汇总200且intake实例可读、Chrome真实展示分桶；撤销后me false/HTTP403。浏览器保持旧能力但刷新会清除计量，重载后平台保护/计量均不显示，本公司查询/DLQ仍正常。未更改任何真实账号权限。截图已检查，浏览器关闭；临时平台记录/测试审计、PG公司/用户/会话/事件/查询、两端fixture与浏览器凭证、Node outbox、备份/解密dump和源ledger明文清理；保留分开的密文/密钥。测试审计sequence按两条合成动作前进，不回退序列。
+
+最后原表旧字段/数量指纹一致，仅consumer_progress按2正常+2重复推进：p0=5609、p1=5117，总10726；临时数据库/测试公司0，四服务running、保留true、完整性passed、门禁open、HTTPS ready。Kafka合成消息按流保留存在。本步不是容量/完整回归或故障恢复新认证；schema16持续Swap失败、设备矩阵、持续离机备份/删除事故状态同步、持久监控告警、自助策略及生产HA等门槛仍未完成。
