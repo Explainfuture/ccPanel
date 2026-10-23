@@ -1234,3 +1234,15 @@ VPS当前m4-recovery-008/schema20，先只读检查无容量任务、raw2/dedup3
 清理后原33业务关系不变，升级前993采样/22历史前缀完整保留；raw2/dedup3/DLQ0/operators0、临时库/公司0。PG位点7182/7230合计14412，等于Kafka committed和high，lag0，恰比前版多SDK含重复4条。两个进程collection/retention均true，四容器restart0/OOMfalse、门禁open/ready；旧四告警clear且age7秒。三压力状态与最新API采样instance一致，末次观察当时均clear/revision9、history27（源有效期仍会正常过期）。这不证明连续健康、外部通知或新版完整容量窗口。
 
 临时账号/权限/测试数据和两端dump/解密/源ledger明文已按hash清理，源v2清单密文两端保留，工作站密钥分离；浏览器pressure158关闭。安全摘要.local/pressure158-*、final158/offset158日志和服务端pressure158/product-upgrade.lfSdJw证据留存。候选证明7008a4c的CI39919846525全success（196/13 PG及37保护例），候选归档不随后续文档改写。资源门槛/HA、真实移动设备SDK矩阵、独立外部通知/其余规则和持续异机最新状态同步仍未完成，目标继续进行。
+
+### 步骤159：DLQ即时风险与权限页面（未部署）
+
+d1c7b1e新增PG索引脱敏汇总/两独立规则与双资格dlq-health，fa26c23新增第14套PG/HTTP；c933843接手动页面和共享纯评估验证，cf9e3cd修复手机卡片挤压。包含全部物理保留源（含无归属/过期），回执以公司+项目+source匹配；抑制>成功>重放中>未解决，failed/rejected不解决。pending包括未解决和等回执，>0即触发；12天预警、14天exceeded；零只表示当前索引无保留待处理，非修复证明，也不代表Kafka DLQ/未索引故障全覆盖。90秒TTL/计数精度/未来未知，不增加探测、采样timer或schema。
+
+初次前端类型检查因闭包中的unknown收窄丢失失败，提交前拆分守卫修正。202单测/56文件、类型和构建通过；后端CI39921523326（200/14）与c933843 CI39921858087成功，最终cf9e3cd CI39922202944全success（202/14及37主机保护例）。PG15个来源验证7种回执/优先级/错scope/无归属15天未解决、未来来源未知、无载荷与公司ID、表改名时未授权仍拒绝而授权读通用503、最新资格/角色/移除和跨公司共享12次预算、普通业务读不影响。DLQ/回执行指纹证明只读。
+
+Chrome合成HTTP的双规则、精确9007199254740995、自然过期/2秒延迟不刷新TTL、未知清旧计数、畸形/403/429/503、父平台失败卸载/普通admin不请求、无duplicate key与1280/390全部通过。截图目检后将窄屏大数卡片改单列再复验，证据.local/dlq159-*；浏览器dlq159/dlq159b和Vite已关闭。
+
+VPS只读挂载新bundle，在独立临时schema21 PG运行同SQL/Hono factory专项。第一次容器因release009没有嵌套scripts/validation空挂载点而启动失败；trap清理临时库/env，补目录并核对stage归档字节后重跑成功，未替换运行文件/重建服务。证据dlq-health-check.ZKOSXE，test log SHA 0417dd0a386aa7ff9306bee67f6f47bc10fef796b4c22a1302cb5795a90c1b77，归档SHA见OBSERVABILITY。最终37个非动态监控关系全同，schema21/raw2/dedup3/DLQ0/operators0、位点7182/7230、临时库/凭证/一次性容器0，四容器running/restart0/OOMfalse且HTTPSready，安全摘要.local/dlq159-final-preservation.json。
+
+新接口/页面仅源码及隔离验收，线上仍m4-pressure-009。DLQ风险持久化/独立外部通知、备份规则、自动异机最新状态同步、资源/HA/设备矩阵等仍未完成，目标继续进行。

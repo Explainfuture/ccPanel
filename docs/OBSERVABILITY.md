@@ -203,3 +203,17 @@ VPS只读确认m4-recovery-008/schema20、无活动容量任务后，独立stage
 实际HTTPS/Node SDK两用户各1事件＋原ID重复、同步可见与后台趋势2，SQL精确ID raw/dedup/jobs/聚合贡献2、DLQ0；普通公司admin压力/平台接口403。临时受审计运维grant后真实压力读200/no-store，三状态/历史来自运行API采样；过期读current unknown，源有效期内可clear，均保持当时状态。Chrome真实HTTPS两张表、桌面/390截图、撤权立即403清数据与重载隐藏通过，临时账号和授权已清理。
 
 最后观察33原业务关系不变，993原采样/22原告警历史前缀保留；PG/Kafka committed/high7182/7230、lag0，含重复的4条测试消息有完整去向。原四告警clear/age7秒，三压力当时clear、当前API instance匹配，history27；两进程采集/清理true，四容器restart0/OOMfalse、恢复/消费门禁正常、HTTPSready。压力历史采样仍可能出现gap/当前未知，外部通知未实现。此前schema19容量窗口的Swap门槛失败不能因这次冒烟通过而消失，新版未重跑完整容量，不宣称生产吞吐/连续健康。
+
+## 步骤159：平台DLQ即时风险（源码验收，未部署）
+
+新增dlq-health受保护只读接口与手动面板，scope为platform_dlq_index，表示PG来源索引的跨公司脱敏汇总，不能证明Kafka DLQ完整或所有未索引故障已发现。沿用公司admin且当前有效platform_operator双资格/事务内FOR SHARE，不合资格不查询全局DLQ；禁止query参数、no-store，与历史接口共享每API进程每用户12/min预算，SQL1秒/锁200ms，失败503并清旧数据，不推断健康。
+
+分类沿用suppressed优先于stored/duplicate成功回执，再优先queued/published重放中，failed/rejected仍未解决；回执必须与来源公司/项目/记录ID全匹配。无归属来源照常计入，全局按物理仍保留的索引行计算，包括已超过14天的记录，避免逻辑过滤后假装无积压。不返回payload、reason文本、公司/项目/来源标识；只有固定四分类数量、最老待处理时间/年龄和两个固定规则。
+
+未解决+重放中合计>0即dlq_pending触发；最老待处理源达到12天触发dlq_retention_risk，达到14天区分window_exceeded。12天为当前固定预警策略，给目标14天保留留出余量，不是Kafka按字节容量实际保证。零待处理只表示当前索引未发现，不等于已修复；物理清理也会让来源消失，持久事故追踪/通知仍待接入。计数BigInt字符串，缺失/畸形/未来采样/未来来源/过期均unknown，90秒源TTL不随读取刷新。
+
+前端复用同一纯评估器校验响应，手动读取、不自动轮询，扣完整网络等待、本地过期和visibility校正，畸形/失权/429/错误清旧表，父平台失败或资格消失卸载，项目key隔离。桌面两列/手机单列大整数卡片，宽表可聚焦横向滚动，文字/live status区分状态。Chrome合成API精度、双触发、到期/2秒延迟、未来记录清计数、错误、普通admin不请求和1280/390截图通过并已查看；初版手机卡片虽无文档溢出仍挤压标签，cf9e3cd单独修复再全流程复验。
+
+最终CI39922202944成功：202单测/56文件、类型/构建/SDK/CLI/Python及14套真实PG。新增真实HTTP覆盖所有7种重放状态/优先级、错公司回执不解决、无归属和15天来源仍触发、未来记录未知、响应无载荷/公司标识、读取不修改行、最新撤权/成员/共享限流；临时重命名索引表证明拒绝者不查询该表，合资格读SQL失败仅返回通用503。
+
+VPS隔离验收归档SHA 929f5acb750cf8b3596b91505822c9869ae5403ad9e1977c7514dd6534f2f5b9，stage validation-dlq159，只在新临时PG运行SQL/认证Hono factory，非公开Nginx新端点。首次因新release缺scripts/validation挂载目录在容器启动前失败，trap清库/凭证；补空目录并核对归档字节后重跑通过。证据dlq-health-check.ZKOSXE；37个主库非动态监控关系指纹一致，root schema21/raw2/dedup3/DLQ0/operators0、位点7182/7230，临时库/凭证/一次性容器0，四服务restart0/OOMfalse/ready。新功能尚未发布，线上仍m4-pressure-009；DLQ风险持久历史与独立外部通知、备份等规则仍待实现。
