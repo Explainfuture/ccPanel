@@ -5,6 +5,9 @@ import { registerReportRoutes } from '../../../packages/server/src/report-routes
 import {ReportError} from '../../../packages/server/src/report-spec';
 import {InvalidQuery} from '../../../packages/server/src/query-spec';
 import {QuerySnapshotError} from '../../../packages/server/src/query-snapshot';
+import {registerRetentionRoutes} from '../../../packages/server/src/retention-routes';
+import {ProjectRetentionError} from '../../../packages/server/src/project-retention';
+import {RetentionPolicyError} from '../../../packages/server/src/retention-policy';
 import { registerBehaviorRoutes } from '../../../packages/server/src/behavior-routes';
 import { registerSchemaRoutes } from '../../../packages/server/src/schema-routes';
 import { registerUserRoutes } from '../../../packages/server/src/user-routes';
@@ -72,6 +75,7 @@ export function createApp(deps: AppDeps) {
     return b.count <= max;
   }
   app.onError((e, c) => {
+    if(e instanceof ProjectRetentionError||e instanceof RetentionPolicyError)return c.json({error:e.message},e.status);
     if(e instanceof QuerySnapshotError){if(e.status===429)c.header('Retry-After','1');return c.json({error:e.message},e.status);}
     if(e instanceof ReportError)return c.json({error:e.message},e.status);
     if(e instanceof InvalidQuery)return c.json({error:e.message},400);
@@ -604,6 +608,7 @@ export function createApp(deps: AppDeps) {
     });
   });
   registerReportRoutes(app);
+  registerRetentionRoutes(app,rate);
   registerBehaviorRoutes(app);
   registerSchemaRoutes(app);
   registerUserRoutes(app);
