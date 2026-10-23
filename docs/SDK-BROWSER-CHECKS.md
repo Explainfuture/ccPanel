@@ -41,3 +41,15 @@ npx --yes --package @playwright/cli playwright-cli -s=sdk177 close
 脚本不注册 Playwright route、不替换 navigator、不修改时钟或派发生命周期事件。真实同源导航后，检查接收端回执以及初始化 SDK 前的原 IndexedDB 记录。2026-10-23 Chrome 155.0.8059.85 实测 passed=true，可信 pagehide/persisted=false，接收端收到退出请求 1（Sec-Fetch-Mode=no-cors）和恢复请求 1（cors）；两者完整事件相同。退出接收端即使返回 202，本地记录仍存在；只有恢复普通请求精确确认后才 count=0。源码和构建 hash 与步骤 175 相同。浏览器和接收端已终止。
 
 这补充了本机真实 HTTP 的退出接收证据；保留步骤 176 的未观察到事实，不将该旧拦截测试改记为成功接收。接收端为合成回执服务，没有 Kafka/PG 幂等落库；不等于公网、真实 OS 关窗/强杀、BFCache 或全设备矩阵。
+
+## VPS HTTPS → Kafka → PostgreSQL（步骤 178）
+
+2026-10-23 使用最新本地 Browser 构建（步骤 175 的 SHA256），服务器保持 m4-trends-012/schema22，没有发布替换。先确认 ready 和资源（可用内存约 322MiB），保存原表指纹及消费位点，再通过 load-fixture.mjs 创建隔离公司；只把该项目允许来源设为 http://127.0.0.1:5197。凭证通过 SSH 存本地私有 .local/browser178-fixture.json，未提交或输出。
+
+可复用检查代码：browser-sdk-vps-origin.mjs 提供固定本机页面/SDK/公开写凭证（不提供登录密码）；browser-sdk-vps-pagehide.cjs 在独立 Chrome 会话持久排队一条显式昨天业务时间的合成事件，然后实际导航；browser-sdk-vps-verify.mjs 使用临时账号从真实公司 API 查询，**必须在恢复 SDK 前**确认原 ID 和业务时间可见；browser-sdk-vps-recover.cjs 先读 IndexedDB，再恢复普通发送。文件名 browser178-* 是该次隔离验收工作文件，不是生产配置。运行前必须新建隔离夹具、核对 PUBLIC_ORIGIN 和项目 origins；不要使用真实公司凭证或在共享浏览器会话运行。验证失败须保留证据再清理，不得复用旧夹具冒充新测试。
+
+实测 Chrome 155.0.8059.85：原生 pagehide isTrusted=true/persisted=false；VPS 在新页面初始化 SDK 前即显示事件，event_time=2026-10-22T11:26:14.231Z。导航后 IndexedDB 仍为 1，恢复普通 confirmed=1/pending=0。无 Playwright 网络拦截、无时钟模拟、无 navigator 包装。
+
+服务端以客户端原 ID 精确验证 raw/dedup/jobs 各 1，processed=1、bucket_events=1、DLQ=0。ID 集合 SHA256 `434f3465962da4e4a74b91857a4b60ddefc718ded354f3facb8776aa8659fad3`。消费总位点 15614→15616，两个分区 7725/7891，PG=Kafka committed=high，lag=0。清理临时公司、登录会话和两端夹具后，33 个原业务关系指纹一致、临时公司 0、HTTPS ready；浏览器与本机服务均终止。Kafka 仍按保留策略保存历史合成消息，不宣称物理抹除。
+
+本次仅一条唯一事件、两次上报，不是容量测试，也未覆盖 sendBeacon false、操作系统强杀、全部浏览器/真实移动设备、BFCache 或公网故障矩阵。不会据此通过完整 A05/容量门槛。

@@ -1429,3 +1429,10 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 新增仅监听 loopback、固定资源路径和有界内存回执的合成 HTTP 接收端，以及不拦截网络/不包装 navigator/不模拟时钟的原生导航脚本。
 - Chrome 155.0.8059.85 passed=true：可信 pagehide/persisted=false；实际退出 HTTP 请求 1/no-cors，恢复请求 1/cors，事件 ID/时间/载荷逐字相同。接收端退出 202 不删除真实 IndexedDB 记录，恢复普通精确 202 后清空。强化模式断言后重跑通过；node 语法检查通过。
 - 本机接收证据补足步骤 176 的观察缺口，但不改记旧结果。没有 Kafka/PG、未上 VPS、未覆盖真实关窗/强杀/BFCache/全设备矩阵。浏览器和接收进程已关闭，回执仅内存且随进程结束清除；VPS 012 和容量结论不变。
+
+### 步骤 178：真实 Browser → VPS → Kafka/PG 导航补发验收
+
+- 服务器仍为 012/schema22，先 ready/资源检查及指纹基线，再建隔离公司并允许本机测试来源。Chrome 155 真实 pagehide 发送显式昨天业务时间事件；不拦截网络、不改写时钟或 navigator。在新页恢复 SDK 前，通过真实 API 查到原 ID/时间，证明该次退出上报经过线上消费。
+- 导航后真实 IndexedDB 仍有 1，普通恢复 confirmed=1/pending=0。客户端原 ID 精确对账 raw/dedup/jobs 各 1、processed/bucket 1、DLQ0；集合 SHA256 434f3465962da4e4a74b91857a4b60ddefc718ded354f3facb8776aa8659fad3。总位点 15614→15616，PG=Kafka committed=high 7725/7891，lag0。
+- 清理后 33 个原业务关系指纹保持一致，临时公司 0，HTTPS ready。两端夹具/登录会话清理、专用浏览器及本机服务关闭；Kafka 保留期消息不作物理抹除声明。新增可复用四段测试代码及操作/范围说明，语法检查通过。
+- 本次仅一条唯一事件两次上报，不是容量窗口，不通过完整 A05/设备/故障矩阵；VPS 未重启或换版。源码 SDK 自定义业务时间、导航补发与线上去重链路的这一个场景已验证。
