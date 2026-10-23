@@ -1423,3 +1423,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 新增 scripts/browser-sdk-pagehide-recovery.cjs，经真实导航而非手动 dispatch/beacon 触发 Chrome 155.0.8059.85 生命周期。pagehide isTrusted=true/persisted=false；包装仅记录原生 sendBeacon 返回值并委托原实现，queued=true。
 - 退出请求未被 Playwright 拦截器观察到（初次等待 30 秒超时，context route 复核仍为 0）；不认定退出送达或推断必然未发。分开报告 native_beacon_queued 与 exit_delivery_proven，scope 仅为生命周期及未确认恢复。
 - 导航后直接读取真实 IndexedDB：原事件仍在；再初始化 SDK，普通 202 后清空，恢复请求 1，完整事件 ID/时间/载荷逐字相同。无模拟时钟，接收端仍为路由模拟。node --check 通过；原生生命周期/恢复断言通过，不通过完整设备矩阵或 A05。浏览器/本地服务关闭；VPS 012 未变。
+
+### 步骤 177：本机真实 HTTP 接收退出批次
+
+- 新增仅监听 loopback、固定资源路径和有界内存回执的合成 HTTP 接收端，以及不拦截网络/不包装 navigator/不模拟时钟的原生导航脚本。
+- Chrome 155.0.8059.85 passed=true：可信 pagehide/persisted=false；实际退出 HTTP 请求 1/no-cors，恢复请求 1/cors，事件 ID/时间/载荷逐字相同。接收端退出 202 不删除真实 IndexedDB 记录，恢复普通精确 202 后清空。强化模式断言后重跑通过；node 语法检查通过。
+- 本机接收证据补足步骤 176 的观察缺口，但不改记旧结果。没有 Kafka/PG、未上 VPS、未覆盖真实关窗/强杀/BFCache/全设备矩阵。浏览器和接收进程已关闭，回执仅内存且随进程结束清除；VPS 012 和容量结论不变。

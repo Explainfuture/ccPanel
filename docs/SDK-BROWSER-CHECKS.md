@@ -25,3 +25,19 @@
 2026-10-23 Chrome 155.0.8059.85 实测：isTrusted=true、persisted=false，原生 beacon queued=true；拦截器观察到退出请求为 0，恢复请求为 1。因此只证明原生生命周期调用及未确认持久恢复，**退出送达未证实**。退出请求未观察到不证明服务器收到，也不证明浏览器必然未发。初版等待退出请求 30 秒超时；保留该事实，并改为分别报告原生排队与接收证据，未将 queued=true 当送达。
 
 真实 IndexedDB 中的原事件在导航后保留，新页面普通发送使用相同 ID/时间/完整载荷，精确 202 后 count=0。测试未修改时钟；不是操作系统关闭/强杀、BFCache 或真实移动设备验证。源码仍为 b54da1b 对应 SDK 构建，VPS 仍为 012。专用浏览器和本地服务已关闭。Result passed 仅表示其 scope 指定的生命周期与持久恢复断言，exit_delivery_proven 独立报告，不能用它通过完整 A05 或设备矩阵。
+
+## 无拦截的本机 HTTP 接收验证（步骤 177）
+
+先 `pnpm build`，单独终端执行 `node scripts/browser-sdk-native-receiver.mjs`，只监听 127.0.0.1:5196。接收端只提供固定测试页面、已构建 SDK、合成事件接收和按项目读取的内存回执；不暴露仓库目录、不写磁盘、不调用外部服务。请求体限 64KiB、内存回执限 100 项；结束后关闭接收进程即清除回执。
+
+打开专用会话并运行：
+
+```powershell
+npx --yes --package @playwright/cli playwright-cli -s=sdk177 open http://127.0.0.1:5196 --browser chrome
+npx --yes --package @playwright/cli playwright-cli -s=sdk177 run-code --filename scripts/browser-sdk-native-pagehide.cjs
+npx --yes --package @playwright/cli playwright-cli -s=sdk177 close
+```
+
+脚本不注册 Playwright route、不替换 navigator、不修改时钟或派发生命周期事件。真实同源导航后，检查接收端回执以及初始化 SDK 前的原 IndexedDB 记录。2026-10-23 Chrome 155.0.8059.85 实测 passed=true，可信 pagehide/persisted=false，接收端收到退出请求 1（Sec-Fetch-Mode=no-cors）和恢复请求 1（cors）；两者完整事件相同。退出接收端即使返回 202，本地记录仍存在；只有恢复普通请求精确确认后才 count=0。源码和构建 hash 与步骤 175 相同。浏览器和接收端已终止。
+
+这补充了本机真实 HTTP 的退出接收证据；保留步骤 176 的未观察到事实，不将该旧拦截测试改记为成功接收。接收端为合成回执服务，没有 Kafka/PG 幂等落库；不等于公网、真实 OS 关窗/强杀、BFCache 或全设备矩阵。
