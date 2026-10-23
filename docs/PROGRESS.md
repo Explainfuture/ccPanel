@@ -1404,3 +1404,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 本地入队七天 TTL 与业务时间有效范围独立，未改写入队时间或延长服务端有效期。新增 Memory/IndexedDB 过期不发送且只计一次、回调抛错、快照不可改写内部计数、授权变更保持诊断及存储故障内存降级测试，既有预算压力用例验证两种拒绝分别计数。
 - 223 项测试、typecheck、build、两个 pnpm tarball 仓库外验证通过；网络 stub、IndexedDB 为 fake-indexeddb。本步骤未发布 npm 或替换 VPS 012，容量门槛保持未通过。
 - CI Actions 39944061588 的 verify 与 postgres 均 success（223 项测试、15 套真实 PG 集成及既有部署保护检查）。
+
+### 步骤 174：退出快照遵守本地 TTL
+
+- 查明普通 flush 会 expire，但旧退出快照只保存事件内容，长时间挂起可使 sendBeacon 绕过七天本地队列 TTL。改为有界事件加 created 元数据；新事件异步写入前记录保守时间，flush 恢复快照使用队列原始 created，不修改事件载荷和 ID。
+- beacon 仅同步过滤过期记录，不读取 IndexedDB、不把过滤视为确认或清理、不提前累计 expired；普通过期清理统一计数。destroy 后不再允许手动 beacon 发送。仍保持每隐藏周期最多一次及无确认不删除。
+- 227 项测试、typecheck、build 和两个 pnpm tarball 仓库外检查通过。覆盖新旧混合、全过期、七天精确边界、恢复快照在失败 flush 后继续老化、过期只计一次及 destroy。网络/beacon 为 stub，IndexedDB 为 fake-indexeddb；不是设备矩阵或线上验收。VPS 保持 012、容量仍未通过。

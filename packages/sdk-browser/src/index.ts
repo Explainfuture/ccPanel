@@ -20,7 +20,7 @@ export class Analytics {
   private anonymous='';private user:string|undefined;
   private timer:ReturnType<typeof setInterval>|undefined;
   private flight:Promise<{confirmed:number;pending:number}>|undefined;
-  private snapshot:AnalyticsEvent[]=[];
+  private snapshot:{event:AnalyticsEvent;created:number}[]=[];
   private hiddenSent=false;private paused=false;private lastError:string|undefined;private epoch=0;
   private owner=crypto.randomUUID();private identityKey:string;
   private consentKey:string;
@@ -120,12 +120,12 @@ export class Analytics {
     if(this.pendingBytes+eventBytes>(this.queue.persistent?5*1024*1024:512*1024)){this.error('rejected_pending_overflow');return{status:'rejected',reason:'rejected_pending_overflow'};}
     this.pendingWrites++;this.pendingBytes+=eventBytes;
     try{
-      if(this.snapshot.length<this.batchSize&&byteLength(this.envelope([...this.snapshot,event]))<=limits.batchBytes)this.snapshot.push(event);
+      if(this.snapshot.length<this.batchSize&&byteLength(this.envelope([...this.snapshot.map(r=>r.event),event]))<=limits.batchBytes)this.snapshot.push({event,created:Date.now()});
       let stored=false;
       try{stored=await this.queue.add(event,this.queue.persistent?1000:100,this.queue.persistent?5*1024*1024:512*1024);}
       catch{this.needsRecovery=true;this.error('storage_error');stored=await this.memory.add(event,100,512*1024);}
       if(!this.hasConsent()||version!==this.epoch){await this.queue.finish([event.event_id],'');await this.memory.finish([event.event_id],'');return{status:'rejected',reason:'consent_revoked'};}
-      if(!stored){this.snapshot=this.snapshot.filter(e=>e.event_id!==event.event_id);this.error('rejected_overflow');return{status:'rejected',reason:'rejected_overflow'};}
+      if(!stored){this.snapshot=this.snapshot.filter(r=>r.event.event_id!==event.event_id);this.error('rejected_overflow');return{status:'rejected',reason:'rejected_overflow'};}
       const status=this.queue.persistent&&!(await this.memory.peek(100)).some(r=>r.event.event_id===event.event_id)?'queued-persistent':'queued-memory';
       const stats=await this.getQueueStatus();if(stats.count>=this.batchSize||stats.bytes>=limits.batchBytes)queueMicrotask(()=>void this.flush());
       return{status,event_id:event.event_id};
@@ -220,13 +220,22 @@ export class Analytics {
         }
       }catch{await q.finish(ids,this.owner,retryAt).catch(()=>this.error('storage_error'));this.error('network_or_ack_error');}
     }
-    const current:AnalyticsEvent[]=[];
-    for(const q of await this.stores())try{for(const r of await q.peek(this.batchSize)){if(current.length<this.batchSize&&byteLength(this.envelope([...current,r.event]))<=limits.batchBytes)current.push(r.event);}}catch{this.error('storage_error');}
+    const current:{event:AnalyticsEvent;created:number}[]=[];
+    for(const q of await this.stores())try{for(const r of await q.peek(this.batchSize)){if(current.length<this.batchSize&&byteLength(this.envelope([...current.map(row=>row.event),r.event]))<=limits.batchBytes)current.push({event:r.event,created:r.created});}}catch{this.error('storage_error');}
     // Do not replace the exit snapshot while a track write is still in progress.
     if(!this.pendingWrites)this.snapshot=current;
     return{confirmed,pending:(await this.getQueueStatus()).count};
   }
-  beacon(){if(!this.hasConsent()||this.paused||this.hiddenSent||!this.snapshot.length||typeof navigator==='undefined'||!navigator.sendBeacon)return false;this.hiddenSent=true;return navigator.sendBeacon(this.options.endpoint,new Blob([JSON.stringify(this.envelope(this.snapshot))],{type:'text/plain;charset=UTF-8'}));}
+  beacon(){
+    if(!this.hasConsent()||!this.running||this.paused||this.hiddenSent||!this.snapshot.length||typeof navigator==='undefined'||!navigator.sendBeacon)return false;
+    // Exit must stay synchronous. Keep queue creation time in the bounded snapshot
+    // so a suspended page cannot bypass local TTL without an IndexedDB read.
+    // Actual expiry deletion/counters remain owned by the ordinary queue sweep.
+    const cutoff=Date.now()-limits.ttl,events=this.snapshot.filter(row=>row.created>=cutoff).map(row=>row.event);
+    if(!events.length)return false;
+    this.hiddenSent=true;
+    return navigator.sendBeacon(this.options.endpoint,new Blob([JSON.stringify(this.envelope(events))],{type:'text/plain;charset=UTF-8'}));
+  }
   destroy(){this.running=false;if(this.timer)clearInterval(this.timer);for(const fn of this.cleanup)fn();this.cleanup=[];}
 }
 export type EventMap=Record<string,Record<string,Json>>;
