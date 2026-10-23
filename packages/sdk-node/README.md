@@ -43,3 +43,5 @@ await shared.shutdown();
 传入稳定、非空、最多256字符的业务用户ID，不使用姓名或电子邮件代替。服务端须从自身已验证的业务上下文取得用户ID；该接口不负责业务登录鉴权。它沿用实例的项目/凭证，不是跨公司切换入口。授权撤回、属性隐私过滤和运行时事件校验仍然有效，泛型仍约束事件名及必填属性。
 
 SDK和整个平台尚未通过完整PRD发布门槛；ESM类型/包导入验收不等于生产容量、真实设备或全部故障模型通过。
+
+业务时间支持 `track(name, properties, { event_time })` 及 `trackFor(userId, name, properties, { event_time })`，例如 `shared.trackFor('opaque-user-A', 'order_paid', { amount: 10 }, { event_time: new Date(paidAt).toISOString() })`。必须是带 Z 的 UTC 字符串，校验过去七天/未来五分钟范围；不传使用调用时刻。无效值返回 rejected/invalid_event_time 并触发 onError。文件恢复、网络重试保留原 ID、身份与时间；服务端接收时再次校验，不提供绕过有效期的历史导入。时间选项属于独立参数，不会被 properties 的隐私过滤或白名单误删。

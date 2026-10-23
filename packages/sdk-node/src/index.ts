@@ -1,6 +1,6 @@
 import { mkdir,open,rename,readFile,unlink } from 'node:fs/promises';
 import { dirname,resolve } from 'node:path';
-import { Analytics,type AnalyticsOptions,type EventMap,type TypedAnalytics,type TrackResult } from '../../sdk-browser/src/index.js';
+import { Analytics,type AnalyticsOptions,type EventMap,type TypedAnalytics,type TrackResult,type TrackOptions } from '../../sdk-browser/src/index.js';
 import { MemoryQueue,type QueueRow,type RestoredRow } from '../../sdk-browser/src/queue.js';
 import { validateEvent,type AnalyticsEvent,type Json } from '../../schema/src/index.js';
 export class FileQueue extends MemoryQueue {
@@ -70,13 +70,14 @@ export class FileQueue extends MemoryQueue {
     return this.closing=(async()=>{await this.chain;try{await this.ready;}finally{await this.releaseLock();}})();
   }
 }
+export type {TrackOptions} from '../../sdk-browser/src/index.js';
 export type NodeOptions=Omit<AnalyticsOptions,'source'|'queue'>&{outboxPath?:string};
 class NodeAnalytics extends Analytics{
-  trackFor(distinctId:string,name:string,properties:Record<string,Json>={}){return this.trackWithIdentity(name,properties,distinctId);}
+  trackFor(distinctId:string,name:string,properties:Record<string,Json>={},options?:TrackOptions){return this.trackWithIdentity(name,properties,distinctId,undefined,options);}
 }
-export type NodeClient=Analytics&{trackFor(distinctId:string,name:string,properties?:Record<string,Json>):Promise<TrackResult>;shutdown():Promise<void>};
+export type NodeClient=Analytics&{trackFor(distinctId:string,name:string,properties?:Record<string,Json>,options?:TrackOptions):Promise<TrackResult>;shutdown():Promise<void>};
 export type TypedNodeClient<Events extends EventMap>=TypedAnalytics<Events>&{
-  trackFor<Name extends Extract<keyof Events,string>>(distinctId:string,name:Name,...args:{} extends Events[Name]?[properties?:Events[Name]]:[properties:Events[Name]]):Promise<TrackResult>;
+  trackFor<Name extends Extract<keyof Events,string>>(distinctId:string,name:Name,...args:{} extends Events[Name]?[properties?:Events[Name],options?:TrackOptions]:[properties:Events[Name],options?:TrackOptions]):Promise<TrackResult>;
   shutdown():Promise<void>;
 };
 export function createNodeAnalytics(options:NodeOptions):NodeClient;

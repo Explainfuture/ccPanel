@@ -8,6 +8,7 @@ export interface AnalyticsOptions {
   propertyAllowlist?:Readonly<Record<string,readonly string[]>>;
   onError?:(code:string,details?:{event_ids:string[]})=>void;source?:'browser'|'node';
 }
+export interface TrackOptions{event_time?:string}
 export interface TrackResult{status:'queued-persistent'|'queued-memory'|'rejected';event_id?:string;reason?:string}
 const sensitive=/password|secret|token|authorization|cookie|phone|email/i;
 export class Analytics {
@@ -73,15 +74,23 @@ export class Analytics {
     this.anonymous=crypto.randomUUID();this.user=undefined;this.saveIdentity();
   }
   private saveIdentity(){if(!this.hasConsent())return;try{if(typeof localStorage!=='undefined')localStorage.setItem(this.identityKey,JSON.stringify({anonymous:this.anonymous,user:this.user}));}catch{this.error('identity_storage_error');}}
-  async track(name:string,properties:Record<string,Json>={}):Promise<TrackResult>{
-    return this.trackWithIdentity(name,properties,this.user||this.anonymous,this.anonymous);
+  async track(name:string,properties:Record<string,Json>={},options?:TrackOptions):Promise<TrackResult>{
+    return this.trackWithIdentity(name,properties,this.user||this.anonymous,this.anonymous,options);
   }
   // Snapshot caller-provided identities without mutating the instance identity.
   // Node request handlers use this path so concurrent users cannot overwrite it.
-  protected async trackWithIdentity(name:string,properties:Record<string,Json>,distinctId:string,anonymousId?:string):Promise<TrackResult>{
+  protected async trackWithIdentity(name:string,properties:Record<string,Json>,distinctId:string,anonymousId?:string,options?:TrackOptions):Promise<TrackResult>{
     if(!this.hasConsent()||!this.running)return{status:'rejected',reason:'consent_required'};
     if(this.pendingWrites>=(this.queue.persistent?1000:100)){this.error('rejected_pending_overflow');return{status:'rejected',reason:'rejected_pending_overflow'};}
     const version=this.epoch;
+    // Capture business time before any async storage work. Retry never rebuilds it.
+    let eventTime:string;
+    try{
+      if(options!==undefined&&(!options||typeof options!=='object'||Array.isArray(options)||Object.getPrototypeOf(options)!==Object.prototype||Object.keys(options).some(k=>k!=='event_time')))throw new Error('invalid_event_time');
+      const supplied=options?.event_time;
+      eventTime=supplied===undefined?new Date().toISOString():supplied;
+      if(typeof eventTime!=='string')throw new Error('invalid_event_time');
+    }catch{this.error('invalid_event_time');return{status:'rejected',reason:'invalid_event_time'};}
     // Freeze the payload before the first await so identity changes and caller mutation cannot rewrite it.
     let event:AnalyticsEvent;
     try{
@@ -95,7 +104,7 @@ export class Analytics {
       }
       const context:Record<string,Json>={sdk:'ccpanel',version:'0.1.0',source:this.options.source||'browser'};
       if(typeof location!=='undefined')context.page=location.pathname;
-      event={event_id:crypto.randomUUID(),event_name:name,distinct_id:distinctId,anonymous_id:anonymousId,event_time:new Date().toISOString(),properties,context,schema_version:1};
+      event={event_id:crypto.randomUUID(),event_name:name,distinct_id:distinctId,anonymous_id:anonymousId,event_time:eventTime,properties,context,schema_version:1};
       const invalid=validateEvent(event)||(name==='$identify'&&!anonymousId?'missing_anonymous_id':undefined);if(invalid){this.error(invalid);return{status:'rejected',reason:invalid};}
       event=JSON.parse(JSON.stringify(event));
       // Default privacy filter applies recursively without touching the caller's object.
@@ -217,7 +226,7 @@ export class Analytics {
 }
 export type EventMap=Record<string,Record<string,Json>>;
 export type TypedAnalytics<Events extends EventMap>=Omit<Analytics,'track'>&{
-  track<Name extends Extract<keyof Events,string>>(name:Name,...args:{} extends Events[Name]?[properties?:Events[Name]]:[properties:Events[Name]]):Promise<TrackResult>;
+  track<Name extends Extract<keyof Events,string>>(name:Name,...args:{} extends Events[Name]?[properties?:Events[Name],options?:TrackOptions]:[properties:Events[Name],options?:TrackOptions]):Promise<TrackResult>;
 };
 export function createAnalytics(options:AnalyticsOptions):Analytics;
 export function createAnalytics<Events extends EventMap>(options:AnalyticsOptions):TypedAnalytics<Events>;

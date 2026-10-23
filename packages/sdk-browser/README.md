@@ -23,3 +23,5 @@ getQueueStatus新增`pending_writes`、`pending_bytes`、`pending_limit_count`�
 可选 `propertyAllowlist` 按事件名限制顶层 properties，例如 `{ checkout_started: ['product_id', 'amount'], button_clicked: ['button'] }`。一旦配置，未列出的事件仍可上报，但 properties 为空；未批准字段不会被读取或写入队列。配置在初始化时复制，后续修改原对象不会扩大采集范围。嵌套敏感键过滤始终保留，白名单不能绕过密码/令牌等过滤；它不控制身份或 SDK 的固定上下文字段。最多配置 1000 个事件，每事件最多 100 个属性键。Node SDK 使用相同选项和语义。
 
 事件字符串和属性键必须兼容 PostgreSQL UTF-8/JSONB：拒绝 NUL 和未配对的 UTF-16 代理项，正常中文与 Emoji 可用。被拒绝的事件返回明确状态，不进入无限数据库重试。
+
+业务时间可作为第三个参数传入，例如 `track('order_paid', { amount: 10 }, { event_time: new Date(paidAt).toISOString() })`。不传则使用调用时刻；时间必须为带 `Z` 的 UTC 字符串，按现有协议校验（最多过去七天、最多未来五分钟）。无效时间返回 `rejected/invalid_event_time` 并触发 onError，不入队。时间在首次异步等待前冻结，重试及本地恢复保留原时间和 ID；服务端接收时仍会再次校验，因此长期离线可能过期。空属性事件可以传 `undefined` 占位后再传时间选项。该参数不改变用户身份，也不改变接收时间 received_at。

@@ -75,7 +75,7 @@ try:
         (consumer / (kind + '.ts')).write_text("""import {%s} from '@ccpanel/sdk-%s';
 type Events={purchase:{amount:number}};
 const client=%s<Events>({endpoint:'https://consumer.invalid/v1/batch',projectId:'fixture',writeKey:'fixture',consent:false});
-void client.track('purchase',{amount:1});
+void client.track('purchase',{amount:1},{event_time:new Date().toISOString()});
 // @ts-expect-error business event property remains typed
 void client.track('purchase',{amount:'wrong'});
 // @ts-expect-error undeclared event name remains rejected
@@ -87,7 +87,7 @@ client.destroy();
         if kind == 'node':
             with (consumer / 'node.ts').open('a', encoding='utf-8') as source:
                 source.write("""
-void client.trackFor('user-A','purchase',{amount:1});
+void client.trackFor('user-A','purchase',{amount:1},{event_time:new Date().toISOString()});
 // @ts-expect-error per-event identity preserves property types
 void client.trackFor('user-B','purchase',{amount:'wrong'});
 // @ts-expect-error per-event identity preserves required properties
@@ -117,7 +117,7 @@ try{await client.flush();const queued=await client.track('purchase',{amount:1});
 assert.equal(existsSync(outbox+'.lock'),false);
 const scopedEvents=[],scopedOutbox=resolve('scoped-outbox.json');
 const shared=createNodeAnalytics({...options,outboxPath:scopedOutbox,fetch:async(_url,init)=>{const events=JSON.parse(init.body).events;scopedEvents.push(...events);return Response.json({accepted_event_ids:events.map(e=>e.event_id)},{status:202});}});
-try{await shared.flush();const results=await Promise.all([shared.trackFor('user-A','purchase',{amount:1}),shared.trackFor('user-B','purchase',{amount:2})]);assert.ok(results.every(r=>r.status==='queued-persistent'));await shared.flush();assert.deepEqual(scopedEvents.map(e=>e.distinct_id),['user-A','user-B']);assert.deepEqual(scopedEvents.map(e=>e.event_id),results.map(r=>r.event_id));assert.ok(scopedEvents.every(e=>!('anonymous_id' in e)));assert.equal((await shared.getQueueStatus()).count,0);}finally{await shared.shutdown();}
+try{await shared.flush();const results=await Promise.all([shared.trackFor('user-A','purchase',{amount:1},{event_time:new Date(Date.now()-86400000).toISOString()}),shared.trackFor('user-B','purchase',{amount:2})]);assert.ok(results.every(r=>r.status==='queued-persistent'));await shared.flush();assert.deepEqual(scopedEvents.map(e=>e.distinct_id),['user-A','user-B']);assert.deepEqual(scopedEvents.map(e=>e.event_id),results.map(r=>r.event_id));assert.ok(scopedEvents.every(e=>!('anonymous_id' in e)));assert.ok(Math.abs(Date.parse(scopedEvents[0].event_time)-(Date.now()-86400000))<10000);assert.ok(Math.abs(Date.parse(scopedEvents[1].event_time)-Date.now())<10000);assert.equal((await shared.getQueueStatus()).count,0);}finally{await shared.shutdown();}
 assert.equal(existsSync(scopedOutbox+'.lock'),false);
 const browser=createAnalytics({...options,consent:false,fetch:async()=>{throw new Error('unexpected_transport');}});
 try{assert.equal((await browser.getQueueStatus()).count,0);}finally{browser.destroy();}

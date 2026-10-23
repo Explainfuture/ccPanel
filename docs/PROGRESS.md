@@ -1390,3 +1390,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 清理后33原业务关系及原1671采样/61告警历史/1020压力历史/8条DLQ历史前缀全部一致，临时公司/恢复库0；root raw2/dedup3/DLQ0/operators0，两原项目默认策略不变。PG=Kafka committed=high7723/7891、lag0，总15614=原15607+SDK含重复4+直接API3，清理不改变位点。四服务running/restart0/OOMfalse，门禁open/ready，原4告警读取时clear/age20秒；不将受控recreate当服务连续证明。
 
 两端临时明文dump/清单/fixture、工作站cookie文件及私有认证回显已核验后删除；密文保留两端、密钥工作站分离。Kafka合成记录按保留策略存在，不宣称逐条物理即时删除。证据product-upgrade.JzzIdx、shared/trends171与.local/trends171-*；[Actions39942114604](https://github.com/Explainfuture/ccPanel/actions/runs/39942114604)通过217测试/15PG及既有检查。本项功能发布不改变167提前停止/缺原清单的事实，也没有新容量或HA认证。
+
+### 步骤 172：SDK 显式业务事件时间
+
+- 对齐 PRD 第 3 节 event_time：Browser/Node `track` 第三个参数和 Node `trackFor` 第四个参数新增 `{ event_time?: string }`，保留旧调用及业务事件类型约束。选项独立于 properties，时间在异步等待前冻结；使用现有协议验证过去七天/未来五分钟，非法时间拒绝入队并回调 invalid_event_time。未放宽接入端校验或有效期。
+- 新增 IndexedDB 重开及 503 后重试的完整事件快照比较、边界/错误时间无传输、Node 双用户文件队列恢复和类型负例。pnpm 真实打包后，在仓库外验证导出类型及 Node 业务时间传输。
+- 本地 220 项测试、typecheck、build、两个 pnpm tarball 的仓库外验证通过。网络为 stub，IndexedDB 为 fake-indexeddb；本步骤未替换 VPS 012，也不声称真实浏览器/线上自定义时间或完整容量验收。
