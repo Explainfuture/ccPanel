@@ -4,6 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {pool} from '../packages/server/src/db';
 import {createApp} from '../apps/api/src/app';
 import {digest,token} from '../packages/server/src/security';
+import {evaluateAndStoreDlqAlerts} from '../packages/server/src/dlq-alert-store';
 try{
   assert.match((await pool.query('SELECT current_database() AS name')).rows[0].name,/^ccpanel_restore_[0-9]{14}_[a-f0-9]{8}$/);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM tenants')).rows[0].n,0);
@@ -55,13 +56,26 @@ try{
   assert.equal(value.signals[0].pending_records,'8');assert.equal(value.signals[0].state,'firing');assert.equal(value.signals[1].reason,'retention_window_exceeded');assert.ok(BigInt(value.signals[1].oldest_pending_age_seconds)>=15n*86400n);
   for(const privateValue of[a,b,pa,pb,'private-dlq-payload','private-reason','private-payload-hash','wrong-scope'])assert.ok(!text.includes(privateValue),'aggregate response must not expose company/record/payload fields');
   assert.deepEqual(await fingerprint(),before,'health reads must not change DLQ or replay receipts');
+  const writer=await pool.connect();try{assert.equal((await evaluateAndStoreDlqAlerts(writer)).transitions,2);}finally{writer.release();}
+  const historyPath=root+'/dlq-alert-history';
+  await pool.query('ALTER TABLE dlq_alert_states RENAME TO dlq_alert_states_unavailable');
+  try{for(const id of[ordinary,viewer,foreign])assert.equal((await get(id,historyPath)).status,id===foreign?404:403);assert.equal((await get(operator,historyPath)).status,503);}finally{await pool.query('ALTER TABLE dlq_alert_states_unavailable RENAME TO dlq_alert_states');}
+  app=createApp(deps);assert.equal((await get(operator,other+'/dlq-alert-history')).status,404);assert.equal((await get(operator,historyPath+'?limit=1000')).status,400);
+  response=await get(operator,historyPath);assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');let saved=await response.json();assert.equal(saved.persistence_state,'fresh');assert.equal(saved.states.length,2);assert.equal(saved.transitions.length,2);
+  const originalHash=(await pool.query("SELECT payload_hash FROM dlq_alert_states WHERE rule='dlq_pending'")).rows[0].payload_hash;
+  await pool.query("UPDATE dlq_alert_states SET revision=9007199254740993 WHERE rule='dlq_pending'");saved=await (await get(operator,historyPath)).json();assert.equal(saved.states.find((r:{rule:string})=>r.rule==='dlq_pending').revision,'9007199254740993');
+  await pool.query("INSERT INTO dlq_alert_history(rule,state_at_assessment,reason,assessed_at,state_since,revision,source_observed_at,source_expires_at,policy_hash,payload_hash,evidence,change_kind) SELECT rule,state_at_assessment,reason,assessed_at,state_since,1000+n,source_observed_at,source_expires_at,policy_hash,payload_hash,evidence,'gap' FROM dlq_alert_states CROSS JOIN generate_series(1,120) n WHERE rule='dlq_pending'");
+  saved=await (await get(operator,historyPath)).json();assert.equal(saved.transitions.length,50);for(let i=1;i<50;i++)assert.equal(BigInt(saved.transitions[i-1].id)-BigInt(saved.transitions[i].id),1n);assert.equal(saved.discarded_transitions,0);
+  await pool.query("UPDATE dlq_alert_states SET payload_hash=repeat('0',64) WHERE rule='dlq_pending'");saved=await (await get(operator,historyPath)).json();assert.equal(saved.persistence_state,'invalid');assert.deepEqual(saved.states,[]);await pool.query("UPDATE dlq_alert_states SET payload_hash=$1 WHERE rule='dlq_pending'",[originalHash]);
+  assert.deepEqual(await fingerprint(),before,'persistent reads must not change source or receipt rows');app=createApp(deps);
   await source('future',b,pb,-1);value=await (await get()).json();assert.equal(value.categories,null);assert.ok(value.signals.every((s:{state:string;reason:string})=>s.state==='unknown'&&s.reason==='future_record'));await pool.query("DELETE FROM dlq_records WHERE id='future'");
   await pool.query("UPDATE dlq_records SET payload=jsonb_set(payload,'{redacted}','true'::jsonb)");value=await (await get()).json();assert.equal(value.categories.suppressed,'15');assert.ok(value.signals.every((s:{state:string;reason:string})=>s.state==='clear'&&s.reason==='no_retained_pending'));
-  await pool.query('UPDATE platform_operators SET revoked_at=clock_timestamp() WHERE user_id=$1',[operator]);assert.equal((await get()).status,403);
+  await pool.query('UPDATE platform_operators SET revoked_at=clock_timestamp() WHERE user_id=$1',[operator]);assert.equal((await get()).status,403);assert.equal((await get(operator,historyPath)).status,403);
   await pool.query('UPDATE platform_operators SET revoked_at=NULL WHERE user_id=$1',[operator]);await pool.query("UPDATE tenant_memberships SET role='viewer' WHERE user_id=$1",[operator]);assert.equal((await get()).status,403);
   await pool.query('DELETE FROM tenant_memberships WHERE user_id=$1',[operator]);assert.equal((await get()).status,404);
   for(const t of[a,b])await pool.query("INSERT INTO tenant_memberships VALUES($1,$2,'admin')",[t,operator]);app=createApp(deps);
   for(let i=0;i<6;i++){assert.equal((await get()).status,200);assert.equal((await get(operator,other+'/operational-alerts')).status,200);}
-  response=await get();assert.equal(response.status,429);assert.equal(response.headers.get('retry-after'),'5');assert.equal((await get(operator,root+'/metrics')).status,200);
+  response=await get();assert.equal(response.status,429);assert.equal(response.headers.get('retry-after'),'5');assert.equal((await get(operator,historyPath)).status,429);assert.equal((await get(operator,root+'/metrics')).status,200);
+  console.log(JSON.stringify({dlq_history_http:true,dual_authorization_before_state_query:true,fresh_fixed_states:true,exact_revision:true,numeric_recent_50:true,invalid_hash_hides_latest:true,no_store:true,read_only_sources:true,revoked_grant_denied:true,shared_history_budget:true}));
   console.log(JSON.stringify({passed:true,dlq_health_http:true,dual_role_and_latest_grants:true,denied_before_index_query:true,foreign_scope_hidden:true,all_receipt_states_classified:true,receipt_precedence:true,wrong_scope_receipt_ignored:true,unscoped_and_expired_retained_pending:true,no_payload_or_company_identifiers:true,read_only_fingerprints:true,future_record_unknown:true,shared_history_budget:true,business_read_unaffected:true}));
 }finally{await pool.end();}
