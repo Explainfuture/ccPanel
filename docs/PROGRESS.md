@@ -1264,3 +1264,11 @@ ffa7110加入手动历史/严格客户端守卫和平台可见性，204e67f新�
 本地206单测/58文件、类型/构建通过，CI39926863062全部success（206/15 PG及37主机保护例）。Chrome合成HTTP各项通过：精确修订/数量、两张表、自然过期和2秒网络等待后current unknown但历史firing保留、discard1提示、invalid最新隐藏但history保留、空/畸形/403/429/503清旧数据、平台失败卸载、普通admin无请求、无duplicate key；1280/390截图已查看无文档横向溢出。证据.local/dlq161-*；浏览器与Vite均关闭。
 
 没有新VPS操作或运行文件改动，线上仍m4-pressure-009/schema21；schema22尚未部署，前一轮VPS临时库后端证据不冒称新页面公网认证。下一步扩展22可信升级/启用保护及隔离验收，制作新归档/离机备份/实际恢复后发布。独立通知、备份规则、自动异机最新状态同步、资源/HA/真实设备矩阵等继续未完成。
+
+### 步骤162：schema22升级、启用与迁移后保护（未发布）
+
+649a941新增21→22/22→22、22启用和临时库DLQ套件，首次迁移后检查新DLQ两表0，异常停服务；冻结旧字段机制保留已有pressure和22同版DLQ历史。e328dde将主机保护扩到72：35 pre-stop、12 prepare、20 activation、5 apply，覆写证明/采集门槛拒绝，以及迁移后源字段或提前采集异常停止并禁止ready。原check-schema21文件名保留但覆盖21和22。参数化时审查嵌入Python mock字面量缩进并修正，提交前Python/内嵌mock及shell语法通过，未改线上脚本或实际权限。
+
+CI39927984856全部success（206单测/58文件、构建/消费者/CLI/Python、15真实PG和72 mock主机例）。VPS先只读核对当前009/21、无容量任务，再用SHA固定归档暂存validation-ops162，四组72例都通过，真实Docker/systemctl/curl被mock，源备份/证明为synthetic，实际env写入仅在临时目录。归档SHA ae7064beab5097ec8be007c25f2c145718d6733195e38fd86497a14868cab592，摘要.local/ops162-final-summary.json与服务端同目录final-summary.json；日志hash保留。
+
+只读末态仍009/21、projects2/raw2/dedup3/DLQ0/operators0、位点7182/7230，临时库0、主库新DLQ两表不存在；四容器running/restart0/OOMfalse/ready。没有替换线上共享脚本、重建服务、迁移/恢复主库。工具源码可支持22不等于22已发布；下轮新归档、离机备份解密/真实恢复和受控21→22发布后需验证实际SDK/权限/页面/采集及清理。独立通知/备份规则、持续异机最新状态同步、资源/HA与设备矩阵等继续未完成。
