@@ -5,7 +5,7 @@ umask 077
 mode=${1:?prepare or apply}
 source_schema=${CCPANEL_SOURCE_SCHEMA:-10}
 target_schema=${CCPANEL_TARGET_SCHEMA:-15}
-case "$source_schema:$target_schema" in 10:15|15:16|16:17|17:17|17:18|18:18|18:19|19:19) ;; *) echo 'Unsupported trusted upgrade pair' >&2;exit 1;; esac
+case "$source_schema:$target_schema" in 10:15|15:16|16:17|17:17|17:18|18:18|18:19|19:19|19:20|20:20) ;; *) echo 'Unsupported trusted upgrade pair' >&2;exit 1;; esac
 # A trusted live upgrade must retain its already-open gate and durable cursor.
 unset CCPANEL_PROGRESS_BOOTSTRAP_REASON CCPANEL_RECOVERY_LEDGER
 : "${CCPANEL_RELEASE:?Set a new release name}"
@@ -15,7 +15,7 @@ unset CCPANEL_PROGRESS_BOOTSTRAP_REASON CCPANEL_RECOVERY_LEDGER
 test "$(sha256sum /opt/ccpanel/shared/release.tar.gz | cut -d' ' -f1)" = "$CCPANEL_ARCHIVE_SHA256"
 archive_schema=$(tar -xOf /opt/ccpanel/shared/release.tar.gz dist/schema-version.txt)
 test "$archive_schema" = "$target_schema" || { echo 'Archive schema does not match explicit upgrade target; no services stopped' >&2; exit 1; }
-if [ "$target_schema" = 19 ]; then
+if [ "$target_schema" = 19 ] || [ "$target_schema" = 20 ]; then
   helper_sha=$(tar -xOf /opt/ccpanel/shared/release.tar.gz scripts/operational-collection-env.py | sha256sum | cut -d' ' -f1)
   test "$(sha256sum /opt/ccpanel/shared/operational-collection-env.py | cut -d' ' -f1)" = "$helper_sha" || { echo 'Stage the archive-matching collection helper before stopping services' >&2; exit 1; }
 fi
@@ -23,7 +23,7 @@ running_capacity=$(systemctl list-units --type=service --state=running 'ccpanel-
 test -z "$running_capacity" || { echo 'Capacity sampler still running; defer deployment' >&2; exit 1; }
 # Physical expiry legitimately changes rows: keep it disabled until the
 # post-migration original-column reconciliation has completed.
-if [ "$target_schema" = 17 ] || [ "$target_schema" = 18 ] || [ "$target_schema" = 19 ]; then
+if [ "$target_schema" = 17 ] || [ "$target_schema" = 18 ] || [ "$target_schema" = 19 ] || [ "$target_schema" = 20 ]; then
   python3 - <<'PY'
 from pathlib import Path
 lines=Path('/opt/ccpanel/shared/runtime.env').read_text().splitlines()
@@ -46,7 +46,7 @@ if [ "$mode" = prepare ]; then
   printf '%s\n' "$target_schema" >"$dir/target-schema.txt"
   printf '%s\n' "$CCPANEL_ARCHIVE_SHA256" >"$dir/archive.sha256"
   docker compose stop api worker
-  if [ "$target_schema" = 19 ]; then
+  if [ "$target_schema" = 19 ] || [ "$target_schema" = 20 ]; then
     python3 /opt/ccpanel/shared/operational-collection-env.py set false /opt/ccpanel/shared/runtime.env /opt/ccpanel/current/infra/.env
   fi
   # Freeze the original column projection. New metadata columns may be added,
@@ -61,7 +61,7 @@ SQL
   docker compose run --rm -T --no-deps api node dist/deletion-ledger.mjs export >"$dir/source-ledger.json"
   echo "Upgrade prepared; services offline; verify an off-host encrypted backup and isolated restore before apply: $dir"
 elif [ "$mode" = apply ]; then
-  if [ "$target_schema" = 19 ]; then
+  if [ "$target_schema" = 19 ] || [ "$target_schema" = 20 ]; then
     python3 /opt/ccpanel/shared/operational-collection-env.py check false /opt/ccpanel/shared/runtime.env /opt/ccpanel/current/infra/.env
   fi
   dir=$(realpath -e "${CCPANEL_UPGRADE_DIR:?Set prepared upgrade directory}")
@@ -91,6 +91,11 @@ PY
   docker compose exec -T postgres psql -X -U ccpanel -d ccpanel -At -v ON_ERROR_STOP=1 <"$dir/fingerprint.sql" >"$dir/after.jsonl"
   if ! cmp "$dir/before.jsonl" "$dir/after.jsonl"; then docker compose stop api worker; echo 'Original data changed; services stopped for inspection' >&2; exit 1; fi
   test "$(docker compose exec -T postgres psql -X -U ccpanel -d ccpanel -Atqc 'SELECT max(version) FROM schema_migrations')" = "$target_schema"
+  if [ "$source_schema:$target_schema" = 19:20 ]; then
+    if [ "$(docker compose exec -T postgres psql -X -U ccpanel -d ccpanel -Atqc 'SELECT COALESCE(bool_and(retention_days=30 AND retention_version=1 AND retention_floor IS NULL),true) FROM projects')" != t ]; then
+      docker compose stop api worker;echo 'Unexpected initial retention policies; services stopped for inspection' >&2;exit 1
+    fi
+  fi
   docker compose run --rm -T --no-deps api node dist/consumer-progress.mjs check
   curl -fsS https://192.236.151.125/ready
   echo 'Product preview upgraded; original columns and counts preserved; capacity remains unapproved'

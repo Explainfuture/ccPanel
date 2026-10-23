@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Enable only after the trusted schema19 upgrade reconciles original data.
+# Enable only after the trusted schema19/20 upgrade reconciles original data.
 set -euo pipefail
 umask 077
 exec 8>/opt/ccpanel/shared/deploy.lock
@@ -15,12 +15,13 @@ test -z "$running_capacity" || { echo 'Capacity sampler active; defer collection
 upgrade=$(realpath -e "$CCPANEL_UPGRADE_DIR")
 [[ "$upgrade" =~ ^/opt/ccpanel/shared/product-upgrade\.[A-Za-z0-9]{6}$ ]]
 test "$(cat "$upgrade/target-release.txt")" = "$CCPANEL_EXPECTED_RELEASE"
-test "$(cat "$upgrade/target-schema.txt")" = 19
+schema=$(cat "$upgrade/target-schema.txt")
+[[ "$schema" = 19 || "$schema" = 20 ]]
 test -s "$upgrade/backup-verified.json"
 cmp "$upgrade/before.jsonl" "$upgrade/after.jsonl"
 cd /opt/ccpanel/current/infra
-test "$(cat ../dist/schema-version.txt)" = 19
-test "$(docker compose exec -T postgres psql -X -U ccpanel -d ccpanel -Atqc 'SELECT max(version) FROM schema_migrations')" = 19
+test "$(cat ../dist/schema-version.txt)" = "$schema"
+test "$(docker compose exec -T postgres psql -X -U ccpanel -d ccpanel -Atqc 'SELECT max(version) FROM schema_migrations')" = "$schema"
 docker compose run --rm -T --no-deps api node dist/deletion-ledger.mjs check
 docker compose run --rm -T --no-deps api node dist/consumer-progress.mjs check
 before=$(docker compose exec -T api node -e 'process.stdout.write(process.env.OPERATIONAL_COLLECTION_ENABLED||"unset")')
