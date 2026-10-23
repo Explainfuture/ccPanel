@@ -310,3 +310,21 @@ m4-durability-011/schema22包含后续压力/DLQ持久采样，相比旧schema19
 在冻结并记录上述限制后清理合成公司、账号和两端凭证。原34业务关系及1448采样/61告警历史/684压力历史/8条DLQ历史前缀均完整一致；当前4/3/2状态数量保持。root schema22/raw2/dedup3/DLQ0/operators0、临时公司/恢复库0，位点未因清理改变。配置/容器边界与启动时完全相同，采样/保留均enabled，四容器running/restart0/OOMfalse、门禁open/HTTPS ready。清理后单次快照可用285MiB/Swap使用328MiB，不用其替代失败或不完整窗口。
 
 证据仍在capacity-integrity.BhntUa，aborted-final、服务端一致性、原数据保留、配置和位点报告分列；已下载冻结证据到工作站.local/capacity-schema22-167-*。没有伪造load-result.json、运行完整窗口报告CLI或重新启动生成器/采样器。已有schema19完整窗口的Swap失败结论继续有效，当前版本不具备新的容量认证。
+
+## 步骤170：负载工具提前终止与发送前证据
+
+新生成器先以排他创建的manifest占用全新输出命名空间，再进行请求；已有结果、进度或manifest会拒绝启动，不自动恢复旧负载。每个新ID都先写入临时文件、fsync并原子发布manifest，才允许该事件进入发送队列。清单只包含随机事件ID、确认ID子集、公司/项目、计划数、writer PID及生成器/落盘helper的SHA256，不写凭证、Cookie、用户属性或事件载荷。完整清单最大3600个ID，按每秒生成节奏持久化。
+
+正常结束和主动终止分别写completed/aborted及明确reason、计划数、确认子集；提前终止始终passed=false，即使恰好已生成所有事件，也不能成为完整窗口通过。已在途请求按原12/15秒超时处理，停止后不发起新批次/查询；控制文件最多读取1024字节，畸形/超大文件保守停止。可见延迟从event_time的创建时刻计算，包含新清单落盘耗时；接入HTTP计时不变，不排除额外开销来改善成绩。
+
+Windows操作控制器应对已确认存活的本轮写 `<output>.stop`，内容为 `{"reason":"resource_safety"}` 或 `{"reason":"operator_requested"}`。用同一helper原子发布，避免半写JSON被读到；不要复用旧路径或改写已有停止原因。例如：
+
+```powershell
+node --input-type=module -e "import {publishEvidence} from './scripts/load-evidence.mjs'; await publishEvidence('.local/NEW-RUN.json.stop',{reason:'resource_safety'});"
+```
+
+POSIX支持SIGINT/SIGTERM；Windows外部Stop-Process/信号API可能直接强杀，优先用上述控制文件。终止后仍须观察原进程/工具句柄的真实终态，文件存在或status字段不是进程终态证明。强杀无法写最终结果，但发送前已fsync的manifest覆盖所有可能已发送的ID；其status可能仍为running，不能据此称进程活着或完整完成。初始写入中断且尚无完整清单时，不应已有事件发送。验证范围是实际进程强杀恢复，不包括主机断电/文件系统或存储损坏；Windows未执行目录fsync，不作掉电保证。
+
+完整数据报告器显式拒绝aborted，并检查确认ID唯一且属于原ID集合/数量等于acknowledged；资源CLI和远程完整快照导出也在写报告前拒绝aborted。异常磁盘可能使最终导出失败，保留已完成落盘的原始前缀，不伪造终态。旧冻结证据可沿原格式读取，不回填或修改167缺失的原客户端集合。
+
+本项只修复未来测试的可核对性。它没有修复服务器资源余量，没有启动新VPS负载，也不让169提前终止的窗口转为通过。后续评估新条件时需绑定两个源文件hash及新工具版本，并将协议变化和本地落盘开销列入报告。

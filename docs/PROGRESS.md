@@ -1358,3 +1358,11 @@ VPS证据 `/opt/ccpanel/shared/kafka-durability-check.pE6b96`：候选只读CLI�
 冻结122帧有效partial/setup-to-abort资源证据、最低183.79MiB，明确full_capacity_pass=false；资源unit也受控提前停止（145帧/末帧1440000ms，不是1980000ms自然完成，GC后默认退出字段不是完成证明）。服务端当前1164条raw/dedup/jobs和全部聚合一致、23重复、DLQ0；PG=Kafka committed=high7719/7888、lag0，总增1187。只有server_only_consistency_passed=true，original_client_event_set_proven=false。详细hash、周期进度范围及触发参考见CAPACITY步骤169。
 
 清理后34原业务关系、四类旧历史前缀完全一致，4/3/2规则数量保持；root raw2/dedup3/DLQ0/operators0、临时库/公司0，配置/容器ID/启动时间与基线相同、无OOM/重启、采样及保留enabled、门禁open/ready。没有运行中的容量单位，两端fixture凭证删除，冻结报告保留双方。源码趋势视图168尚未部署；其[Actions39937426182](https://github.com/Explainfuture/ccPanel/actions/runs/39937426182)通过215测试/15PG及既有检查，不替代这次提前终止的容量验收。后续先补测试工具的可恢复证据，不盲目同配置重跑。
+
+### 步骤170：发送前ID清单与可靠终止证据（源码，本地子进程验证）
+
+fix/170-load-abort-evidence的0fc3c2c增加fsync/原子manifest、排他输出命名空间、写前ID清单、确认ID子集、writer PID和生成器/helper双hash。SIGINT/SIGTERM及跨平台stop控制可停止新请求并输出aborted/原因/计划数，所有提前终止passed=false；强杀保留已完成落盘清单、不伪装完整终态，旧路径拒绝重新运行。0323242再将可见延迟起点固定到事件创建时刻，避免把新增落盘成本移出观察延迟。
+
+数据报告器检查确认集合并拒绝aborted；资源CLI及远程finalizer也拒绝完整导出。旧证据不重写，167仍缺原清单/未通过。实际finalizer Python段以aborted输入执行，返回拒绝且未产生完整快照；这不是整个shell/Docker控制流验证，CI另外做bash语法。
+
+本地217测试/类型检查及真实Windows子进程验证通过：正常与故障会计、控制文件停止、超大控制保守停止、实际SIGKILL后清单覆盖已尝试ID、旧命名空间拒绝重启。preload在每次模拟HTTP发送时实际读取落盘manifest验证ID先存在；不是仅比较实现的内存数组。信号测试在Windows明确标为未执行，Linux SIGINT/SIGTERM待CI；所有网络为synthetic fetch、没有VPS或账号访问。使用/边界见CAPACITY步骤170，本轮没有重新压测或改变服务器配置。
