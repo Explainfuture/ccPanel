@@ -1206,3 +1206,15 @@ Playwright CLI Chrome合成API验证手动无自动请求、精确大整数修�
 schema21受控升级、隔离恢复及线上验证仍待完成，VPS未访问/改动，当前仍m4-recovery-008/schema20。外部通知、资源门槛、持续异机最新状态同步与其他PRD缺口继续未完成。最终CI结果另列。
 
 步骤156最终a1a1a1d的CI39917192289全部success：196单测、类型/构建/打包消费者/CLI/Python以及13套真实PG。日志明确scheduled_api_pressure、pressure_callback_once、disabled_pressure_not_read、collector_pool_closed及压力HTTP50数值排序/双资格/过期、schema20→21迁移和历史原子性全部true。修改后的真实调度验收保留约91秒观察，不修改生产参数。源码/浏览器证据与服务器发布分列；同步集成分支/草稿PR。
+
+### 步骤157：schema21升级保护及VPS隔离验收（未部署）
+
+8a91e4b新增20→21/21→21、采集/保留暂停、目标CLI v2源清单、20→21新压力表必须空以及21启用版本检查；172465f新增21项预停止拒绝/6个prepare案例，ba4f2ac补10个启用案例，均明确mock主机服务。最初CI39918113304的prepare夹具假设env开关原位替换而失败；3ccba28改为既有真实工具末尾归一化预期，源码工具未变。CI39918412744成功，最终39918815291（ba4f2ac）success：196单测/54文件、构建/SDK/CLI/Python与13套PG，37个mock保护例全通过。
+
+补记步骤156中间cc63293的CI39917064032也实际失败于“两同相位采集器两周期内都必须成功”的不公平假设，最终a1a1a1d独立真实窗口的39917192289及本轮两次CI均通过；不以重跑替代源码修正。
+
+VPS当前m4-recovery-008/schema20，先只读检查无容量任务、raw2/dedup3/位点7180/7228及ready。新只读挂载stage validation-v21引导独立临时PG：pressure-persistence（实际schema20）、schema-upgrade（实际schema19）、pressure-alerts（真实HTTP）和operational-history（真实30秒Worker/API调度）全通过。证据分别qanQVn、Tew4I6、fxg69C、XEe3mT；37项mock主机保护也在Linux执行通过，根运行库未改。归档SHA见OBSERVABILITY，编译源固定1bd729e2.../502d6c13...与当前运行时源码，未从编辑逆造旧版本。
+
+最终pressure-upgrade157对账37个非动态监控关系原字段/行数全同，原653采样/15告警历史前缀保留；raw2/dedup3/DLQ0/operators0、临时库0、主库压力表不存在，位点7180/7228。原API/Worker采集/保留true，四容器restarts0/OOMfalse，恢复/完整性/HTTPS就绪检查通过。临时数据库及env/ledger均清理，摘要.local/pressure157-{final-preservation,isolated-suites}.json和日志两端留存；源代码/隔离验收不冒称实际schema21升级、新版SDK端到端或整机恢复证据。
+
+下一步仍需新release归档、离机备份/实际隔离恢复、20→21真实升级及页面权限/采集后对账，再单独启用。外部通知、持续异机最新状态同步、低配资源门槛/HA和浏览器真机矩阵仍未完成，目标继续进行。

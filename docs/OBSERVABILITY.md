@@ -185,3 +185,13 @@ API把admission.pressureAlerts缓存回调交给既有operational采集器，沿
 读取开始即清旧数据，timeout10秒/卸载abort；成功响应严格检查固定域、数组上限、规则唯一、三状态来源/策略一致、状态/信号/时间一致、整数范围、历史ID唯一及当前证据过期。畸形/失权/429/失败清旧数据；父平台读取或项目权限失败卸载面板，项目切换按prefix重新挂载。计时使用请求开始performance.now，扣除完整HTTP等待，每秒本地到期并在visibilitychange校正；停止无用interval，无新轮询。修订/计数用BigInt格式化，宽表可聚焦区域滚动，颜色加文本/live status。
 
 本地类型/构建和196单测通过。Playwright CLI真实Chrome使用合成HTTP，手动无自动请求、精确9007199254740993修订、自然到期未知但历史firing保留、2秒延迟不刷新有效期、畸形/403/429/503清数据、父平台失败卸载、普通admin不请求以及桌面/390px无document横向溢出全部通过；截图.local/pressure156-desktop.png与mobile已查看。浏览器pressure156与Vite已关闭。这里只是页面合成路由证据，不能冒称VPS实时链路或移动真机矩阵；schema21可信升级/实际发布仍待完成，线上保持schema20。
+
+## 步骤157：schema21受控升级与VPS隔离验证（尚未上线）
+
+升级脚本源码增加明确20→21和21→21组合，其余未知组合仍拒绝。目标>=19继续要求归档一致的采集env工具，目标>=17继续要求物理保留暂停；prepare停API/Worker后才显式关闭两份采集配置，再冻结所有原字段。source>=20使用已验SHA目标归档CLI导出完整v2策略清单，拒绝legacy或缺retention数组。apply仍要求新备份的离机解密/隔离恢复证明、原字段前后对账及门禁/消费进度检查，20→21还要求新压力两表为0，防止提前采集污染对账。启用脚本允许21并匹配release/build/DB版本，采集和物理清理分别启用。
+
+新增/扩展Linux主机工具验证：19→20、20→21、21→21共21个停服务前拒绝；6个prepare例使用真实env工具和归档导出器选择，拒绝不完整v2/无备份证明；10个collection/retention activation例拒绝build/DB/指纹/备份异常，也验证有效21路径实际写私有env。Docker/systemctl/curl均为mock，不能冒充实际服务重建或整机恢复。最初prepare测试误认为配置原位替换，CI39918113304失败，3ccba28修正预期为既有工具的末尾归一化输出，未改生产工具。修正CI39918412744、含activation的最终ba4f2ac CI39918815291均success：196单测、构建/SDK/CLI/Python及13真实PG。
+
+VPS只读确认m4-recovery-008/schema20、无活动容量任务后，独立stage /opt/ccpanel/shared/validation-v21 验证：validation157b归档SHA 4b149ab5203d5954d3e9048ed80da3bf598030d54fb736d709297bfc6b77b334，activation157归档SHA a67aa045cb3772b0758cd0382d14d453003a9feac161a5d503eb009c09648d44。21+6+10 mock主机保护例也在真实Linux执行通过。实际PG分别从固定20/19迁移源引导，pressure-persistence、schema-upgrade、pressure-alerts、operational-history四套通过；新wrapper只修改独立临时数据库，未迁移主库。
+
+业务前后37个非动态监控关系全字段/行数指纹一致；旧653采样/15历史前缀保留，主库raw2/dedup3/DLQ0/operator0，PG位点7180/7228，临时库0、压力表仍不存在。API/Worker采集与保留均true，四容器restart0/OOMfalse，恢复门禁open、进度检查通过/无暂停、HTTPSready。预读可用410MiB/Swap318MiB/磁盘32%是瞬时快照，不替代此前资源门槛失败。证据pressure-upgrade157及四个provision-report-check目录，摘要/日志SHA在isolated-suites.json，两端保存安全摘要；临时env/ledger均已清理。当前共享线上部署脚本未替换，需下一步准备新归档/新离机备份及实际恢复对账后升级。
