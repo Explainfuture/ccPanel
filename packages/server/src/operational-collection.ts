@@ -1,6 +1,7 @@
 import pg from 'pg';
 import {startOperationalCollector} from './operational-collector';
 import {storeOperationalSnapshot} from './operational-history';
+import {evaluateAndStoreOperationalAlerts} from './operational-alert-store';
 import type {OperationalSnapshot} from './operational-snapshot';
 
 export function startOperationalCollection(snapshot:()=>OperationalSnapshot){
@@ -10,7 +11,11 @@ export function startOperationalCollection(snapshot:()=>OperationalSnapshot){
   pool.on('error',failed);
   const stop=startOperationalCollector({snapshot,failed,write:async value=>{
     const client=await pool.connect();let broken=false;
-    try{const result=await storeOperationalSnapshot(client,value);if(result.status==='conflict'||result.status==='full')console.error(JSON.stringify({code:'operational_history_write_rejected',reason:result.status}));}
+    try{
+      const result=await storeOperationalSnapshot(client,value);if(result.status==='conflict'||result.status==='full')console.error(JSON.stringify({code:'operational_history_write_rejected',reason:result.status}));
+      try{const alerts=await evaluateAndStoreOperationalAlerts(client);if(alerts.status==='full'||alerts.status==='stale')console.error(JSON.stringify({code:'operational_alert_evaluation_rejected',reason:alerts.status}));}
+      catch{broken=true;console.error(JSON.stringify({code:'operational_alert_evaluation_failed'}));}
+    }
     catch(error){broken=true;throw error;}
     finally{client.release(broken);}
   }});

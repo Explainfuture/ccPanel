@@ -119,3 +119,13 @@ GET同项目路径/operational-alerts要求公司admin和有效平台资格，�
 固定四规则：api_sampling、worker_sampling、api_server_errors、worker_failures。90秒内采样新鲜为clear，缺失/超过90秒为firing；非法或未来样本为unknown。失败规则只比较同instance_id/started_at、间隔大于0且至多90秒的两帧，API累计500/503批次、Worker四操作failed结果逐标签BigInt做差；正增量firing，所有相关计数未变才clear。相关计数回退、重启、新基线、重复时点/大间隔/陈旧均unknown，increase=null，不虚构零。语义为该观测区间，不是瞬时错误率、SLO或唯一业务事件数。
 
 这是读取时计算的告警信号，没有后台评估/持久告警状态/确认静默/外部通知/页面；不改变接入门禁。读取进程/PG不可用时无法返回信号，也不覆盖ISR/lag/DLQ/磁盘/备份等其他必需规则。VPS仍m4-history-005，没有部署本步骤。
+
+## 步骤135：持久告警状态与变化历史（未部署）
+
+schema19新增4个固定规则状态行及变化历史。API/Worker各自30秒采集结束后，在同一个独立max1池连接上进行另一事务的后台评估；全局try advisory lock避免并发写入，锁忙跳过。数据库时间在锁内取得，不接受调用者提交旧评估；任何已有评估时间不小于本次时间就拒绝stale，包含数据库时钟回退。状态/原因变化才增加revision并写历史，只有state变化才重设state_since；相同信号只更新评估时间及证据，不重复刷历史。unknown是证据丢失，不等于恢复clear。
+
+历史目标14天/最多5000条，每次最多清理100过期再100容量记录；状态与本次裁剪/历史插入一起提交，任一失败全部回滚。上限约束内部写入口，不是PG磁盘quota；闲置时不自动清理。每个signal JSONB限制2KiB，状态规则和信号rule/state须一致。固定四行不保留租户/业务载荷，修订号和历史ID以字符串读取。
+
+原operational-alerts接口保持即时rules，另返回persisted_states和最近50条保留期内transitions，以及persistence_state=fresh/stale/invalid/unavailable；只有4条评估时间均在90秒内且不在未来才fresh。即时读不写状态。评估失败固定日志、销毁连接，不回滚已经提交的监控快照，不影响业务确认；采集若失败则该周期不继续评估。API和Worker均停机或PG不可用时无法自评估，旧clear不得当作当前健康，仍需独立外部监控。尚无确认/静默/通知/告警页面及ISR等其他规则。
+
+源码升级链显式增加18→19/19→19、归档marker19、retention及隔离验收版本兼容；VPS仍schema18，未升级，不沿用旧容量证明本版额外写入负载。

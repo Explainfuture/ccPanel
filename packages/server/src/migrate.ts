@@ -1,5 +1,5 @@
 import { pool } from './db';
-export const schemaVersion=18;
+export const schemaVersion=19;
 export async function migrate() {
   const c = await pool.connect();
   try {
@@ -103,6 +103,20 @@ export async function migrate() {
         PRIMARY KEY(source,instance_id,observed_at),CHECK(observed_at>=started_at),
         CHECK(jsonb_typeof(snapshot)='object' AND octet_length(snapshot::text)<=16384));
       CREATE INDEX IF NOT EXISTS operational_samples_time ON operational_samples(observed_at,source,instance_id);
+      CREATE TABLE IF NOT EXISTS operational_alert_states(
+        rule text PRIMARY KEY CHECK(rule IN ('api_sampling','worker_sampling','api_server_errors','worker_failures')),
+        state text NOT NULL CHECK(state IN ('clear','firing','unknown')),reason text NOT NULL CHECK(length(reason)<=64),
+        evaluated_at timestamptz NOT NULL,state_since timestamptz NOT NULL,revision bigint NOT NULL CHECK(revision>0),
+        signal jsonb NOT NULL CHECK(jsonb_typeof(signal)='object' AND octet_length(signal::text)<=2048 AND signal->>'rule'=rule AND signal->>'state'=state),
+        CHECK(state_since<=evaluated_at));
+      CREATE TABLE IF NOT EXISTS operational_alert_history(
+        id bigserial PRIMARY KEY,rule text NOT NULL CHECK(rule IN ('api_sampling','worker_sampling','api_server_errors','worker_failures')),
+        state text NOT NULL CHECK(state IN ('clear','firing','unknown')),reason text NOT NULL CHECK(length(reason)<=64),
+        evaluated_at timestamptz NOT NULL,state_since timestamptz NOT NULL,revision bigint NOT NULL CHECK(revision>0),
+        signal jsonb NOT NULL CHECK(jsonb_typeof(signal)='object' AND octet_length(signal::text)<=2048 AND signal->>'rule'=rule AND signal->>'state'=state),
+        UNIQUE(rule,revision),CHECK(state_since<=evaluated_at));
+      CREATE INDEX IF NOT EXISTS operational_alert_history_time ON operational_alert_history(evaluated_at,id);
+      INSERT INTO schema_migrations(version) VALUES(19) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(18) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(1) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(2) ON CONFLICT DO NOTHING;

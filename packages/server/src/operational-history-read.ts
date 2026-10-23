@@ -1,6 +1,6 @@
 import {pool} from './db';
 import type {PoolClient} from 'pg';
-import {evaluateOperationalAlerts} from './operational-alerts';
+import {queryOperationalAlerts} from './operational-alert-query';
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export class OperationalReadError extends Error{constructor(readonly status:400|403|404){super('operational_history_read_denied');}}
 export function parseOperationalHistoryQuery(params:URLSearchParams){
@@ -36,10 +36,12 @@ export async function readOperationalHistory(user:string,tenant:string,project:s
 }
 export async function readOperationalAlerts(user:string,tenant:string,project:string){
   return withOperationalRead(user,tenant,project,async db=>{
-    const rows=(await db.query(`SELECT s.source,p.snapshot FROM (VALUES ('api'),('worker')) AS s(source)
-      CROSS JOIN LATERAL (SELECT instance_id FROM operational_samples WHERE source=s.source AND observed_at>=CURRENT_TIMESTAMP-interval '7 days' AND observed_at<=CURRENT_TIMESTAMP+interval '5 seconds' ORDER BY observed_at DESC,instance_id DESC LIMIT 1) latest
-      CROSS JOIN LATERAL (SELECT snapshot FROM operational_samples WHERE source=s.source AND instance_id=latest.instance_id AND observed_at>=CURRENT_TIMESTAMP-interval '7 days' AND observed_at<=CURRENT_TIMESTAMP+interval '5 seconds' ORDER BY observed_at DESC LIMIT 2) p`)).rows;
-    const now=Date.now();return{scope:'platform_aggregate' as const,computed_at:new Date(now).toISOString(),freshness_ms:90000,rules:evaluateOperationalAlerts({api:rows.filter(r=>r.source==='api').map(r=>r.snapshot),worker:rows.filter(r=>r.source==='worker').map(r=>r.snapshot)},now)};
+    const live=await queryOperationalAlerts(db);
+    const persisted=(await db.query('SELECT rule,state,reason,evaluated_at,state_since,revision::text,signal FROM operational_alert_states ORDER BY rule')).rows;
+    const history=(await db.query("SELECT id::text,rule,state,reason,evaluated_at,state_since,revision::text,signal FROM operational_alert_history WHERE evaluated_at>=CURRENT_TIMESTAMP-interval '14 days' ORDER BY evaluated_at DESC,id DESC LIMIT 50")).rows;
+    const ages=persisted.map(row=>Date.parse(live.computed_at)-row.evaluated_at.getTime());
+    const persistenceState=persisted.length!==4?'unavailable':ages.some(age=>age<0)?'invalid':ages.some(age=>age>90000)?'stale':'fresh';
+    return{scope:'platform_aggregate' as const,freshness_ms:90000,...live,persistence_state:persistenceState,persisted_states:persisted,transitions:history,transition_limit:50};
   });
 }
 async function withOperationalRead<T>(user:string,tenant:string,project:string,read:(db:PoolClient)=>Promise<T>){
