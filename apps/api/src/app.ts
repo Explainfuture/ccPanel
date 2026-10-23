@@ -4,6 +4,7 @@ import { bodyLimit } from "hono/body-limit";
 import { registerReportRoutes } from '../../../packages/server/src/report-routes';
 import {ReportError} from '../../../packages/server/src/report-spec';
 import {InvalidQuery} from '../../../packages/server/src/query-spec';
+import {QuerySnapshotError} from '../../../packages/server/src/query-snapshot';
 import { registerBehaviorRoutes } from '../../../packages/server/src/behavior-routes';
 import { registerSchemaRoutes } from '../../../packages/server/src/schema-routes';
 import { registerUserRoutes } from '../../../packages/server/src/user-routes';
@@ -71,6 +72,7 @@ export function createApp(deps: AppDeps) {
     return b.count <= max;
   }
   app.onError((e, c) => {
+    if(e instanceof QuerySnapshotError){if(e.status===429)c.header('Retry-After','1');return c.json({error:e.message},e.status);}
     if(e instanceof ReportError)return c.json({error:e.message},e.status);
     if(e instanceof InvalidQuery)return c.json({error:e.message},400);
     if(e instanceof IngestionPaused){c.header('Retry-After',String(e.retryAfterSeconds));return c.json({error:'ingestion_paused',reason:e.reason},503);}

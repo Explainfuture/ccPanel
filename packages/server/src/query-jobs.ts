@@ -11,6 +11,7 @@ import {parseQuerySpec} from './analysis-spec';
 import type {AnalysisSpec} from './analysis-spec';
 import {ReportError,reportReference} from './report-spec';
 import {savedReportRun} from './reports';
+import {lockQuerySnapshot} from './query-snapshot';
 export {parseQuerySpec} from './analysis-spec';
 
 const validId = (id: string) =>
@@ -164,7 +165,10 @@ export function startQueryJobs() {
         const spec = parseQuerySpec(job.spec),
           deadline = Date.now() + 30000;
         if(job.report_id&&(!Number.isInteger(job.report_version)||job.report_version<1||typeof job.timezone!=='string'||!job.timezone))throw new InvalidQuery('report_snapshot_invalid');
-        await db.query("BEGIN");
+        await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+        await db.query("SET LOCAL lock_timeout='200ms'");
+        await db.query("SET LOCAL statement_timeout='30000ms'");
+        if(await lockQuerySnapshot(db,job.tenant_id,job.project_id)!==job.privacy_epoch)throw new Error('privacy_changed');
         // Serialize on this connection and allocate the remaining total deadline
         // to each statement, rather than allowing 30 seconds per subquery.
         let tail: Promise<unknown> = Promise.resolve();
@@ -210,6 +214,8 @@ export function startQueryJobs() {
       } catch (e) {
         await db.query("ROLLBACK");
         const code =
+          (e as Error).message==='privacy_changed'?'privacy_changed':
+          ['55P03','40001','40P01'].includes((e as {code?:string}).code??'')?'query_busy':
           e instanceof QueryBudgetExceeded
             ? e.message
             : e instanceof InvalidQuery

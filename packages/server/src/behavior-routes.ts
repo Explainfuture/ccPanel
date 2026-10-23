@@ -11,6 +11,7 @@ import { query } from "./db";
 import { InvalidQuery } from "./query-spec";
 import { projectQueryFlights as flights } from "./query-budget";
 import {dataCoverage} from './data-coverage';
+import {withQuerySnapshot} from './query-snapshot';
 
 export class QueryBudgetExceeded extends Error {}
 export async function behaviorQuery(
@@ -21,6 +22,9 @@ export async function behaviorQuery(
   asyncMode = false,
   timezoneOverride?: string,
 ) {
+  return run===query?withQuerySnapshot(tenant,project,scoped=>readBehavior(tenant,project,spec,scoped,asyncMode,timezoneOverride)):readBehavior(tenant,project,spec,run,asyncMode,timezoneOverride);
+}
+async function readBehavior(tenant:string,project:string,spec:ReturnType<typeof parseBehavior>,run:typeof query,asyncMode:boolean,timezoneOverride?:string){
   const now = Date.now(),
     from =
       spec.kind === "cohort"

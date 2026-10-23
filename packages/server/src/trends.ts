@@ -1,7 +1,11 @@
 import { query } from './db';
 import { compileFilters,type TrendSpec } from './query-spec';
 import {dataCoverage} from './data-coverage';
+import {withQuerySnapshot} from './query-snapshot';
 export async function trends(tenantId:string,projectId:string,spec:TrendSpec,run:typeof query=query,timezone?:string){
+  return run===query?withQuerySnapshot(tenantId,projectId,scoped=>readTrends(tenantId,projectId,spec,scoped,timezone)):readTrends(tenantId,projectId,spec,run,timezone);
+}
+async function readTrends(tenantId:string,projectId:string,spec:TrendSpec,run:typeof query,timezone?:string){
   const values:unknown[]=[tenantId,projectId,spec.from,spec.to];
   const predicates=[`e.tenant_id=$1`,`e.project_id=$2`,`e.event_time >= $3`,`e.event_time < $4`,`e.event_name<>'$identify'`];
   if(spec.event_name){values.push(spec.event_name);predicates.push(`e.event_name=$${values.length}`);}
