@@ -34,14 +34,20 @@ try{
     const invalid=new IntakeMetrics().snapshot() as unknown as Record<string,unknown>;invalid.secret='must-not-store';await assert.rejects(storeOperationalSnapshot(db,invalid as never),/invalid_operational_snapshot/);assert.equal(await count(),operationalHistoryLimit);
     const collected=new WorkerMetrics(),instance=collected.snapshot().instance_id;
     const stop=startOperationalCollection(()=>collected.snapshot(),()=>{workerPressureReads++;return evaluatePressureAlerts(null);});
-    const api=new IntakeMetrics();let pressureReads=0,workerPressureReads=0;
-    const stopApi=startOperationalCollection(()=>api.snapshot(),()=>{pressureReads++;return evaluatePressureAlerts(null);});
+    const api=new IntakeMetrics();let pressureReads=0,workerPressureReads=0,apiSnapshots=0;
+    const stopApi=startOperationalCollection(()=>{apiSnapshots++;return api.snapshot();},()=>{pressureReads++;return evaluatePressureAlerts(null);});
     try{
-      const deadline=Date.now()+45000;let stored=false;
-      while(Date.now()<deadline){if((await pool.query('SELECT 1 FROM operational_samples WHERE instance_id=$1',[instance])).rowCount){stored=true;break;}await new Promise(resolve=>setTimeout(resolve,250));}
-      assert.equal(stored,true,'real collector must persist its scheduled snapshot');
+      // API/worker share a try-lock: one may intentionally skip the first tick.
+      // Observe the next real 30-second interval as well, without shortening it.
+      const deadline=Date.now()+75000;let stored=false;
+      while(Date.now()<deadline){
+        const samples=(await pool.query('SELECT count(DISTINCT instance_id)::int AS n FROM operational_samples WHERE instance_id=ANY($1::uuid[])',[[instance,api.snapshot().instance_id]])).rows[0].n;
+        const pressure=(await pool.query('SELECT count(*)::int AS n FROM pressure_signal_states WHERE instance_id=$1',[api.snapshot().instance_id])).rows[0].n;
+        if(samples===2&&pressure===3){stored=true;break;}await new Promise(resolve=>setTimeout(resolve,250));
+      }
+      assert.equal(stored,true,'both real collectors must persist across scheduled busy-lock retries');
     }finally{await Promise.all([stop(),stopApi()]);}
-    assert.equal(pressureReads,1,'pressure is captured once on the existing 30-second tick');
+    assert.equal(pressureReads,apiSnapshots,'pressure is captured once per existing API snapshot');assert.ok(apiSnapshots>=1&&apiSnapshots<=2);
     assert.equal(workerPressureReads,0,'worker never owns pressure observations');
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM pressure_signal_states WHERE instance_id=$1',[api.snapshot().instance_id])).rows[0].n,3);
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM pressure_signal_history')).rows[0].n,3);
