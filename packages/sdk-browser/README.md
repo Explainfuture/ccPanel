@@ -25,3 +25,5 @@ getQueueStatus新增`pending_writes`、`pending_bytes`、`pending_limit_count`�
 事件字符串和属性键必须兼容 PostgreSQL UTF-8/JSONB：拒绝 NUL 和未配对的 UTF-16 代理项，正常中文与 Emoji 可用。被拒绝的事件返回明确状态，不进入无限数据库重试。
 
 业务时间可作为第三个参数传入，例如 `track('order_paid', { amount: 10 }, { event_time: new Date(paidAt).toISOString() })`。不传则使用调用时刻；时间必须为带 `Z` 的 UTC 字符串，按现有协议校验（最多过去七天、最多未来五分钟）。无效时间返回 `rejected/invalid_event_time` 并触发 onError，不入队。时间在首次异步等待前冻结，重试及本地恢复保留原时间和 ID；服务端接收时仍会再次校验，因此长期离线可能过期。空属性事件可以传 `undefined` 占位后再传时间选项。该参数不改变用户身份，也不改变接收时间 received_at。
+
+`getQueueStatus().counters` 公开本实例生命周期累计诊断：`expired` 为清理的过期事件数，`rejected_overflow` 为队列满拒绝次数，`rejected_pending_overflow` 为待入队预算拒绝次数，`storage_error` 为存储操作失败次数（不是丢失事件数，事件可能已降级到内存）。计数在调用 onError 前更新，回调异常不影响计数；返回独立快照，最多累加至 Number.MAX_SAFE_INTEGER。重建实例重新计数，不跨标签页聚合、不持久化、不随授权撤回/重新授权清零。只有数字，无事件属性或身份信息。原 `expired:N` 回调保持兼容。队列 TTL 按原始入队时间计算，业务 event_time 在接入时另行校验。

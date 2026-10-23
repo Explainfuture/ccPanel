@@ -13,7 +13,7 @@ it('rejects excess pending writes before reading caller properties and releases 
     await client.flush();for(let i=0;i<100;i++)pending.push(client.track('burst',{i}));
     const properties={get value():string{throw Error('must not be read');}};
     const rejected=await client.track('overflow',properties);expect(rejected).toEqual({status:'rejected',reason:'rejected_pending_overflow'});expect(queue.calls).toBe(100);expect(errors).toContain('rejected_pending_overflow');
-    expect((await client.getQueueStatus()).pending_writes).toBe(100);
+    expect((await client.getQueueStatus()).pending_writes).toBe(100);expect((await client.getQueueStatus()).counters.rejected_pending_overflow).toBe(1);
     release();await Promise.all(pending);expect((await client.getQueueStatus()).pending_writes).toBe(0);expect((await client.getQueueStatus()).pending_bytes).toBe(0);
   }finally{release();await Promise.all(pending);client.destroy();}
 });
@@ -25,7 +25,7 @@ it('uses the durable pending budget and admits new work after rejected storage c
     const status=await client.getQueueStatus();expect(status.pending_writes).toBe(1000);expect(status.pending_limit_count).toBe(1000);expect(status.pending_limit_bytes).toBe(5*1024*1024);
     release();await Promise.all(pending);expect((await client.getQueueStatus()).pending_writes).toBe(0);
     // The pending reservation is free even though the durable queue itself is full.
-    expect((await client.track('queue_full')).reason).toBe('rejected_overflow');expect((await client.getQueueStatus()).pending_bytes).toBe(0);
+    expect((await client.track('queue_full')).reason).toBe('rejected_overflow');expect((await client.getQueueStatus()).counters).toMatchObject({rejected_overflow:1,rejected_pending_overflow:1});expect((await client.getQueueStatus()).pending_bytes).toBe(0);
   }finally{release();await Promise.all(pending);client.destroy();}
 });
 it('bounds serialized pending bytes independently of record count and drains revoked pending writes without resurrection',async()=>{

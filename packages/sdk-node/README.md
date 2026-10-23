@@ -45,3 +45,5 @@ await shared.shutdown();
 SDK和整个平台尚未通过完整PRD发布门槛；ESM类型/包导入验收不等于生产容量、真实设备或全部故障模型通过。
 
 业务时间支持 `track(name, properties, { event_time })` 及 `trackFor(userId, name, properties, { event_time })`，例如 `shared.trackFor('opaque-user-A', 'order_paid', { amount: 10 }, { event_time: new Date(paidAt).toISOString() })`。必须是带 Z 的 UTC 字符串，校验过去七天/未来五分钟范围；不传使用调用时刻。无效值返回 rejected/invalid_event_time 并触发 onError。文件恢复、网络重试保留原 ID、身份与时间；服务端接收时再次校验，不提供绕过有效期的历史导入。时间选项属于独立参数，不会被 properties 的隐私过滤或白名单误删。
+
+Node 同样通过 `getQueueStatus().counters` 获取实例内的 expired（事件数）、rejected_overflow / rejected_pending_overflow（拒绝次数）、storage_error（操作失败次数，不等于数据丢失）。与 Browser 一致，返回快照、饱和计数且不持久化；重开文件队列不会恢复上一实例的诊断计数。事件 ID、文件队列内容和确认规则保持不变。

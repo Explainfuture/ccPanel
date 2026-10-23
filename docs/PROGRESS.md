@@ -1397,3 +1397,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 新增 IndexedDB 重开及 503 后重试的完整事件快照比较、边界/错误时间无传输、Node 双用户文件队列恢复和类型负例。pnpm 真实打包后，在仓库外验证导出类型及 Node 业务时间传输。
 - 本地 220 项测试、typecheck、build、两个 pnpm tarball 的仓库外验证通过。网络为 stub，IndexedDB 为 fake-indexeddb；本步骤未替换 VPS 012，也不声称真实浏览器/线上自定义时间或完整容量验收。
 - 后续 CI：Actions 39943562274 两个任务全部 success，包含 220 项测试、15 套真实 PostgreSQL 集成及既有主机保护/打包/进程证据检查。本步骤没有新的 VPS 容量窗口或运行版本变更。
+
+### 步骤 173：公开 SDK 投递诊断计数
+
+- 对齐 PRD 本地队列“公开 rejected_overflow、expired、storage_error 计数和回调”：getQueueStatus 新增 counters 快照，区分过期事件数、已满队列拒绝次数、待入队预算拒绝次数和存储操作失败次数。回调前更新，安全整数饱和，生命周期内累计；不持久化、不含身份/事件属性，不把存储故障次数解释为丢失条数。
+- 本地入队七天 TTL 与业务时间有效范围独立，未改写入队时间或延长服务端有效期。新增 Memory/IndexedDB 过期不发送且只计一次、回调抛错、快照不可改写内部计数、授权变更保持诊断及存储故障内存降级测试，既有预算压力用例验证两种拒绝分别计数。
+- 223 项测试、typecheck、build、两个 pnpm tarball 仓库外验证通过；网络 stub、IndexedDB 为 fake-indexeddb。本步骤未发布 npm 或替换 VPS 012，容量门槛保持未通过。

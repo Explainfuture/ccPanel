@@ -8,10 +8,12 @@ export interface AnalyticsOptions {
   propertyAllowlist?:Readonly<Record<string,readonly string[]>>;
   onError?:(code:string,details?:{event_ids:string[]})=>void;source?:'browser'|'node';
 }
+export interface DeliveryCounters{expired:number;rejected_overflow:number;rejected_pending_overflow:number;storage_error:number}
 export interface TrackOptions{event_time?:string}
 export interface TrackResult{status:'queued-persistent'|'queued-memory'|'rejected';event_id?:string;reason?:string}
 const sensitive=/password|secret|token|authorization|cookie|phone|email/i;
 export class Analytics {
+  private counters:DeliveryCounters={expired:0,rejected_overflow:0,rejected_pending_overflow:0,storage_error:0};
   private queue:Queue;
   private memory=new MemoryQueue();
   private consent:boolean;
@@ -61,7 +63,10 @@ export class Analytics {
     }
     void this.flush();
   }
-  private error(code:string,details?:{event_ids:string[]}){this.lastError=code;try{this.options.onError?.(code,details);}catch{/* diagnostics must not break business code */}}
+  private error(code:string,details?:{event_ids:string[]}){
+    if(code==='storage_error'||code==='rejected_overflow'||code==='rejected_pending_overflow')this.counters[code]=Math.min(Number.MAX_SAFE_INTEGER,this.counters[code]+1);
+    else if(/^expired:[1-9][0-9]*$/.test(code))this.counters.expired=Math.min(Number.MAX_SAFE_INTEGER,this.counters.expired+Number(code.slice(8)));
+    this.lastError=code;try{this.options.onError?.(code,details);}catch{/* diagnostics must not break business code */}}
   private readConsentMarker(){try{return typeof localStorage==='undefined'?null:localStorage.getItem(this.consentKey);}catch{return null;}}
   private consentRevision(marker:string|null){return marker?.replace(/^(?:revoked|granted):/,'')??'initial';}
   private hasConsent(){
@@ -164,7 +169,7 @@ export class Analytics {
   updateWriteKey(key:string){if(!key||key.length>256)throw new Error('invalid_key');this.options.writeKey=key;this.paused=false;void this.flush();}
   private envelope(events:AnalyticsEvent[]){return{write_key:this.options.writeKey,project_id:this.options.projectId,schema_version:1,events};}
   private async stores(){return this.queue===this.memory?[this.queue]:[this.queue,this.memory];}
-  async getQueueStatus(){let count=0,bytes=0,persistent_count=0,memory_count=0,oldest:number|null=null;for(const q of await this.stores()){try{const s=await q.stats();count+=s.count;bytes+=s.bytes;if(q.persistent)persistent_count+=s.count;else memory_count+=s.count;if(s.oldest!==null)oldest=oldest===null?s.oldest:Math.min(oldest,s.oldest);}catch{this.error('storage_error');}}return{count,bytes,persistent_count,memory_count,oldest,pending_writes:this.pendingWrites,pending_bytes:this.pendingBytes,pending_limit_count:this.queue.persistent?1000:100,pending_limit_bytes:this.queue.persistent?5*1024*1024:512*1024,last_error:this.lastError,storage:this.needsRecovery?'memory-fallback':this.queue.persistent?'persistent-with-memory-fallback':'memory'};}
+  async getQueueStatus(){let count=0,bytes=0,persistent_count=0,memory_count=0,oldest:number|null=null;for(const q of await this.stores()){try{const s=await q.stats();count+=s.count;bytes+=s.bytes;if(q.persistent)persistent_count+=s.count;else memory_count+=s.count;if(s.oldest!==null)oldest=oldest===null?s.oldest:Math.min(oldest,s.oldest);}catch{this.error('storage_error');}}return{count,bytes,persistent_count,memory_count,oldest,counters:{...this.counters},pending_writes:this.pendingWrites,pending_bytes:this.pendingBytes,pending_limit_count:this.queue.persistent?1000:100,pending_limit_bytes:this.queue.persistent?5*1024*1024:512*1024,last_error:this.lastError,storage:this.needsRecovery?'memory-fallback':this.queue.persistent?'persistent-with-memory-fallback':'memory'};}
   flush():Promise<{confirmed:number;pending:number}>{
     if(this.flight)return this.flight;
     this.flight=this.send().catch(()=>{this.error('send_error');return{confirmed:0,pending:0};}).finally(()=>{this.flight=undefined;});return this.flight;
