@@ -808,3 +808,11 @@ Worker主路径包装persist、DLQ发布、DLQ索引及Kafka checkpoint，固定
 清理测试PG公司、事件、DLQ、用户与会话，移除两端fixture/临时浏览器凭证、注入脚本、备份/解密dump及源ledger明文，保留密文与分开的工作站密钥；Kafka合成消息仍按流保留周期存在。最终所有原表指纹一致，仅consumer_progress按5条消息推进：p0=5608、p1=5110，总10718；临时DB/测试公司0，四服务running、ready。两次旧验证命令因容器挂载路径/权限失败，未修改数据，最终改用受限fixture UUID直接PG对账并通过；未伪造旧验证通过。
 
 升级前可用内存约314MiB、Swap占262MiB、根盘可用12GiB，仅瞬时读数。此前schema16持续Swap容量门槛失败仍有效，本版尚无容量验收；RF1/单PG、设备矩阵、持续离机备份与事故/删除状态同步、全量持久监控告警、保留策略配置等生产要求仍未完成。
+
+### 步骤114：新版真实PG/Kafka停机恢复与控制器保护
+
+复核旧脚本发现缺部署/容量互斥、schema17聚合桶清理及自定义命名空间支持，现加精确release核对、deploy.lock、无容量服务/无遗留fixture、就绪前检、信号退出恢复；cleanup按既有合成标识核对后事务删除含桶、commit后删状态。操作JS只读挂载自shared目录，不修改当前release。运行手册FAULT-DRILL.md明确全PG断连导致恢复租约丢失与进程退出，不能冒充同进程内重试。
+
+150项单测/类型检查、JS语法、VPS bash -n通过。真实m4-observability-003演练由独立ccpanel-fault114.service运行，RuntimeMaxSec600，已观测inactive/dead、Result success、ExecMainStatus0。Worker停下时事件1被Kafka确认但PG0，恢复后PG1；事件2确认后保存消费位点，PG停机时位点不推进，PG恢复后PG2；Kafka停机请求503无假202，恢复后事件3确认且PG3；invalid_event_id毒消息进DLQ；fixture事务清理并移除state。控制日志与前后指纹在/opt/ccpanel/shared/fault114。
+
+最终原表指纹完全一致，唯一变化consumer_progress总10722（相对113新增3正常+1毒消息）；raw2/dedup3/DLQ0，测试公司0。完整性检查passed、门禁open、四服务running、HTTPS ready；API/Worker RestartCount各6，PG/Kafka各0，OOM标志均false。重启属于停机测试预期行为，绝非无重启容量证明。新进程指标按instance重置，未伪称本演练测到persist事务失败计数。尚无同租约下短暂写库失败、独立DLQ broker失败及主机断电/切流证据。CI待本分支，生产资源与其余PRD门槛保持未完成。
