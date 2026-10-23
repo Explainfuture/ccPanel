@@ -1272,3 +1272,11 @@ ffa7110加入手动历史/严格客户端守卫和平台可见性，204e67f新�
 CI39927984856全部success（206单测/58文件、构建/消费者/CLI/Python、15真实PG和72 mock主机例）。VPS先只读核对当前009/21、无容量任务，再用SHA固定归档暂存validation-ops162，四组72例都通过，真实Docker/systemctl/curl被mock，源备份/证明为synthetic，实际env写入仅在临时目录。归档SHA ae7064beab5097ec8be007c25f2c145718d6733195e38fd86497a14868cab592，摘要.local/ops162-final-summary.json与服务端同目录final-summary.json；日志hash保留。
 
 只读末态仍009/21、projects2/raw2/dedup3/DLQ0/operators0、位点7182/7230，临时库0、主库新DLQ两表不存在；四容器running/restart0/OOMfalse/ready。没有替换线上共享脚本、重建服务、迁移/恢复主库。工具源码可支持22不等于22已发布；下轮新归档、离机备份解密/真实恢复和受控21→22发布后需验证实际SDK/权限/页面/采集及清理。独立通知/备份规则、持续异机最新状态同步、资源/HA与设备矩阵等继续未完成。
+
+### Step 163a: schema22 preview migration and fresh restore proof (2026-10-23)
+
+Frozen source ab630a9 produces m4-dlq-010, archive SHA256 `49953e1c96f4c80ad4b7408a4d57b823a0f05f5ec174f2e9daf953e53c250168`. Source schema21/m4-pressure-009 was quiesced with API/Worker stopped, collection disabled and retention disabled. Fresh evidence: `/opt/ccpanel/shared/product-upgrade.s8ZcUE`.
+
+The new dump and v2 ledger (two retention inventory entries) were downloaded, AES-256-GCM encrypted with the workstation-only key, decrypted and compared byte for byte. The decrypted dump was returned to a dedicated temporary database and actually restored in 2 seconds, with all public relation counts and fingerprints matching; the database was dropped. Dump SHA256 `1e407e4f3436044d309cd23a987fcae72bff78362289133ae630826dd26c488e`; ciphertext `ae0f7c873b5fea035328dea7ce3d85c53e686a824c6aa1fa8ddef39c926d5f65`; fingerprint `2bb1076b87248508d7bf29c01830b7a6781c533d27af3959e3518382175d3612`.
+
+21-to22 apply preserved all original column fingerprints, verified both new DLQ tables empty before collection, and passed schema22, progress and HTTPS ready checks. Controlled container recreation caused transient connection resets before readiness recovered: this was not a zero-downtime deployment. Kafka topic creation logged an error, followed by successful existing-partition checks with no new partitions. Activation, live SDK/UI acceptance and cleanup are recorded separately. No new full capacity pass is claimed.
