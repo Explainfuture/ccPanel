@@ -1048,3 +1048,13 @@ public CLI记录接入尝试/成功/失败/尝试事件数及UTF-8请求体字�
 补充CI宿主机的真实PG验收：记录原监控/4规则基线，创建并清理两个事件夹具，追加新采样及告警变化后执行生成的prefix SQL和Python比较应通过；只修改一条原采样hash（总数不变）应拒绝，随后恢复。该脚本在CI宿主机需要Python3，不给应用容器安装依赖；测试库仍由独立PG runner严格创建/删除。类型检查通过，等待最新提交CI。原负载17分钟1020确认、错误0、102查询均成功/无跳过，仅进度，服务器未执行这些测试。
 
 步骤141最新fce2b8b的CI39900213227 success，171单测/构建/Python工具/CLI正反例及8套PG通过。日志实际real_pg_preservation、monitor_append_retains_originals、altered_original_monitor_rejected均true，不以纯模拟替代PG输出验证。同步集成分支/草稿PR。原58941本轮再次确认live，19分钟1140确认、错误0、114查询均成功/无跳过；原采样器active/running、121帧/elapsed1200002ms/末帧无错误。尚未结束或冻结139窗口，fixture继续保留，禁止提前清理/部署。
+
+### 步骤142：schema19容量终态/冻结/对账/清理
+
+原58941通过write_stdin实际观察exit0，UTC04:07:44.434–04:37:46.707，共1802.273秒。1800唯一事件全确认/可见，35原ID重发，错误/最终积压0；1830接入请求含1835事件份数，181真实查询均成功/无忙跳过，请求体1969403字节/均1076.18（存在批量，不是唯一事件平均）。p95接入603.36ms、可见9044ms、查询1245.87ms，最大生成延迟17ms。新离线工具实际evidenceValid/dataLoadPass true，输入hash见CAPACITY；原生成器SHA未变，期间无部署/参数调整，工作站有离线测试活动已注明。
+
+第一遍finalize因末host样本尚未覆盖load完成而拒绝，等待同一采样器10秒后冻结188帧，正式183/183有效、配置v2含监控开关一致。CPU idle74.67%、最低可用282.57MiB、四容器峰值59.39/33.21/208.42/91.13MiB、磁盘最低63.86%、无替换/重启/OOM；Swap换入15.34/出0.80MiB、107活动区间、连续218.75秒。resource evidenceValid true但conservativeResourcePass=false，未弱化条件或声称生产通过。
+
+冻结后独立PG验证raw/dedup/job ID各1800、完成/桶贡献1800、DLQ0，集合SHA51e154993b18e576a22a682419c270a8b49a3b23f13917849118a98cec43b698；替换一个ID的反例实际1799/1800拒绝，不改DB。清理合成公司/账号/会话/业务数据后，新preservation工具真实应用：34原业务关系一致、原160采样/8告警历史子集完全一致；动态项只有consumer_progress、operational_samples、operational_alert_states。PG7176/7228总14404，与Kafka committed/high相同/lag0，root raw2/dedup3/DLQ0、临时公司/DB0，门禁open/ready。两端fixture凭证删除，冻结证据/汇总报告已保存双方，未删除按Kafka保留期存在的合成消息。
+
+窗口中API/Worker各60采样/各1实例，区间已读日志采集/评估失败或拒绝码均0；最终4规则clear且评估年龄约27秒，history8。原采样器实际inactive/dead、Result success/ExecMainStatus0、199帧/elapsed1980000ms自然完成，未人工停止/重开。证据capacity-integrity.HfanpA/.local/capacity-alerts139-*，数据与资源判定分开。当前生产资源门槛仍未通过；其他规则/通知、持续离机同步、自助策略、设备矩阵和生产拓扑继续，目标未完成。

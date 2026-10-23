@@ -253,3 +253,34 @@ python scripts/capacity-preservation.py verify before.jsonl after-cleanup.jsonl 
 ```
 
 报告绑定三份输入SHA256、拒覆盖，不读取业务载荷或凭证。独立精确事件ID集合、Kafka/PG位点/lag、门禁和资源报告仍必须另外验收。步骤139的基线包含160条采样和8条告警历史；本工具尚未用于该运行中的窗口最终核对。
+
+## 步骤142：schema19正式结果（数据通过，资源未通过）
+
+原生成器58941实际终态exit0，UTC2026-10-23T04:07:44.434Z至04:37:46.707Z，共1802.273秒；生成阶段1799.006秒，最大生成延迟17ms。m4-alerts-006/schema19、API/Worker持久采集与保留始终开启，期间无部署/资源配置变更。工作站同时有离线工具开发/单测，不冒称纯净客户端；最大调度延迟仍按实际记录报告。
+
+| 项目 | 实测 |
+|---|---:|
+| 唯一生成 / 确认 / 未可见 / 最终积压 / 错误 | 1800 / 1800 / 0 / 0 / 0 |
+| 原ID额外重发 / 尝试事件份数 | 35 / 1835 |
+| 实际接入请求 / 成功 / 失败 | 1830 / 1830 / 0 |
+| 实际查询 / 成功 / 忙跳过 | 181 / 181 / 0 |
+| 请求体UTF-8总字节 / 平均每次尝试 | 1969403 / 1076.18 |
+| 请求体最小 / 最大（存在批量请求） | 1073 / 3034字节 |
+| 接入 / 可见 / 查询p95 | 603.36ms / 9044ms / 1245.87ms |
+| raw / dedup / job精确ID匹配、完成聚合、桶贡献 | 各1800 |
+| DLQ / Kafka最终lag | 0 / 0 |
+| 有效资源帧 / 边界配置核对 | 183/183 / 一致 |
+| CPU idle / 最低可用内存 | 74.67% / 282.57MiB |
+| API / Worker / Kafka / PG内存峰值 | 59.39 / 33.21 / 208.42 / 91.13MiB |
+| 最低磁盘可用 / 重启或替换 / OOM | 63.86% / 0 / 无 |
+| Swap换入 / 换出 | 15.34 / 0.80MiB |
+| Swap活动区间 / 最长连续活动 | 107 / 218.75秒 |
+| Swap最高换入 / 换出速率 | 881.87 / 73.85KiB/s |
+
+最终离线负载报告evidenceValid/dataLoadPass均true，输入SHA256 36a5afe23ef0472856150fc2fc5881691185ea26894a9d04a987d0e512bb60eb；资源evidenceValid/configurationChecked true，但conservativeResourcePass=false、swapReviewRequired=true。**接入/可见与数据对账通过；持续Swap使保守资源门槛未通过。**没有放宽条件或重跑同配置直到绿色，不据此承诺生产高并发。
+
+原采样器补齐结束后的host边界才冻结188帧文件，第一次边界未覆盖时等待同一单位后成功，实际选择183帧。冻结后独立SQL直接匹配1800个raw/dedup/job ID、已处理/桶贡献1800、DLQ0；集合SHA256 51e154993b18e576a22a682419c270a8b49a3b23f13917849118a98cec43b698，替换一个请求ID时1799/1800明确拒绝。窗口内API/Worker各60条真实采样、各1实例，区间已读日志4类采集/评估失败或拒绝码均0；末态4规则clear且fresh，历史仍8。
+
+清理后34个原业务关系指纹一致，原160条监控采样和8条告警历史子集也一致；动态项仅消费进度、采样追加及告警评估。PG p0=7176/p1=7228，总14404=原12569+1835，与Kafka committed/high一致、lag0；raw2/dedup3/DLQ0、临时公司/数据库0、恢复与完整性门禁open、HTTPS ready。两端fixture凭证已删除，Kafka合成消息按保留策略存在。采样器ccpanel-capacity-20261023040704.service实际inactive/dead、Result success/ExecMainStatus0，199帧/elapsed1980000ms自然结束，未停止/重开。
+
+冻结证据和报告在/opt/ccpanel/shared/capacity-integrity.HfanpA，工作站.local/capacity-alerts139-*。最终数据、负载、资源、原数据保留报告分列，不能互相替代；其他生产发布门槛仍见PRD及PROGRESS。
