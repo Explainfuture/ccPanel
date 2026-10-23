@@ -746,3 +746,5 @@ createApp同步保留POST/v1/batch处理名额，默认16、配置1–128，非�
 143项单测、类型检查与构建通过。控制住两份鉴权查询，第三请求503且原始body getter未访问、PG调用未增加；OPTIONS204/health200，原请求后续202；控制publish验证满载拒绝及解析/发布失败释放名额；非法参数拒绝。真实Node HTTP监听器用一份等待发布占满名额，另个连接发送64KB正文得到503，后续预检及释放后上报恢复，验证适配器路径。真实PG控制器追加admin快照预算字段检查，待CI。
 
 Chrome生产构建模拟Kafka保护允许/处理16满载，页面正确暂停并说明并发预算，390px无文档溢出、截图已查看，浏览器/静态服务已关闭。客户端沿用503稳定ID重试，未改SDK。此为请求处理上界，非连接数/QPS/SLA认证，尚未在VPS做本轮负载；公网仍m4-retention-002。
+
+步骤106验收补充：Actions39879446105（51492cf）verify/postgres均success，143项完整单测及5套真实PG控制器通过，含admin processing快照预算字段断言。代码同步preview/integration/草稿PR1；公网仍m4-retention-002，尚无本轮部署或新容量结论。下一步从pnpm打包产物做独立Node ESM/TypeScript消费验证；当前monorepo采用Bundler/DOM配置，不能据此证明NodeNext/无DOM消费者可用，生成声明中的相对导入和IDB类型引用需实际复核。
