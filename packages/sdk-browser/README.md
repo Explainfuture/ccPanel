@@ -29,3 +29,5 @@ getQueueStatus新增`pending_writes`、`pending_bytes`、`pending_limit_count`�
 `getQueueStatus().counters` 公开本实例生命周期累计诊断：`expired` 为清理的过期事件数，`rejected_overflow` 为队列满拒绝次数，`rejected_pending_overflow` 为待入队预算拒绝次数，`storage_error` 为存储操作失败次数（不是丢失事件数，事件可能已降级到内存）。计数在调用 onError 前更新，回调异常不影响计数；返回独立快照，最多累加至 Number.MAX_SAFE_INTEGER。重建实例重新计数，不跨标签页聚合、不持久化、不随授权撤回/重新授权清零。只有数字，无事件属性或身份信息。原 `expired:N` 回调保持兼容。队列 TTL 按原始入队时间计算，业务 event_time 在接入时另行校验。
 
 退出快照保留内部入队时间，页面长期挂起后 sendBeacon 同步跳过超过七天的记录，不在关闭回调里读取 IndexedDB。过滤不代表服务端确认，不删除本地记录或提前增加 expired；后续普通队列清理时统一计数。持久队列恢复使用原始 created，不重新计算 TTL。destroy 后手动调用 beacon 也不会继续采集发送。
+
+`flushInterval` 默认 3000ms；显式配置必须是 100～2147483647ms 的整数。NaN、Infinity、超大值、小数及非 number 均在初始化创建定时器前抛出 invalid_flush_interval，避免运行时定时器溢出/强制转换造成高频循环。这是跨 Browser/Node 的运行时参数约束，不改变三秒默认值或重试退避。

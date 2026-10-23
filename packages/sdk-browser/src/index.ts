@@ -36,7 +36,9 @@ export class Analytics {
     if(!options.projectId||!options.writeKey||options.writeKey.length>256)throw new Error('projectId and writeKey required');
     this.batchSize=options.batchSize??limits.batchEvents;
     if(!Number.isInteger(this.batchSize)||this.batchSize<1||this.batchSize>100)throw new Error('invalid_batch_size');
-    if(options.flushInterval!==undefined&&options.flushInterval<100)throw new Error('invalid_flush_interval');
+    // Browsers and Node use a signed 32-bit millisecond timer delay.
+    // NaN/Infinity/overflow can otherwise become an unintended ~1 ms loop.
+    if(options.flushInterval!==undefined&&(!Number.isInteger(options.flushInterval)||options.flushInterval<100||options.flushInterval>2147483647))throw new Error('invalid_flush_interval');
     if(options.propertyAllowlist!==undefined){
       const list=options.propertyAllowlist;
       if(!list||typeof list!=='object'||Array.isArray(list)||![Object.prototype,null].includes(Object.getPrototypeOf(list))||Object.keys(list).length>1000)throw new Error('invalid_property_allowlist');
