@@ -1314,3 +1314,11 @@ VPS证据 `/opt/ccpanel/shared/kafka-durability-check.pE6b96`：候选只读CLI�
 37个原非监控关系（包含消费位点与恢复门禁）完整指纹相同，整体SHA256 `18a3c4b2306b0ca3d7e1895790d67e0208c8a75f9f33acac7809f6b007de756c`。root仍schema22/raw2/dedup3/DLQ0/operators0、位点7184/7232；四容器running/restart0/OOMfalse、HTTPS ready。当前正式预览仍m4-dlq-010/旧源码，不把候选检查当作部署完成，也不宣称新增容量或HA通过。演练164最终CI39932376723已通过；本步CI另记。
 
 步骤165实现版 [Actions39932874692](https://github.com/Explainfuture/ccPanel/actions/runs/39932874692) 完整通过：211项/59文件、15套PG、72个既有主机保护mock、类型/构建/消费者打包等。此CI不含真实Kafka broker；真实读取/候选启动证据来自上述VPS，不互相替代。
+
+### 步骤166a：确认策略发布前的新备份与真实恢复（2026-10-23）
+
+冻结源码6b31a92，构建 m4-durability-011/schema22；143文件归档SHA256 `fede52a54c262b06bb8837e087e0ed89759cc1a6994c7ca11bef091e41dd33b4`。源为m4-dlq-010/schema22，证据 `/opt/ccpanel/shared/product-upgrade.kBen5w`。在停止API/Worker并关闭清理/采样后生成新备份，不复用163备份证明。
+
+本次新dump及v2完整两项目保留清单离机AES-GCM加密/解密，均逐字节一致；回传解密dump实际临时数据库恢复3秒，全部public关系行数/指纹一致、临时数据库删除。明文SHA256 `b7557aab5e4395a005f84cd2b7ed56d6b7bcaf34727ea8ccc660ccb0d53bd1db`，密文 `3f6440e2c71b5420e91b61f8948ef1cedf093da8cf1cbb1612478ee8864f50ae`，指纹文件 `2bfa21ca1747fdafe2db7655523424b50842ce51db2c2136dd3120fd593aa52d`。密钥留在工作站，未上传服务器。
+
+候选只读确认检查使用服务器实际runtime配置（没有-e覆盖RF/minISR）通过1/1策略，两个topic可读且满足新保护。源最终CI39933366900通过；新版本升级与启用/真实SDK对账另外记录。当前为受控有中断升级，不宣称连续服务、新版容量或HA已通过。
