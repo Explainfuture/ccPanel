@@ -16,7 +16,7 @@ try{
   const created=child('create');assert.equal(created.status,0,'fixture create');fixture=JSON.parse(created.stdout);
   const f=fixture!,ids=[randomUUID(),randomUUID()];
   for(const event_id of ids)await persist({tenant_id:f.tenant!,project_id:f.project!,received_at:new Date().toISOString(),event:{event_id,event_name:'capacity_proof',distinct_id:'synthetic',event_time:new Date().toISOString(),properties:{synthetic:true},context:{},schema_version:1}});
-  const db=await pool.connect();try{assert.equal(await aggregateNext(db),'completed');assert.equal(await aggregateNext(db),'completed');}finally{db.release();}
+  const db=await pool.connect();try{assert.equal(await aggregateNext(db),'completed');assert.ok(['completed','empty'].includes(await aggregateNext(db)),'second bucket may already be processed');}finally{db.release();}
   const result={tenant:f.tenant,project:f.project,generated:2,event_ids:ids};await writeFile(file,JSON.stringify(result),{mode:0o600});
   const valid=child('verify');assert.equal(valid.status,0,'exact set verification');const proof=JSON.parse(valid.stdout);
   assert.equal(proof.raw_ids_matched,2);assert.equal(proof.job_ids_matched,2);assert.equal(proof.unique_ids_matched,2);

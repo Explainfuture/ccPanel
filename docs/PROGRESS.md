@@ -890,3 +890,5 @@ Node语法检查通过。尚未执行本轮数据库对账；须原始生成器7
 新增capacity-proof真实PG控制器，使用新建隔离空数据库创建专有合成fixture，实际persist两事件并aggregateNext处理；调用同一load-fixture验证脚本确认集合hash/raw/job/dedup匹配。再保持总数不变，分别把raw或job的一个ID换成新ID，要求相应exact-ID检查失败；另测重复和非法请求ID。全部只在CI专有DB操作，最后核对fixture标识清理、临时文件绝对父目录/前缀校验后删除，不输出凭证。
 
 纳入postgres-ci-check第6套控制器，类型检查通过，真实SQL结果待CI。VPS原始1800秒负载71955与采样器继续运行，不改服务配置、不在实机测试数据中制造错误ID；本套测试验证“证明器能发现错误”，不是证明真实容量已通过。结束后使用当前capacity-report-cli源码重新构建，不复用缺少configuration参数的过期.local/capacity-report.mjs缓存。
+
+首次CI39889089113前5套通过，第6套失败于测试假定每个aggregateNext仅处理一条；实际算法按同小时桶一次完成多条，第二次empty正常。修正第二次允许已空或另一桶完成（兼容事件跨小时边界），最终验证器仍强制processed2、bucket_events2及所有精确ID，未放松对账标准，未改业务算法。待新CI。
