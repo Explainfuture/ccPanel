@@ -40,6 +40,22 @@ try{
   assert.ok(!JSON.stringify(dlq).includes('fixture'));assert.ok(!JSON.stringify(dlq).includes(otherProject));
   await pool.query('DELETE FROM replay_items WHERE project_id=$1',[project]);await pool.query('DELETE FROM replay_jobs WHERE project_id=$1',[project]);await pool.query('DELETE FROM dlq_records WHERE project_id=ANY($1::uuid[])',[[project,otherProject]]);
   const emptyDlq=await (await req(admin,root+'/dlq-summary')).json();for(const category of emptyDlq.categories){assert.equal(category.count,'0');assert.equal(category.oldest_age_seconds,null);assert.equal(category.oldest_created_at,null);}
+  const statusIds:string[]=[];
+  for(const status of ['queued','running','succeeded','failed','cancelled']){
+    const id=randomUUID();statusIds.push(id);
+    await pool.query("INSERT INTO query_jobs(id,tenant_id,project_id,user_id,spec,status,privacy_epoch,created_at,started_at,finished_at) SELECT $1,$2,$3,$4,'{}',$5,privacy_epoch,CURRENT_TIMESTAMP-interval '10 seconds',CASE WHEN $5='queued' THEN NULL ELSE CURRENT_TIMESTAMP-interval '5 seconds' END,CASE WHEN $5 IN ('succeeded','failed','cancelled') THEN CURRENT_TIMESTAMP-interval '2 seconds' ELSE NULL END FROM projects WHERE id=$3",[id,a,project,admin,status]);
+  }
+  for(const [owner,expired,epoch]of [[foreign,false,0],[admin,true,0],[admin,false,99]] as const){
+    const id=randomUUID();statusIds.push(id);await pool.query("INSERT INTO query_jobs(id,tenant_id,project_id,user_id,spec,status,privacy_epoch,expires_at) VALUES($1,$2,$3,$4,'{}','queued',$5,CURRENT_TIMESTAMP+($6::int*interval '1 hour'))",[id,a,project,owner,epoch,expired?-1:1]);
+  }
+  const foreignStatus=randomUUID();statusIds.push(foreignStatus);await pool.query("INSERT INTO query_jobs(id,tenant_id,project_id,user_id,spec,status) VALUES($1,$2,$3,$4,'{}','queued')",[foreignStatus,b,otherProject,foreign]);
+  for(const actor of [admin,analyst,viewer]){
+    const response=await req(actor,root+'/query-status');assert.equal(response.status,200);const summary=await response.json();assert.equal(summary.states.length,5);
+    for(const row of summary.states){assert.equal(row.count,'1');assert.ok(Number(row.oldest_age_seconds)>=10);if(row.status==='running'){assert.ok(Number(row.oldest_running_seconds)>=5);}else assert.equal(row.oldest_running_seconds,null);if(['succeeded','failed','cancelled'].includes(row.status)){assert.equal(row.duration_samples,'1');assert.equal(Number(row.max_completed_duration_ms),3000);}else{assert.equal(row.duration_samples,'0');assert.equal(row.max_completed_duration_ms,null);}}
+  }
+  assert.equal((await req(foreign,root+'/query-status')).status,404);assert.equal((await app.request(root+'/query-status')).status,401);
+  await pool.query('DELETE FROM query_jobs WHERE id=ANY($1::uuid[])',[statusIds]);
+  const emptyStatus=await (await req(admin,root+'/query-status')).json();for(const row of emptyStatus.states){assert.equal(row.count,'0');assert.equal(row.oldest_age_seconds,null);}
   for(const id of [a,b,project,otherProject])assert.ok(!JSON.stringify(telemetryBody).includes(id));
   const day=Math.floor(Date.now()/86400000)*86400000,first=day-86400000-1800000;
   const range={from:new Date(day-3*86400000).toISOString(),to:new Date(day).toISOString()};

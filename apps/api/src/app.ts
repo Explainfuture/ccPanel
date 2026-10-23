@@ -12,6 +12,7 @@ import { registerQueryJobs } from '../../../packages/server/src/query-jobs';
 import { registerDeletions } from '../../../packages/server/src/deletion-service';
 import { registerReplayRoutes } from '../../../packages/server/src/dlq-replay';
 import {readDeadLetterSummary} from '../../../packages/server/src/dlq-summary';
+import {readQueryStatus} from '../../../packages/server/src/query-status';
 import { registerInvitationAcceptance,registerCompanyInvitations,lockMembership,membershipAdmin } from '../../../packages/server/src/invitations';
 import { IngestionPaused,type AdmissionStatus } from '../../../packages/server/src/ingest-admission';
 import { lockProjectPrivacy } from '../../../packages/server/src/privacy';
@@ -563,6 +564,7 @@ export function createApp(deps: AppDeps) {
     if(!allowed(c,['admin']))return c.json({error:'forbidden'},403);
     return c.json({scope:'platform_aggregate',computed_at:new Date().toISOString(),admission:deps.admissionStatus?.()??null,intake:deps.intakeStatus?.()??null,processing:{in_flight:intakeInFlight,max_in_flight:maxIntakeInFlight,at_capacity:intakeInFlight>=maxIntakeInFlight}});
   });
+  app.get(prefix+'/query-status',async c=>c.json(await readQueryStatus(c.get('tenantId'),c.req.param('project')!)));
   app.get(prefix+'/dlq-summary',async c=>{
     if(!allowed(c,['admin']))return c.json({error:'forbidden'},403);
     return c.json(await readDeadLetterSummary(c.get('tenantId'),c.req.param('project')!));

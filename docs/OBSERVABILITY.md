@@ -51,3 +51,9 @@ persist成功区分inserted/duplicate/suppressed，EventConflict记conflict，�
 步骤112已在源码投递监控页面接入：仅管理员请求DLQ摘要，展示保留来源分类、精确数量、最老来源年龄（秒）及数据库快照时间。0条对应无记录，缺失对应未记录。手动刷新及可选可见时轮询，失败或失权清除旧DLQ数据；公司/项目切换卸载旧组件并中止请求。Chrome模拟API验证失败/恢复、公司切换、viewer不请求和窄屏布局；尚未部署VPS，也未完成持久告警及真实本版Worker运行验证。
 
 步骤113部署更新：m4-observability-003/schema17已在VPS运行。真实HTTPS2个唯一事件及重复批次，PG/聚合贡献2且重复计数2；同一隔离测试项目1条无效合成Kafka消息进入DLQ。实际Worker累计快照观察inserted2/duplicate2、DLQ publish/index completed各1、Kafka checkpoint5、failed0。HTTPS摘要及Chrome页面均显示未解决1和实际年龄。测试PG数据/凭证已清理，仅原消费位点按5条消息推进；详见PROGRESS步骤113。尚未做本版PG/Kafka不可用注入、持久时序/告警或新容量验收，不能把这次功能验证解释为完整生产监控验收。
+
+## 步骤116：可见查询任务积压快照（未部署）
+
+公司有效成员可GET项目`/query-status`，与同项目query-jobs列表使用相同的未过期、当前privacy_epoch、创建者仍为公司成员过滤。五个固定状态queued/running/succeeded/failed/cancelled，各返回精确字符串count、最老created_at及其数据库年龄；running另返回从最老有效started_at计算的oldest_running_seconds。空类别时间/年龄null，未来时间钳制0。不是全平台队列、接入限额占用或已隐藏任务计数；管理员也不能据此推断其他公司或失效创建者任务。
+
+duration_samples及max_completed_duration_ms仅使用started_at存在且finished_at>=started_at的记录，覆盖完成/失败/取消，不把未开始或无效时间当0。时长从开始执行到状态完成，不包含排队，不证明取消已中断SQL；running年龄是读取时观察，既非已完成耗时也非死锁判定。默认任务24小时过期，隐私变更和成员撤销会改变统计样本，因此这些是当前可见保留记录统计，不是稳定历史SLO。单SQL一致性快照、PG 5秒超时；不读取spec/result或返回用户/任务ID，未新增索引，规模成本待测。界面、历史与告警仍待接入。
