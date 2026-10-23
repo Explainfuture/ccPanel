@@ -32,6 +32,7 @@ try{
   await pool.query("INSERT INTO operational_samples(source,instance_id,started_at,observed_at,payload_hash,snapshot) SELECT 'api',$1,clock_timestamp()-interval '1 hour',date_trunc('second',CURRENT_TIMESTAMP)-interval '1 second'+n*interval '1 microsecond',$2,$3 FROM generate_series(1,53) n",[historySnapshot.instance_id,'0'.repeat(64),JSON.stringify(historySnapshot)]);
   const history=await req(admin,root+'/operational-history?source=api');assert.equal(history.status,200);assert.equal(history.headers.get('cache-control'),'no-store');const historyBody=await history.json();assert.equal(historyBody.samples.length,50);assert.equal(historyBody.scope,'platform_aggregate');assert.ok(historyBody.next_cursor);
   const nextHistory=await(await req(admin,root+'/operational-history?source=api&cursor='+historyBody.next_cursor)).json();assert.equal(nextHistory.samples.length,3);assert.equal(nextHistory.next_cursor,null);
+  assert.equal(new Set([...historyBody.samples,...nextHistory.samples].map(row=>row.observed_at)).size,53,'response timestamps preserve microseconds for stable UI row identities');
   assert.equal((await(await req(admin,root+'/operational-history?source=worker')).json()).samples.length,0);
   for(const suffix of ['?limit=100000','?source=api&source=worker','?cursor=broken'])assert.equal((await req(admin,root+'/operational-history'+suffix)).status,400);
   for(const user of [viewer,analyst])assert.equal((await req(user,root+'/operational-history')).status,403);

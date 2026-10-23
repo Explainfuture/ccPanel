@@ -35,6 +35,6 @@ export async function readOperationalHistory(user:string,tenant:string,project:s
     const page=rows.slice(0,50),last=page.at(-1);
     const next=rows.length>50&&last?Buffer.from(JSON.stringify([last.cursor_time,last.source,last.instance_id])).toString('base64url'):null;
     await db.query('COMMIT');
-    return{scope:'platform_aggregate' as const,computed_at:new Date().toISOString(),retention_days:7,page_limit:50,samples:page.map(({cursor_time,...row})=>row),next_cursor:next};
+    return{scope:'platform_aggregate' as const,computed_at:new Date().toISOString(),retention_days:7,page_limit:50,samples:page.map(({cursor_time,...row})=>({...row,observed_at:cursor_time})),next_cursor:next};
   }catch(error){await db.query('ROLLBACK');throw error;}finally{db.release();}
 }
