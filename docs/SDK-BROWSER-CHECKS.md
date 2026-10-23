@@ -63,3 +63,28 @@ npx --yes --package @playwright/cli playwright-cli -s=sdk177 close
 2026-10-23 Chrome155.0.8059.85：原生beacon返回false，真实IndexedDB仍1，接收端事件回执0；释放占位请求并原生reload（原SDK监听器仍在），新SDK普通cors请求用原ID取得202后count0，接收端只有1次事件回执。脚本先试验过主动destroy旧实例，再移除该步骤后重跑，通过；最终脚本验证了旧监听器仍存在的原生重载。Browser构建SHA256 158e90697d30571e855a552e8a94fe6e1fa99e215bc44fb326615e43ae0887f4。专用浏览器/接收端已关闭。
 
 此证据补充Chrome原生false分支；调用SDK beacon方法触发原生API，未通过关窗触发第一次false，未覆盖VPS/Kafka/PG、系统强杀、BFCache或完整设备矩阵。不能把本机包回执测试记为完整A05或容量通过。
+
+## 跨引擎记录（步骤 186）
+
+本机 Edge 安装版为133.0.3065.82，本步骤未执行；不能将它作为当前/上一稳定版本的覆盖证据。通过 Playwright CLI 的 `install-browser firefox` 安装独立测试引擎 Firefox156.0（Playwright firefox v1553，缓存 firefox-1553），没有替换用户默认浏览器或服务器依赖。
+
+执行本地接收端和专用 firefox186 会话：
+
+```powershell
+npx --yes --package @playwright/cli playwright-cli install-browser firefox
+npx --yes --package @playwright/cli playwright-cli -s=firefox186 open http://127.0.0.1:5196 --browser firefox
+npx --yes --package @playwright/cli playwright-cli -s=firefox186 run-code --filename scripts/browser-sdk-native-pagehide.cjs
+npx --yes --package @playwright/cli playwright-cli -s=firefox186 run-code --filename scripts/browser-sdk-native-beacon-false.cjs
+npx --yes --package @playwright/cli playwright-cli -s=firefox186 close
+```
+
+2026-10-23，本次 SDK 构建仍为158e90697d30571e855a552e8a94fe6e1fa99e215bc44fb326615e43ae0887f4。无拦截 HTTP 导航用例 passed=true：可信pagehide/persisted=false、真实IndexedDB、退出no-cors1/恢复cors1、完整事件一致，beacon的202不清记录，普通202后清空。跨引擎产品行为在这个场景相同。
+
+第二条用例失败于前置断言 `native beacon was not rejected by occupied keepalive quota`：65536字节keepalive占位已准备好，但Firefox beacon仍true。本次无法用Chrome的配额方法诱发Firefox原生false，不能记作false后恢复通过，也不能仅据此前置条件差异判为SDK丢数据或推断具体浏览器实现原因。脚本finally释放占位并destroy；随后关闭专用浏览器和本机接收端。没有为“通过”放宽断言或修改SDK。
+
+| 引擎与来源 | 本机原生导航+HTTP+持久恢复 | 原生false及重载恢复 | 验证范围 |
+|---|---|---|---|
+| Chrome155.0.8059.85，已安装Chrome | 步骤180/177通过 | 步骤185通过 | 所记录SDK构建的单机场景，非完整版本矩阵 |
+| Firefox156.0，Playwright测试引擎v1553 | 步骤186通过 | 未验证：配额前置条件未达成 | 不等于独立发行版当前/上一稳定版验收 |
+
+该表不是PRD支持矩阵完成表；真实桌面稳定版本矩阵、Android/iOS、系统关闭/强杀、BFCache及完整A05仍缺证据。VPS及容量配置不变。

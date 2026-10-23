@@ -1483,3 +1483,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 扩展隔离本机接收端，增加单个65536字节keepalive占位及15秒自动释放。依据Fetch标准配额，用真实在途请求让原生beacon返回false，而非navigator mock/网络拦截/时钟模拟。
 - Chrome155实测：false后真实IndexedDB仍1、事件回执0；释放占位并原生reload（旧SDK未destroy），普通请求以原ID取得202后清空，真实HTTP事件回执仅1。两版试验分别记录，最终不destroy版本通过；构建SHA256 158e90697d30571e855a552e8a94fe6e1fa99e215bc44fb326615e43ae0887f4。
 - 只增加测试接收端/脚本，语法检查和真实浏览器断言通过；浏览器与接收端关闭。未改产品/VPS，不是完整A05/设备或容量验收。操作与标准链接见SDK-BROWSER-CHECKS.md。
+
+### 步骤 186：Firefox 测试引擎验证及差异记录
+
+- 安装Playwright独立Firefox156.0/v1553，未替换系统浏览器。SDK构建与185一致；真实导航/HTTP/IndexedDB/原ID完整载荷恢复断言通过，退出no-cors1、恢复cors1，普通202后清理。
+- 同样65536字节keepalive占位未能诱发Firefox beacon=false，脚本在原生false前置断言失败；不将它记为false恢复通过或SDK丢失。保留差异，未修改SDK/放宽用例。接收端finally释放占位，专用浏览器和本机服务均关闭。
+- 新增按引擎/来源区分的实测表和复现命令。Firefox为Playwright测试引擎，不替代PRD稳定发行版/前一版或真实移动设备矩阵；本机Edge133仅盘点未测试。未动VPS/容量配置。
