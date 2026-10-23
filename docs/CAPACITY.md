@@ -330,3 +330,13 @@ POSIX支持SIGINT/SIGTERM；Windows外部Stop-Process/信号API可能直接强�
 本项只修复未来测试的可核对性。它没有修复服务器资源余量，没有启动新VPS负载，也不让169提前终止的窗口转为通过。后续评估新条件时需绑定两个源文件hash及新工具版本，并将协议变化和本地落盘开销列入报告。
 
 170验证补充：[Actions39940730998](https://github.com/Explainfuture/ccPanel/actions/runs/39940730998)已真实通过Linux SIGINT/SIGTERM和强杀/控制文件测试，并包含217单测/15PG及既有检查。服务器只安装新的完整导出拒绝规则，应用和资源配置不变；Linux Python段也验证aborted拒绝且不写完整快照，没有启动新负载。167的旧清单缺口和未通过结论不被本工具修复覆盖。
+
+## 步骤183：容器 Swap 归属诊断（不改变门槛）
+
+现有采样只记录 cgroup memory.current，无法把主机 Swap 归属到容器；Docker stats 的内存显示也不能当成“驻留加已换出”的总占用。新帧增加 memory.swap.current 为 swapBytes。报告增加 containerSwapBytes：complete、startBytes、endBytes、peakObservedBytes；老帧缺失时是 null/complete=false，不回填零。部分缺失仅报告已观察峰值，不冒充完整峰值；非法数值仍 invalid_sample。Swap 是可升可降的占用 gauge，不能当作单调计数器计算活动或判断 reset。
+
+原主机 swapInPages/swapOutPages 差分、持续换页审查、资源通过条件完全不变；有占用不等于正在换页，没有新换页的短时快照也不能推翻过去完整窗口失败。此字段用于归属诊断，不代替主机活动计数。
+
+2026-10-23 对仍为 012 的 VPS 只读检查：初始可用内存约309MiB，Java 主进程 VmSwap 约162.5MiB，API/Worker cgroup Swap 为0。十秒有限采样实际完成两帧（未生成事件），Kafka cgroup Swap 两帧均185380864字节、PG 7499776、API/Worker0；主机换入/换出页差均0。此处与初始瞬时数值可能不同，保留各时刻读数，不拼接成同一快照。证据 /opt/ccpanel/shared/swap183/frames.jsonl，SHA256 ac5e3c620090fc40f6bb71e02f726acf9dff696c2739f1024a8571338e39efba，已下载。只证明采样字段能读取和该短时窗口现象，不是容量通过。
+
+本次不改 JVM/内存限额、不关 Swap、不清缓存或重启容器，未替换运行版本或启动负载；新采样器仅以 capacity-sample183.py 独立文件做有限验证，未来完整窗口需使用新源码归档并记录 hash。238 项测试和 typecheck通过，新增完整/缺失/部分字段、gauge下降及非法值覆盖。仍需针对 Kafka 的匿名内存/已换出部分进一步分析，不能从此次读数直接断言“病毒”或“内存泄漏”。

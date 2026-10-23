@@ -1464,3 +1464,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 扩展既有 check-packed-sdks.py，用 pnpm 实际 tarball 在仓库外分别导入 Browser/Node 包，执行非法 URL/定时参数拒绝、规范化目标、外部配置对象修改不改变归属、显式换钥、业务时间/原 ID 传输以及诊断计数快照检查。此前这些新边界仅有源码用例，此次补包产物证据。
 - 从当前源码重新 pnpm build、两个 pack 后运行检查，passed=true/both_package_runtime_boundaries=true。仍通过已有严格类型/负例、Node 文件队列、锁释放和身份范围检查。Browser 包在 Node 的内存队列运行，明确 browser_runtime_environment，不当作真实 Browser/IndexedDB/设备验证；网络 stub。
 - 本步骤只增加发布包验证，没有改 SDK 或服务器；VPS 012/容量/设备矩阵结论不变。
+
+### 步骤 183：容器级 Swap 归属
+
+- 回到容量未通过问题，只读检查发现 Kafka 主进程/容器存在历史换出，而 API/Worker cgroup Swap 为0；Docker内存显示不能涵盖已换出部分。新增采样 swapBytes=memory.swap.current，以及报告完整性/起点/终点/已观察峰值。旧数据缺失为未知；非法值拒绝；不改变主机换页活动或资源门槛。
+- 238 项测试/typecheck通过。VPS 新采样器有限十秒、两帧自然完成，无生成流量：Kafka185380864、PG7499776、API/Worker0字节，主机换入换出页差0。原证据双方保留，SHA256 ac5e3c620090fc40f6bb71e02f726acf9dff696c2739f1024a8571338e39efba。
+- 未改限额/JVM/Swap策略、未重启或替换012，不是完整容量窗口，旧失败/提前终止结论保持。具体解释和实测范围见 CAPACITY.md 步骤183。

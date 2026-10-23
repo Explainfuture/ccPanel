@@ -1,5 +1,5 @@
 import {parseHostTelemetry,type HostTelemetry} from '../packages/server/src/host-telemetry';
-type Container={memoryBytes:number;memoryEvents:Record<string,number>;cpu:Record<string,number>};
+type Container={memoryBytes:number;swapBytes?:number;memoryEvents:Record<string,number>;cpu:Record<string,number>};
 export type CapacityFrame={capturedAt:number;elapsedMs:number;error?:string;telemetry?:HostTelemetry;containers?:Record<string,Container>};
 export type ContainerState={id:string;restartCount:number;oomKilled:boolean;startedAt:string;running?:boolean};
 export interface CapacityEvidence {
@@ -35,7 +35,7 @@ export function capacityReport(input:CapacityEvidence){
       const host=parseHostTelemetry(frame.telemetry),containers=frame.containers;
       if(frame.capturedAt<host.sampledAt||frame.capturedAt-host.sampledAt>30000)throw new Error();
       if(!containers||names.some(name=>{
-        const c=containers[name];return !c||!integer(c.memoryBytes)||!c.memoryEvents||!integer(c.memoryEvents.oom_kill)||!integer(c.memoryEvents.oom)||!c.cpu||!integer(c.cpu.usage_usec)||Object.values(c.memoryEvents).some(v=>!integer(v))||Object.values(c.cpu).some(v=>!integer(v));
+        const c=containers[name];return !c||!integer(c.memoryBytes)||(c.swapBytes!==undefined&&!integer(c.swapBytes))||!c.memoryEvents||!integer(c.memoryEvents.oom_kill)||!integer(c.memoryEvents.oom)||!c.cpu||!integer(c.cpu.usage_usec)||Object.values(c.memoryEvents).some(v=>!integer(v))||Object.values(c.cpu).some(v=>!integer(v));
       }))throw new Error();
       valid.push({frame,host,containers});
     }catch{reasons.add('invalid_sample');}
@@ -101,6 +101,10 @@ export function capacityReport(input:CapacityEvidence){
   if(valid.length!==frames.length||valid.length<2||totalTicks===0n)reasons.add('insufficient_valid_samples');
   const evidenceValid=reasons.size===0,oomKills=Object.values(oomDeltas).reduce((a,b)=>a+b,0),oomCount=Object.values(oomEvents).reduce((a,b)=>a+b,0);
   return {evidenceValid,reasons:[...reasons].sort(),configurationChecked,durationSeconds:(input.finishedAt-input.startedAt)/1000,captureFrames:frames.length,validFrames:valid.length,
+    containerSwapBytes:Object.fromEntries(names.map(name=>{
+      const observed=valid.map(row=>row.containers[name]!.swapBytes).filter((value):value is number=>value!==undefined);
+      return[name,{complete:evidenceValid&&observed.length===frames.length,startBytes:valid[0]?.containers[name]?.swapBytes??null,endBytes:valid.at(-1)?.containers[name]?.swapBytes??null,peakObservedBytes:observed.length?Math.max(...observed):null}];
+    })),
     cpuBreakdownPercent:Object.fromEntries(cpuKeys.map(key=>[key,evidenceValid&&totalTicks?round(Number(cpuParts[key]*10000n/totalTicks)/100):null])),
     containerPressureDeltas:Object.fromEntries(names.map(name=>[name,Object.fromEntries(diagnosticKeys.map(key=>[key,evidenceValid&&diagnostics[name][key].complete?diagnostics[name][key].total:null]))])),
     cpuIdlePercent:totalTicks?round(Number(idleTicks*10000n/totalTicks)/100):null,memoryAvailableMinBytes:availableMin?.toString()??null,containerMemoryPeakBytes:peaks,

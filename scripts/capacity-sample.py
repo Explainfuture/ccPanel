@@ -40,6 +40,7 @@ def main():
                 frame['telemetry'] = telemetry
                 frame['containers'] = {name: {
                     'memoryBytes': int((group / 'memory.current').read_text()),
+                    'swapBytes': int((group / 'memory.swap.current').read_text()),
                     'memoryEvents': counters(group / 'memory.events'),
                     'cpu': counters(group / 'cpu.stat'),
                 } for name, group in groups.items()}

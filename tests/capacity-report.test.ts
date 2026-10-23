@@ -77,3 +77,12 @@ it('keeps missing optional pressure counters unknown and rejects resets inside t
   data.frames.forEach((frame,index)=>{for(const value of Object.values(frame.containers!))value.memoryEvents.max=[100,110,90,120][index]!;});
   const reset=capacityReport(data);expect(reset.evidenceValid).toBe(false);expect(reset.reasons).toContain('container_counter_reset');expect(reset.containerPressureDeltas.api!.memory_max).toBe(null);expect(reset.cpuBreakdownPercent.idleTicks).toBe(null);
 });
+it('attributes occupied cgroup swap without treating it as host swap activity or filling legacy gaps',()=>{
+  const data=fixture();for(const [i,frame]of data.frames.entries())for(const [name,c]of Object.entries(frame.containers!))c.swapBytes=name==='kafka'?[100,160,120,90][i]:0;
+  const report=capacityReport(data);expect(report.containerSwapBytes.kafka).toEqual({complete:true,startBytes:100,endBytes:90,peakObservedBytes:160});expect(report.containerSwapBytes.api).toEqual({complete:true,startBytes:0,endBytes:0,peakObservedBytes:0});expect(report.conservativeResourcePass).toBe(true);expect(report.swapActiveIntervals).toBe(0);
+  const legacy=capacityReport(fixture());expect(legacy.containerSwapBytes.kafka).toEqual({complete:false,startBytes:null,endBytes:null,peakObservedBytes:null});expect(legacy.conservativeResourcePass).toBe(true);
+  delete data.frames[1]!.containers!.kafka!.swapBytes;expect(capacityReport(data).containerSwapBytes.kafka).toMatchObject({complete:false,peakObservedBytes:120});
+});
+it('rejects malformed cgroup swap instead of treating it as absent',()=>{
+  for(const swapBytes of [-1,NaN,Infinity,1.5,'0',null]){const data=fixture();data.frames[1]!.containers!.kafka!.swapBytes=swapBytes as number;expect(capacityReport(data).reasons).toContain('invalid_sample');expect(capacityReport(data).containerSwapBytes.kafka.complete).toBe(false);}
+});
