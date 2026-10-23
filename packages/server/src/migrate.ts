@@ -1,5 +1,5 @@
 import { pool } from './db';
-export const schemaVersion=20;
+export const schemaVersion=21;
 export async function migrate() {
   const c = await pool.connect();
   try {
@@ -123,6 +123,23 @@ export async function migrate() {
       CREATE INDEX IF NOT EXISTS operational_alert_history_time ON operational_alert_history(evaluated_at,id);
       INSERT INTO schema_migrations(version) VALUES(19) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(20) ON CONFLICT DO NOTHING;
+      CREATE TABLE IF NOT EXISTS pressure_signal_states(
+        rule text PRIMARY KEY CHECK(rule IN ('kafka_backlog','ingest_integrity','storage_headroom')),
+        state_at_assessment text NOT NULL CHECK(state_at_assessment IN ('clear','firing','unknown')),reason text NOT NULL CHECK(reason~'^[a-z_]{1,64}$'),
+        instance_id uuid NOT NULL,started_at timestamptz NOT NULL,assessed_at timestamptz NOT NULL,recorded_at timestamptz NOT NULL,state_since timestamptz NOT NULL,
+        revision bigint NOT NULL CHECK(revision>0),signal_expires_at timestamptz,policy_hash text NOT NULL CHECK(policy_hash~'^[a-f0-9]{64}$'),payload_hash text NOT NULL CHECK(payload_hash~'^[a-f0-9]{64}$'),
+        evidence jsonb NOT NULL CHECK((jsonb_typeof(evidence)='object' AND octet_length(evidence::text)<=2048 AND jsonb_typeof(evidence->'policy')='object' AND evidence->'signal'->>'rule'=rule AND evidence->'signal'->>'state'=state_at_assessment AND evidence->'signal'->>'reason'=reason AND (evidence->'signal'->>'expires_at')::timestamptz IS NOT DISTINCT FROM signal_expires_at) IS TRUE),
+        CHECK(started_at<=assessed_at AND state_since<=assessed_at AND assessed_at<=recorded_at),CHECK(signal_expires_at IS NULL OR signal_expires_at>=assessed_at),CHECK(state_at_assessment='unknown' OR signal_expires_at IS NOT NULL));
+      CREATE TABLE IF NOT EXISTS pressure_signal_history(
+        id bigserial PRIMARY KEY,rule text NOT NULL CHECK(rule IN ('kafka_backlog','ingest_integrity','storage_headroom')),
+        state_at_assessment text NOT NULL CHECK(state_at_assessment IN ('clear','firing','unknown')),reason text NOT NULL CHECK(reason~'^[a-z_]{1,64}$'),
+        instance_id uuid NOT NULL,started_at timestamptz NOT NULL,assessed_at timestamptz NOT NULL,recorded_at timestamptz NOT NULL,state_since timestamptz NOT NULL,
+        revision bigint NOT NULL CHECK(revision>0),signal_expires_at timestamptz,policy_hash text NOT NULL CHECK(policy_hash~'^[a-f0-9]{64}$'),payload_hash text NOT NULL CHECK(payload_hash~'^[a-f0-9]{64}$'),
+        evidence jsonb NOT NULL CHECK((jsonb_typeof(evidence)='object' AND octet_length(evidence::text)<=2048 AND jsonb_typeof(evidence->'policy')='object' AND evidence->'signal'->>'rule'=rule AND evidence->'signal'->>'state'=state_at_assessment AND evidence->'signal'->>'reason'=reason AND (evidence->'signal'->>'expires_at')::timestamptz IS NOT DISTINCT FROM signal_expires_at) IS TRUE),
+        change_kind text NOT NULL CHECK(change_kind IN ('initial','state','reason','policy','source','gap')),UNIQUE(rule,revision),
+        CHECK(started_at<=assessed_at AND state_since<=assessed_at AND assessed_at<=recorded_at),CHECK(signal_expires_at IS NULL OR signal_expires_at>=assessed_at),CHECK(state_at_assessment='unknown' OR signal_expires_at IS NOT NULL));
+      CREATE INDEX IF NOT EXISTS pressure_signal_history_time ON pressure_signal_history(assessed_at,id);
+      INSERT INTO schema_migrations(version) VALUES(21) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(18) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(1) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(2) ON CONFLICT DO NOTHING;
