@@ -832,3 +832,5 @@ Worker主路径包装persist、DLQ发布、DLQ索引及Kafka checkpoint，固定
 新增query-status，沿用查询任务列表的公司/项目、TTL、隐私版本、创建者成员过滤，所有同公司有效角色可查看脱敏聚合。五状态固定计数、最老任务年龄、running已执行年龄、有效完成时长样本数/最大毫秒，均按数据库快照计算；返回精确文本，空值不假0，不返回任务ID/spec/result。口径见OBSERVABILITY，尚非全平台物理积压或历史SLO，未接UI。
 
 153项单测、类型/构建通过。真实PG控制器增加五状态各1、3秒完成耗时、运行年龄，以及过期/旧epoch/创建者非成员/其他公司记录排除、admin/analyst/viewer共同可见、外公司404/未登录401及清理后空状态；待CI实际SQL执行。公网仍m4-observability-003，SDK115也尚未部署，本步无新容量结论。
+
+步骤116 CI补充：Actions39886010333（cba00ec）verify/postgres均success，153项单测、类型/构建、SDK消费者/Node崩溃检查及5套真实PG控制器通过。真实接口五状态各1，queued/running无完成时长，三个终态各1个3000ms样本、运行年龄>=5秒；过滤/三角色/404/401与空结果断言通过。同步preview/integration及草稿PR1。下一步接入页面并验证切换/失权/未知值；尚未部署。
