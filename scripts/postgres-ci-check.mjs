@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
 import {mkdir,mkdtemp,rm} from 'node:fs/promises';
 import path from 'node:path';
 import pg from 'pg';
@@ -26,9 +27,13 @@ function child(file,env,input='',args=[]){
 }
 try{
   const entries={migrate:'packages/server/src/migrate.ts','deletion-ledger':'packages/server/src/deletion-ledger.ts'};
-  const suites=['company-provision','report-edit','query-export','retention','partitions','capacity-proof','operational-history','operational-alerts','project-retention'];
+  const suites=['company-provision','report-edit','query-export','retention','partitions','capacity-proof','operational-history','operational-alerts','project-retention','schema-upgrade'];
   for(const suite of suites)entries[suite]=`scripts/${suite}-check.ts`;
   for(const[name,entry]of Object.entries(entries))await build({entryPoints:[entry],outfile:path.join(dir,name+'.mjs'),bundle:true,platform:'node',target:'node22',format:'esm',packages:'external'});
+  // Actual immutable schema19 source, not a reverse-edited schema20 fixture.
+  const legacy=execFileSync('git',['show','1bd729e2bb44d1fbb75ef160bf6a2dab2bc263f3:packages/server/src/migrate.ts'],{encoding:'utf8',maxBuffer:1024*1024});
+  assert.match(legacy,/export const schemaVersion=19;/);
+  await build({stdin:{contents:legacy,resolveDir:path.resolve('packages/server/src'),sourcefile:'schema19.ts',loader:'ts'},outfile:path.join(dir,'migrate19.mjs'),bundle:true,platform:'node',target:'node22',format:'esm',packages:'external'});
   await admin.connect();
   for(const suite of suites){
     const database='ccpanel_restore_'+new Date().toISOString().replace(/\D/g,'').slice(0,14)+'_'+randomBytes(4).toString('hex');
@@ -38,7 +43,7 @@ try{
     delete env.CCPANEL_PROGRESS_BOOTSTRAP_REASON;delete env.CCPANEL_RECOVERY_LEDGER;delete env.CCPANEL_OFFLINE_RESTORE;
     try{
       await admin.query(`CREATE DATABASE ${database}`);created=true;
-      await child('migrate',env);
+      await child(suite==='schema-upgrade'?'migrate19':'migrate',env);
       // Export from this freshly created empty source, never from a restored DB.
       const ledger=await child('deletion-ledger',env,'',['export']);
       assert.ok(ledger.length>0);
