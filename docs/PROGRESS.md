@@ -1226,3 +1226,11 @@ VPS当前m4-recovery-008/schema20，先只读检查无容量任务、raw2/dedup3
 可信准备证据product-upgrade.lfSdJw：先按旧版本已核对证据关闭物理保留，prepare停止API/Worker并关闭采集后冻结旧字段；归档SHA目标CLI从原源导出v2完整两项目清单。新备份20261023T074259Z-53fee244，明文189342字节/SHA b047dd7621b1dd5550eab02cb659c9f074257cbdd7ed536fc63e89b35eb07f71；AES-GCM密文189378字节/SHA cf9ecf4a02dbb9b2d7a676aeb8ee7ec9a61d7f91ffc18c9ade5b1cef8c4de24c，fingerprint SHA 9ff56449af62b6b42192072c39baf4d7853b9a3a0be6bbcf630933f2ae260895。
 
 工作站加密/解密逐字节相同，回传解密副本在真正独立PG库pg_restore，3秒完成且全部公共关系指纹相同，临时库自动删除；证明文件已回传，源数据库尚未迁移。备份与源v2清单密文两端保留、密钥工作站单独保管，临时明文待apply检查完成后按hash清理。API/Worker此阶段离线，接着执行受控20→21/原字段对账，采集和保留在对账后单独启用。
+
+步骤158实际上线m4-pressure-009/schema21（2026-10-23 UTC07:45后），归档2b54556a978d8d9b12a2df60e3ee509d84b726fce0242470a97e59d9d70849f2。product-upgrade.lfSdJw核对新离机备份/3秒真实恢复后20→21，全部旧字段/行数一致，两压力表0行；启动仍collection=false，单独恢复保留与采集。阶段性curl连接reset/empty reply在就绪重试后恢复，Kafka CreateTopics错误日志后进度检查通过且无新分区，最终PG/Kafka位点完全一致；未据单条启动日志推断数据丢失。
+
+真实Node SDK双用户各1事件、原ID重复请求，普通公司admin的ingest-status和pressure-history均403，项目DLQ/查询状态200，后台趋势值2。临时受审计平台资格grant后真实HTTPS压力历史200/no-store、三状态/历史通过；首次HTTP读到expired保持current unknown，页面后续读可在源有效期内显示clear，未延长TTL。真实Chrome桌面/390截图已查看、无document溢出；撤销grant后立即403清历史、重载隐藏。SQL按确切两个event_id核对raw/dedup/jobs/processed/contribution各2、DLQ0，ID集合SHA cffa0cd7081c206a0a41ef771e9e1c77d698efd80aba6b670fa11adf321d3397。
+
+清理后原33业务关系不变，升级前993采样/22历史前缀完整保留；raw2/dedup3/DLQ0/operators0、临时库/公司0。PG位点7182/7230合计14412，等于Kafka committed和high，lag0，恰比前版多SDK含重复4条。两个进程collection/retention均true，四容器restart0/OOMfalse、门禁open/ready；旧四告警clear且age7秒。三压力状态与最新API采样instance一致，末次观察当时均clear/revision9、history27（源有效期仍会正常过期）。这不证明连续健康、外部通知或新版完整容量窗口。
+
+临时账号/权限/测试数据和两端dump/解密/源ledger明文已按hash清理，源v2清单密文两端保留，工作站密钥分离；浏览器pressure158关闭。安全摘要.local/pressure158-*、final158/offset158日志和服务端pressure158/product-upgrade.lfSdJw证据留存。候选证明7008a4c的CI39919846525全success（196/13 PG及37保护例），候选归档不随后续文档改写。资源门槛/HA、真实移动设备SDK矩阵、独立外部通知/其余规则和持续异机最新状态同步仍未完成，目标继续进行。

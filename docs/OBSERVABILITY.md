@@ -195,3 +195,11 @@ API把admission.pressureAlerts缓存回调交给既有operational采集器，沿
 VPS只读确认m4-recovery-008/schema20、无活动容量任务后，独立stage /opt/ccpanel/shared/validation-v21 验证：validation157b归档SHA 4b149ab5203d5954d3e9048ed80da3bf598030d54fb736d709297bfc6b77b334，activation157归档SHA a67aa045cb3772b0758cd0382d14d453003a9feac161a5d503eb009c09648d44。21+6+10 mock主机保护例也在真实Linux执行通过。实际PG分别从固定20/19迁移源引导，pressure-persistence、schema-upgrade、pressure-alerts、operational-history四套通过；新wrapper只修改独立临时数据库，未迁移主库。
 
 业务前后37个非动态监控关系全字段/行数指纹一致；旧653采样/15历史前缀保留，主库raw2/dedup3/DLQ0/operator0，PG位点7180/7228，临时库0、压力表仍不存在。API/Worker采集与保留均true，四容器restart0/OOMfalse，恢复门禁open、进度检查通过/无暂停、HTTPSready。预读可用410MiB/Swap318MiB/磁盘32%是瞬时快照，不替代此前资源门槛失败。证据pressure-upgrade157及四个provision-report-check目录，摘要/日志SHA在isolated-suites.json，两端保存安全摘要；临时env/ledger均已清理。当前共享线上部署脚本未替换，需下一步准备新归档/新离机备份及实际恢复对账后升级。
+
+## 步骤158：压力信号与历史真实上线
+
+当前m4-pressure-009/schema21，可信20→21冻结旧字段、离机加密解密逐字节相同、独立临时PG实际恢复3秒/全关系指纹一致后迁移，旧字段/行数完全保留，新压力表先0行，随后分别启用保留/采集。部署工具始终以明确release/schema/SHA与新备份证明为条件，未使用bootstrap、旧恢复目标清单或自动DB回滚。
+
+实际HTTPS/Node SDK两用户各1事件＋原ID重复、同步可见与后台趋势2，SQL精确ID raw/dedup/jobs/聚合贡献2、DLQ0；普通公司admin压力/平台接口403。临时受审计运维grant后真实压力读200/no-store，三状态/历史来自运行API采样；过期读current unknown，源有效期内可clear，均保持当时状态。Chrome真实HTTPS两张表、桌面/390截图、撤权立即403清数据与重载隐藏通过，临时账号和授权已清理。
+
+最后观察33原业务关系不变，993原采样/22原告警历史前缀保留；PG/Kafka committed/high7182/7230、lag0，含重复的4条测试消息有完整去向。原四告警clear/age7秒，三压力当时clear、当前API instance匹配，history27；两进程采集/清理true，四容器restart0/OOMfalse、恢复/消费门禁正常、HTTPSready。压力历史采样仍可能出现gap/当前未知，外部通知未实现。此前schema19容量窗口的Swap门槛失败不能因这次冒烟通过而消失，新版未重跑完整容量，不宣称生产吞吐/连续健康。
