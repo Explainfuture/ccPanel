@@ -5,7 +5,7 @@ umask 077
 mode=${1:?prepare or apply}
 source_schema=${CCPANEL_SOURCE_SCHEMA:-10}
 target_schema=${CCPANEL_TARGET_SCHEMA:-15}
-case "$source_schema:$target_schema" in 10:15|15:16|16:17|17:17) ;; *) echo 'Unsupported trusted upgrade pair' >&2;exit 1;; esac
+case "$source_schema:$target_schema" in 10:15|15:16|16:17|17:17|17:18|18:18) ;; *) echo 'Unsupported trusted upgrade pair' >&2;exit 1;; esac
 # A trusted live upgrade must retain its already-open gate and durable cursor.
 unset CCPANEL_PROGRESS_BOOTSTRAP_REASON CCPANEL_RECOVERY_LEDGER
 : "${CCPANEL_RELEASE:?Set a new release name}"
@@ -13,11 +13,13 @@ unset CCPANEL_PROGRESS_BOOTSTRAP_REASON CCPANEL_RECOVERY_LEDGER
 [[ "$CCPANEL_RELEASE" =~ ^[a-zA-Z0-9_-]+$ ]]
 [[ "$CCPANEL_ARCHIVE_SHA256" =~ ^[a-f0-9]{64}$ ]]
 test "$(sha256sum /opt/ccpanel/shared/release.tar.gz | cut -d' ' -f1)" = "$CCPANEL_ARCHIVE_SHA256"
+archive_schema=$(tar -xOf /opt/ccpanel/shared/release.tar.gz dist/schema-version.txt)
+test "$archive_schema" = "$target_schema" || { echo 'Archive schema does not match explicit upgrade target; no services stopped' >&2; exit 1; }
 running_capacity=$(systemctl list-units --type=service --state=running 'ccpanel-capacity-*' --no-legend --plain)
 test -z "$running_capacity" || { echo 'Capacity sampler still running; defer deployment' >&2; exit 1; }
 # Physical expiry legitimately changes rows: keep it disabled until the
 # post-migration original-column reconciliation has completed.
-if [ "$target_schema" = 17 ]; then
+if [ "$target_schema" = 17 ] || [ "$target_schema" = 18 ]; then
   python3 - <<'PY'
 from pathlib import Path
 lines=Path('/opt/ccpanel/shared/runtime.env').read_text().splitlines()

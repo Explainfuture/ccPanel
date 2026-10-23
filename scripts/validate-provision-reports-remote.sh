@@ -16,15 +16,16 @@ assert meta['loadFinishedAt']<=time.time()*1000
 assert hashlib.sha256((root/'samples-finished.jsonl').read_bytes()).hexdigest()==meta['samplesSha256']
 PY
 version=${CCPANEL_VALIDATION_VERSION:-16}
-[[ "$version" =~ ^(15|16|17)$ ]]
+[[ "$version" =~ ^(15|16|17|18)$ ]]
 stage="/opt/ccpanel/shared/validation-v$version"
 case "${CCPANEL_VALIDATION_SUITE:-all}" in
   all) suites='company-provision report-edit query-export';;
   company-provision) suites=company-provision;;
   report-edit) suites=report-edit;;
   query-export) suites=query-export;;
-  retention) [[ "$version" = 17 ]]; suites=retention;;
-  partitions) [[ "$version" = 17 ]]; suites=partitions;;
+  retention) [[ "$version" = 17 || "$version" = 18 ]]; suites=retention;;
+  partitions) [[ "$version" = 17 || "$version" = 18 ]]; suites=partitions;;
+  operational-history) [[ "$version" = 18 ]]; suites=operational-history;;
   *) echo 'Unsupported isolated validation suite' >&2;exit 1;;
 esac
 # The parent /app source mount is read-only. Docker needs the nested mount

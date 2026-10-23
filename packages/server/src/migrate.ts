@@ -1,4 +1,5 @@
 import { pool } from './db';
+export const schemaVersion=18;
 export async function migrate() {
   const c = await pool.connect();
   try {
@@ -94,6 +95,15 @@ export async function migrate() {
       CREATE INDEX IF NOT EXISTS events_scope_time ON events(tenant_id,project_id,event_time DESC);
       CREATE INDEX IF NOT EXISTS events_user_time ON events(tenant_id,project_id,distinct_id,event_time DESC);
       CREATE INDEX IF NOT EXISTS events_scope_event ON events(tenant_id,project_id,event_id);
+      CREATE TABLE IF NOT EXISTS operational_samples(
+        source text NOT NULL CHECK(source IN ('api','worker','host')),instance_id uuid NOT NULL,
+        observed_at timestamptz NOT NULL,started_at timestamptz NOT NULL,
+        received_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+        payload_hash text NOT NULL CHECK(payload_hash ~ '^[a-f0-9]{64}$'),snapshot jsonb NOT NULL,
+        PRIMARY KEY(source,instance_id,observed_at),CHECK(observed_at>=started_at),
+        CHECK(jsonb_typeof(snapshot)='object' AND octet_length(snapshot::text)<=16384));
+      CREATE INDEX IF NOT EXISTS operational_samples_time ON operational_samples(observed_at,source,instance_id);
+      INSERT INTO schema_migrations(version) VALUES(18) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(1) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(2) ON CONFLICT DO NOTHING;
       INSERT INTO schema_migrations(version) VALUES(3) ON CONFLICT DO NOTHING;
