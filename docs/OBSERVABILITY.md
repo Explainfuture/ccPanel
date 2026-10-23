@@ -147,3 +147,5 @@ scripts/enable-operational-collection-preview.sh要求明确目标release、sche
 当前m4-alerts-006/schema19，按离机加密/解密恢复验证、显式18→19及采集false核对上线：原关系指纹全一致，新alert_states0行。恢复物理保留后首次采集激活因相对env路径被严格工具拒绝，未改采集开关；提交935724b改绝对路径，更新共享可信激活脚本后同证据启用成功。归档内旧激活包装脚本仍保留原字节，不改不可变release；操作使用共享修正版，后续归档使用修正源码。
 
 启用后真实HTTPS得到4即时clear、4持久fresh、8条启动/基线变化，revision/id字符串；真实Chrome三表、桌面/390px与撤权清旧表/重载隐藏通过。双用户SDK/重复/异步趋势及SQL精确ID各2、DLQ0；测试账号/资格/数据已清理。原140条监控记录完整保留，新增采样是预期变化，其他原关系仅consumer_progress推进4。UTC04:03附近API76/Worker74采样，4规则clear、历史8；采集和保留均true、门禁open/ready。四个2秒vmstat区间si/so0只是短窗口，单次可用306MiB/Swap206MiB不能代替本版完整容量或独立外部告警证明。
+
+步骤150：当前m4-retention-007/schema20，暂停采集完成新备份/隔离恢复和原字段对账后单独重新开启。清理后541条原采样/8条原告警历史的前缀指纹不变，新实例评估产生预期状态/历史变动；末态四规则clear且age约10秒。两进程collection/retention均true，四容器restart0/OOMfalse。项目面板新增消费时retention_suppressed，与物理retention_raw_expired分开；Worker共用suppressed标签涵盖删除或保留过期。真实Node SDK/HTTPS与已发布策略页面通过，仍无独立外部通知或本版生产容量证明。

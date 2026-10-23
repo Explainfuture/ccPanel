@@ -1130,3 +1130,9 @@ VPS只读核对仍m4-alerts-006/schema19、四容器running、ready，项目2/ra
 重新只读核对schema19/原计数/位点及无容量任务后，上传149候选归档和匹配采集工具。依t0VZhz原升级证据关闭物理清理；19→20 prepare停止API/Worker、将采集false并冻结原字段。新证据product-upgrade.pCxanJ，新备份20261023T054105Z-f74f2190；工作站加密/解密逐字节一致、解密回传隔离PG恢复2秒且公共关系指纹相同，证明通过后才apply。
 
 实际上线m4-retention-007/schema20，原字段数量/指纹完全一致，两原项目均30天/version1/floor空；采集false直至核对后分别开启清理和监控。部署启动等待期间三次curl reset/empty reply，随后HTTPS ready和进度检查通过；没有旧数据库回滚或bootstrap。归档保持原SHA和字节，环境/凭证不进Git，资源限额和副本数量未改。备份字节/SHA及边界见BACKUP-RECOVERY。
+
+同轮真实HTTPS验收使用独立合成公司：Node SDK两个trackFor持久入队/确认清空，再发同ID重复请求；事件列表精确匹配2个ID，后台趋势与同步趋势均2。30→1天后旧query job/下载404、旧expected_version409、2天前事件400 project_retention_expired；再调回30天仍拒绝同一过期事件，覆盖说明incomplete。真实Chrome访问已发布页面，30/version3→2/version4→30/version5保存成功，1280/390px截图已查看，无横向溢出；不冒称真实移动设备退出矩阵。
+
+SQL证明raw/dedup/job各2个原ID、已处理2/桶贡献2、DLQ0，集合SHA da666be32edfd8f2c87d3eeda0ad5e14b0fa06316864b2bb216675032d9da318。清理合成公司/用户/会话/策略审计及事件后，33个原业务关系保持，原541采样/8历史前缀指纹相同；动态变化仅消费进度、采样和告警状态/历史。root raw2/dedup3/DLQ0、两原项目默认策略、平台资格0、临时公司/数据库0。
+
+最终PG p0=7180/p1=7228，总14408=原14404+4（两唯一事件及两重复投递），Kafka committed/high逐分区一致、lag0；门禁open/ready，四规则clear且取样时10秒内，API/Worker采集与清理true，四容器restart0/OOMfalse/running。两端明文dump/源ledger/fixture及工作站浏览器认证文件已删除，Chrome关闭，密文和分离密钥保留。证据.local/retention150-*、product-upgrade.pCxanJ和shared/retention150；没有新容量窗口，schema19资源失败结论仍不能放宽，schema20生产容量未获认证。后续须补最新自定义策略/floor跨旧快照恢复、持续异机同步及其他PRD缺口。

@@ -284,3 +284,5 @@ python scripts/capacity-preservation.py verify before.jsonl after-cleanup.jsonl 
 清理后34个原业务关系指纹一致，原160条监控采样和8条告警历史子集也一致；动态项仅消费进度、采样追加及告警评估。PG p0=7176/p1=7228，总14404=原12569+1835，与Kafka committed/high一致、lag0；raw2/dedup3/DLQ0、临时公司/数据库0、恢复与完整性门禁open、HTTPS ready。两端fixture凭证已删除，Kafka合成消息按保留策略存在。采样器ccpanel-capacity-20261023040704.service实际inactive/dead、Result success/ExecMainStatus0，199帧/elapsed1980000ms自然结束，未停止/重开。
 
 冻结证据和报告在/opt/ccpanel/shared/capacity-integrity.HfanpA，工作站.local/capacity-alerts139-*。最终数据、负载、资源、原数据保留报告分列，不能互相替代；其他生产发布门槛仍见PRD及PROGRESS。
+
+步骤150已升级m4-retention-007/schema20并完成两个唯一事件、重复请求、同步/后台查询及策略API/页面的真实链路冒烟。该测试不是容量窗口；没有重跑或修改schema19冻结资源报告，也没有更改资源限额/副本。旧窗口资源门槛未通过，新版本不能据此宣称容量已获认可。清理后PG/Kafka committed/high为7180/7228、lag0，仅证明当次完整性；后续生产容量和高可用验收仍未完成。
