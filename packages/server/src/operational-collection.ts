@@ -6,6 +6,7 @@ import type {OperationalSnapshot} from './operational-snapshot';
 import {operationalCollectionEnabled} from './operational-collection-config';
 import {storePressureObservation} from './pressure-history-store';
 import type {PressureAlerts} from './pressure-alerts';
+import {evaluateAndStoreDlqAlerts} from './dlq-alert-store';
 
 export function startOperationalCollection(snapshot:()=>OperationalSnapshot,pressureAlerts?:()=>PressureAlerts){
   if(!operationalCollectionEnabled(process.env))return async()=>{};
@@ -27,6 +28,10 @@ export function startOperationalCollection(snapshot:()=>OperationalSnapshot,pres
           const stored=await storePressureObservation(client,{instance_id:value.instance_id,started_at:value.started_at,assessment:pressure});
           if(!['stored','duplicate','busy'].includes(stored.status))console.error(JSON.stringify({code:'pressure_history_write_rejected',reason:stored.status}));
         }catch{broken=true;console.error(JSON.stringify({code:'pressure_history_write_failed'}));}
+      }
+      if(value.scope==='api_instance_aggregate'&&!broken){
+        try{const stored=await evaluateAndStoreDlqAlerts(client);if(!['stored','duplicate','busy'].includes(stored.status))console.error(JSON.stringify({code:'dlq_alert_write_rejected',reason:stored.status}));}
+        catch{broken=true;console.error(JSON.stringify({code:'dlq_alert_write_failed'}));}
       }
     }
     catch(error){broken=true;throw error;}
