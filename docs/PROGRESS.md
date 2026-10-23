@@ -1312,3 +1312,5 @@ Encrypted dump and v2 ledger remain on both ends with the key separately on the 
 VPS证据 `/opt/ccpanel/shared/kafka-durability-check.pE6b96`：候选只读CLI对当前1/1策略通过，对要求3/2的现有单副本拒绝。实际候选API分别以1/2、3/2、3/1启动，均退出1，分别命中非法配置、弱确认要求、弱副本数保护，未监听服务/运行后台任务；运行中的API/Worker未替换或重启。额外3/1检查确保不仅因minISR不足而短路，实际副本数也被单独验证。
 
 37个原非监控关系（包含消费位点与恢复门禁）完整指纹相同，整体SHA256 `18a3c4b2306b0ca3d7e1895790d67e0208c8a75f9f33acac7809f6b007de756c`。root仍schema22/raw2/dedup3/DLQ0/operators0、位点7184/7232；四容器running/restart0/OOMfalse、HTTPS ready。当前正式预览仍m4-dlq-010/旧源码，不把候选检查当作部署完成，也不宣称新增容量或HA通过。演练164最终CI39932376723已通过；本步CI另记。
+
+步骤165实现版 [Actions39932874692](https://github.com/Explainfuture/ccPanel/actions/runs/39932874692) 完整通过：211项/59文件、15套PG、72个既有主机保护mock、类型/构建/消费者打包等。此CI不含真实Kafka broker；真实读取/候选启动证据来自上述VPS，不互相替代。
