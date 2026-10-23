@@ -56,7 +56,7 @@ producer.on('producer.disconnect',()=>{connected=false;});
 producer.on('producer.connect',()=>{connected=true;});
 const intakeMetrics=new IntakeMetrics();
 const stopIntakeMetrics=startIntakeMetricLog(intakeMetrics);
-const stopOperationalCollection=startOperationalCollection(()=>intakeMetrics.snapshot());
+const stopOperationalCollection=startOperationalCollection(()=>intakeMetrics.snapshot(),()=>admission.pressureAlerts());
 const app=createApp({maxIntakeInFlight:Number(process.env.INGEST_MAX_INFLIGHT??16),ready:()=>connected,observeIntake:value=>intakeMetrics.observe(value),intakeStatus:()=>intakeMetrics.snapshot(),hostResourceStatus:()=>hostResources.snapshot(),admissionStatus:()=>admission.status(),pressureAlerts:()=>admission.pressureAlerts(),publish:records=>publishWithAdmission(admission,records.length,async()=>{
   await producer.send({topic:eventsTopic,acks:-1,timeout:8000,messages:records.map(r=>({key:r.project_id+':'+r.event.distinct_id,value:JSON.stringify(r)}))});
 })});
