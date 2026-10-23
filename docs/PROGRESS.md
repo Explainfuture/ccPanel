@@ -788,3 +788,5 @@ Worker主路径包装persist、DLQ发布、DLQ索引及Kafka checkpoint，固定
 新增admin限定项目dlq-summary，单SQL按当前公司/项目与14天保留范围聚合unresolved/replaying/resolved/suppressed，明确优先级及回执口径；不返回载荷，未知/跨公司404。计数精确文本，空类别时间null，年龄按数据库时间且不负数。复用既有索引与5秒PG超时，无schema修改。界面与告警尚未接入。
 
 150项单测与构建通过，新增路由后类型检查发现动态项目参数可选，按已验证项目中间件断言修正后通过。真实PG控制器新增四类数据、失败仍未解决、过期/外公司排除、空结果及admin/analyst/viewer/foreign/匿名访问检查，待CI实际SQL执行。未把单测冒充SQL结果，公网仍m4-retention-002。
+
+步骤111 CI补充：Actions39883403499（e6bb720）verify/postgres均success，150项单测及5套真实PG控制器通过。实际summary路由按四类各1条返回，数据库年龄在2天预期内；成功记录兼有失败/活动历史仍resolved，redacted兼有成功历史仍suppressed，过期与另一公司排除；清理后四类0且时间null，权限401/403/404断言通过。同步preview/integration与草稿PR1。尚未部署，下一步接入投递监控UI并验证权限/失败时不展示旧公司快照。
