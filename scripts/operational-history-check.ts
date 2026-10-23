@@ -8,7 +8,7 @@ import {startOperationalCollection} from '../packages/server/src/operational-col
 import {evaluatePressureAlerts} from '../packages/server/src/pressure-alerts';
 try{
   assert.match((await pool.query('SELECT current_database() AS name')).rows[0].name,/^ccpanel_restore_[0-9]{14}_[a-f0-9]{8}$/);
-  assert.equal((await pool.query('SELECT max(version) AS n FROM schema_migrations')).rows[0].n,21);
+  assert.equal((await pool.query('SELECT max(version) AS n FROM schema_migrations')).rows[0].n,22);
   const db=await pool.connect(),blocker=await pool.connect();
   const count=async()=>Number((await pool.query('SELECT count(*)::int AS n FROM operational_samples')).rows[0].n);
   try{
@@ -40,6 +40,7 @@ try{
       while(Date.now()<deadline){if((await pool.query('SELECT 1 FROM operational_samples WHERE instance_id=$1',[instance])).rowCount){stored=true;break;}await new Promise(resolve=>setTimeout(resolve,250));}
       assert.equal(stored,true,'real worker collector must persist its scheduled snapshot');
     }finally{await stop();}
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM dlq_alert_states')).rows[0].n,0,'worker never evaluates global DLQ alerts');
     // Contention is explicitly tested above. Two aligned try-lock timers need
     // not take turns fairly; verify each real scheduler in its own window.
     const api=new IntakeMetrics();
@@ -58,8 +59,9 @@ try{
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM pressure_signal_states WHERE instance_id=$1',[api.snapshot().instance_id])).rows[0].n,3);
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM pressure_signal_history')).rows[0].n,3);
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM operational_alert_states')).rows[0].n,4,'scheduled collector must persist fixed alert states before draining');
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM dlq_alert_states')).rows[0].n,2);assert.equal((await pool.query('SELECT count(*)::int AS n FROM dlq_alert_history')).rows[0].n,2);
     assert.equal(await count(),operationalHistoryLimit);
     assert.equal((await pool.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE application_name='ccpanel_operational_history' AND datname=current_database()")).rows[0].n,0,'collector pool must close');
-    console.log(JSON.stringify({operational_history:true,schema21:true,precise_counters:true,idempotent:true,immutable_conflict:true,lock_contention_skips:true,expiry_prunes:true,global_cap:operationalHistoryLimit,failed_insert_restores_evicted_row:true,invalid_payload_no_write:true,scheduled_collection:true,scheduled_api_pressure:true,pressure_callback_once:true,disabled_pressure_not_read:true,collector_pool_closed:true}));
+    console.log(JSON.stringify({operational_history:true,schema22:true,precise_counters:true,idempotent:true,immutable_conflict:true,lock_contention_skips:true,expiry_prunes:true,global_cap:operationalHistoryLimit,failed_insert_restores_evicted_row:true,invalid_payload_no_write:true,scheduled_collection:true,scheduled_api_pressure:true,pressure_callback_once:true,disabled_pressure_not_read:true,collector_pool_closed:true}));
   }finally{await blocker.query('ROLLBACK');blocker.release();db.release();}
 }finally{await pool.end();}

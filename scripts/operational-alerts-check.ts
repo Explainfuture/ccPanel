@@ -5,7 +5,7 @@ import {storeOperationalSnapshot} from '../packages/server/src/operational-histo
 import {evaluateAndStoreOperationalAlerts,operationalAlertHistoryLimit} from '../packages/server/src/operational-alert-store';
 try{
   assert.match((await pool.query('SELECT current_database() AS name')).rows[0].name,/^ccpanel_restore_[0-9]{14}_[a-f0-9]{8}$/);
-  assert.equal((await pool.query('SELECT max(version) AS n FROM schema_migrations')).rows[0].n,21);
+  assert.equal((await pool.query('SELECT max(version) AS n FROM schema_migrations')).rows[0].n,22);
   const db=await pool.connect(),blocker=await pool.connect();
   const states=async()=>(await pool.query('SELECT rule,state,reason,evaluated_at,state_since,revision::text FROM operational_alert_states ORDER BY rule')).rows;
   const count=async()=>Number((await pool.query('SELECT count(*)::int AS n FROM operational_alert_history')).rows[0].n);
@@ -26,6 +26,6 @@ try{
     await assert.rejects(evaluateAndStoreOperationalAlerts(db),/synthetic_alert_history_failure/);assert.equal(await count(),operationalAlertHistoryLimit);assert.equal((await pool.query('SELECT min(id)::text AS n FROM operational_alert_history')).rows[0].n,oldest);assert.deepEqual(await states(),before);
     await pool.query('DROP TRIGGER alert_history_fail ON operational_alert_history;DROP FUNCTION fail_alert_history()');assert.equal((await evaluateAndStoreOperationalAlerts(db)).transitions,2);assert.equal(await count(),operationalAlertHistoryLimit);assert.equal((await states()).find(row=>row.rule==='api_server_errors')!.state,'unknown','loss of evidence must not resolve to clear');
     await pool.query("UPDATE operational_alert_history SET evaluated_at=clock_timestamp()-interval '15 days',state_since=clock_timestamp()-interval '16 days'");await new Promise(resolve=>setTimeout(resolve,5));await evaluateAndStoreOperationalAlerts(db);assert.equal(await count(),operationalAlertHistoryLimit-100,'expiry cleanup remains bounded');
-    console.log(JSON.stringify({passed:true,schema21:true,fixed_states:4,stable_revision:true,busy_skip:true,stale_write_rejected:true,clear_firing_unknown:true,history_limit:operationalAlertHistoryLimit,failed_history_rolls_back_state_and_eviction:true,bounded_expiry:true}));
+    console.log(JSON.stringify({passed:true,schema22:true,fixed_states:4,stable_revision:true,busy_skip:true,stale_write_rejected:true,clear_firing_unknown:true,history_limit:operationalAlertHistoryLimit,failed_history_rolls_back_state_and_eviction:true,bounded_expiry:true}));
   }finally{await blocker.query('ROLLBACK');blocker.release();db.release();}
 }finally{await pool.end();}

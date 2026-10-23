@@ -36,14 +36,14 @@ try{
     return rows;
   };
   const original=await fingerprints(),visible=Number((await pool.query('SELECT count(*) AS n FROM visible_events')).rows[0].n);assert.equal(visible,2);
-  await pool.query("CREATE FUNCTION fail_upgrade() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN IF NEW.version=21 THEN RAISE EXCEPTION 'synthetic migration failure'; END IF; RETURN NEW; END$$; CREATE TRIGGER fail_upgrade BEFORE INSERT ON schema_migrations FOR EACH ROW EXECUTE FUNCTION fail_upgrade()");
+  await pool.query("CREATE FUNCTION fail_upgrade() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN IF NEW.version=22 THEN RAISE EXCEPTION 'synthetic migration failure'; END IF; RETURN NEW; END$$; CREATE TRIGGER fail_upgrade BEFORE INSERT ON schema_migrations FOR EACH ROW EXECUTE FUNCTION fail_upgrade()");
   try{
     await assert.rejects(migrate(),/synthetic migration failure/);
     assert.equal((await pool.query('SELECT max(version) AS n FROM schema_migrations')).rows[0].n,19);
     assert.equal((await pool.query("SELECT count(*)::int AS n FROM information_schema.columns WHERE table_schema='public' AND table_name='projects' AND column_name IN ('retention_days','retention_version','retention_floor')")).rows[0].n,0);
     assert.deepEqual(await fingerprints(),original);
   }finally{await pool.query('DROP TRIGGER fail_upgrade ON schema_migrations; DROP FUNCTION fail_upgrade()');}
-  await migrate();assert.equal((await pool.query('SELECT max(version) AS n FROM schema_migrations')).rows[0].n,21);
+  await migrate();assert.equal((await pool.query('SELECT max(version) AS n FROM schema_migrations')).rows[0].n,22);
   assert.deepEqual(await fingerprints(),original);
   assert.deepEqual((await pool.query('SELECT retention_days,retention_version,retention_floor,privacy_epoch FROM projects WHERE id=$1',[project])).rows[0],{retention_days:30,retention_version:1,retention_floor:null,privacy_epoch:4});
   assert.equal(Number((await pool.query('SELECT count(*) AS n FROM visible_events')).rows[0].n),visible);
@@ -52,5 +52,5 @@ try{
   const policySql='SELECT retention_days,retention_version,retention_floor,privacy_epoch FROM projects WHERE id=$1';
   const configured=(await pool.query(policySql,[project])).rows[0],configuredRows=await fingerprints();
   await migrate();assert.deepEqual((await pool.query(policySql,[project])).rows[0],configured);assert.deepEqual(await fingerprints(),configuredRows);
-  console.log(JSON.stringify({schema19_to_21:true,legacy_source:'1bd729e2bb44d1fbb75ef160bf6a2dab2bc263f3',original_relations:projections.length,original_columns_and_rows_preserved:true,migration_failure_atomic:true,defaults_30_days_version1_no_floor:true,privacy_epoch_unchanged:true,visibility_unchanged:true,large_offsets_and_monitor_rows_preserved:true,idempotent_migration:true,configured_schema20_policy_preserved:true}));
+  console.log(JSON.stringify({schema19_to_22:true,legacy_source:'1bd729e2bb44d1fbb75ef160bf6a2dab2bc263f3',original_relations:projections.length,original_columns_and_rows_preserved:true,migration_failure_atomic:true,defaults_30_days_version1_no_floor:true,privacy_epoch_unchanged:true,visibility_unchanged:true,large_offsets_and_monitor_rows_preserved:true,idempotent_migration:true,configured_schema20_policy_preserved:true}));
 }finally{await pool.end();}

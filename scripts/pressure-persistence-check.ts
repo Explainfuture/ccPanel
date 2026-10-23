@@ -11,7 +11,7 @@ try{
   const projections=(await pool.query(`SELECT table_name,string_agg(quote_ident(column_name),',' ORDER BY ordinal_position) AS columns FROM information_schema.columns c WHERE table_schema='public' AND table_name<>'schema_migrations' AND EXISTS(SELECT 1 FROM pg_tables p WHERE p.schemaname=c.table_schema AND p.tablename=c.table_name) GROUP BY table_name ORDER BY table_name`)).rows;
   const fingerprint=async()=>{const out=[];for(const p of projections){assert.match(p.table_name,/^[a-z_0-9]+$/);out.push({table:p.table_name,...(await pool.query(`SELECT count(*)::text AS n,COALESCE(bit_xor(hashtextextended(row_to_json(t)::text,0)),0)::text AS hash FROM (SELECT ${p.columns} FROM public."${p.table_name}") t`)).rows[0]});}return out;};
   const original=await fingerprint();
-  await pool.query("CREATE FUNCTION fail_pressure_upgrade() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=21 THEN RAISE EXCEPTION 'pressure_upgrade_failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER pressure_upgrade_fail BEFORE INSERT ON schema_migrations FOR EACH ROW EXECUTE FUNCTION fail_pressure_upgrade()");
+  await pool.query("CREATE FUNCTION fail_pressure_upgrade() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=22 THEN RAISE EXCEPTION 'pressure_upgrade_failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER pressure_upgrade_fail BEFORE INSERT ON schema_migrations FOR EACH ROW EXECUTE FUNCTION fail_pressure_upgrade()");
   await assert.rejects(migrate(),/pressure_upgrade_failure/);
   assert.equal((await pool.query('SELECT max(version) AS n FROM schema_migrations')).rows[0].n,20);
   assert.equal((await pool.query("SELECT to_regclass('pressure_signal_states') AS name")).rows[0].name,null);
@@ -67,6 +67,6 @@ try{
     await pool.query("UPDATE pressure_signal_states SET revision=9223372036854775807 WHERE rule='kafka_backlog'");
     assert.equal((await storePressureObservation(db,frame(57000,'10',next,nextStart))).status,'revision_exhausted');
     assert.deepEqual(await fingerprint(),original);
-    console.log(JSON.stringify({passed:true,schema20_to_21:true,migration_failure_atomic:true,original_fields_preserved:true,source_expiry_preserved:true,fixed_states:3,duplicate_conflict_ordering:true,gap_and_source_transitions:true,exact_bigint:true,history_limit:pressureHistoryLimit,failed_insert_rolls_back_eviction:true,oversized_history_refused:true,bounded_expiry_100:true,revision_overflow_refused:true}));
+    console.log(JSON.stringify({passed:true,schema20_to_22:true,migration_failure_atomic:true,original_fields_preserved:true,source_expiry_preserved:true,fixed_states:3,duplicate_conflict_ordering:true,gap_and_source_transitions:true,exact_bigint:true,history_limit:pressureHistoryLimit,failed_insert_rolls_back_eviction:true,oversized_history_refused:true,bounded_expiry_100:true,revision_overflow_refused:true}));
   }finally{await blocker.query('ROLLBACK');blocker.release();db.release();}
 }finally{await pool.end();}
