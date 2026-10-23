@@ -1577,3 +1577,10 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 本轮是运维入口防误用修复，容量、设备矩阵、异机自动备份/通知及HA门槛保持。
 
 - CI Actions39989711885: verify/postgres succeeded, including the empty-PATH guard and existing build, tests, real PostgreSQL, SDK process and package checks. Source-only change; live release remains 013.
+
+### 步骤198：当前API/Worker已确认消息保留缺口实测
+
+- 补充当前013真实API/Worker、隔离DB/topics/group保留缺口控制器；先实际202且确认原event_id，再停止私有服务、删除仅该隔离记录，回读low1并重置Kafka提交到high模拟lag0。不是等待自然过期，也不触碰主topic。
+- 2Lm0f9实测两次Worker启动均非零退出，真实API三次503/Retry-After正确，重启不清除事故；PG两位点0、raw/dedup/jobs/DLQ0、paused审计1、事故完整行不变，Kafka位点/高低界/DLQ高位不变。没有确认事故或伪造恢复丢失事件。
+- 临时topic/group/DB/env/ledger清理，主库暂停期间44关系指纹相同，013/HTTPS ready。结果已下载，SHA256 e1290a74199d06e5d9ed8ccfc28dd1d24d110bd20abcbc4e6574ade59de74e23。本轮仅运维演练源文件，未覆盖线上发布目录；CI新增语法检查，真实broker故障仅VPS执行。
+- 更新历史保留入口指引到新控制器；完整容量/设备矩阵、异机自动备份与最新删除策略同步、独立通知及HA仍未通过。

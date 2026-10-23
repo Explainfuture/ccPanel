@@ -22,6 +22,7 @@ jobs:
       - run: bash -n scripts/pg-transaction-retry-remote.sh && node --check scripts/pg-transaction-retry-check.mjs
       - run: bash -n scripts/worker-commit-kill-remote.sh && node --check scripts/worker-commit-kill-check.mjs
       - run: bash -n scripts/checkpoint-window-remote.sh && node --check scripts/checkpoint-window-check.mjs
+      - run: bash -n scripts/retained-gap-window-remote.sh && node --check scripts/retained-gap-window-check.mjs
       - run: python3 scripts/check-upgrade-guards.py
       - run: python3 scripts/check-retired-drills.py
       - run: python3 scripts/check-schema21-upgrade.py

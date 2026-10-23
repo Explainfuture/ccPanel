@@ -72,6 +72,16 @@ EXIT/TERM/INT有恢复启动保护；失败时保留fixture和日志便于检查
 | commit-crash-check-remote.sh | worker-commit-kill-remote.sh（步骤195） |
 | checkpoint-live-check-remote.sh | checkpoint-window-remote.sh（步骤196） |
 | pressure-live-check-remote.sh | CAPACITY.md；没有此历史演练的当前等价入口 |
-| retention-live-check-remote.sh | 本文已有保留策略证据；没有此历史演练的当前等价入口 |
+| retention-live-check-remote.sh | retained-gap-window-remote.sh（步骤198新补当前版本实测） |
 
 check-retired-drills.py 在空PATH下执行四个入口，要求退出64、无标准输出且错误指引匹配；Linux CI和VPS独立临时目录验证该行为。本次仅更新仓库及后续发布源，没有覆盖当前不可变013发布目录；013归档内旧入口仍可能存在，运维请使用本节指引及194–196新控制器。此防误用检查不增加业务故障或容量通过项。
+
+## 当前013已确认消息越过保留下界（步骤198）
+
+`retained-gap-window-remote.sh` 使用与194相同的release/schema22、部署锁、就绪、至少200MiB可用内存及无活动容量测试保护；暂停主API/Worker，创建全新临时DB和随机 `ccpanel.drill.retainedgap.<16hex>` topics/group，仅挂入演练协调脚本，直接运行013实际dist/api.mjs与dist/worker.mjs。两个子服务依次运行，测试API只监听一次性容器内127.0.0.1:3198，没有发布宿主端口。
+
+先由Worker初始化两分区PG进度0，再停止它；真实API接收一个合成事件，HTTP202的accepted_event_ids必须精确等于原event_id，PG仍无事件。停止API、核对group为Empty，仅用deleteTopicRecords删除该隔离事件，回读真实Kafka低位点升到1；再用setOffsets模拟broker已经将组位点重置到高位、lag为0。新Worker必须以非零状态而非信号结束，PG事故为retained_offset_gap、expected0/low1且分区正确。不是等待72小时自然过期，也没有删除主topic或掩盖这次人为数据损失。
+
+启动真实API，两次间隔请求都必须503、reason正确且Retry-After为正。再次启动Worker仍非零退出，再次启动API仍拒收；三次检查要求原事故完整行（含detected_at/details）相同、paused审计仅1条、PG两分区进度仍0、raw/dedup/jobs/DLQ均0、Kafka提交与真实高低位均不变、DLQ高位0。没有调用事故确认、bootstrap或修改完整性门禁；此测试证明缺口被显式阻断，不代表已经删除的事件恢复。
+
+2026-10-24实测2Lm0f9通过，安全结果双方保存，SHA256 e1290a74199d06e5d9ed8ccfc28dd1d24d110bd20abcbc4e6574ade59de74e23。测试topic/group/DB/env/ledger清理，主服务暂停期间44个public关系指纹全同，随后013/HTTPS ready。本轮仅在隔离命名空间注入已确认记录丢失，主预览有计划暂停；不提供自然保留计时、磁盘损坏、掉电、完整容量或HA结论。197时尚无当前等价入口的缺口由本次补充，不追认旧构建历史验收。
