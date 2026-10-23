@@ -17,15 +17,15 @@ assert.match(topic??'',/^ccpanel\.drill\.dlqack\.[a-f0-9]{16}\.events$/);
 const prefix=topic.slice(0,-7);assert.equal(dlq,prefix+'.dlq');assert.equal(group,prefix+'.writer');
 const db=new pg.Client({connectionString:url.toString(),statement_timeout:5000});
 const kafka=new Kafka({clientId:prefix,brokers:process.env.KAFKA_BROKERS.split(','),logLevel:logLevel.NOTHING,requestTimeout:8000,retry:{retries:3}});
-const admin=kafka.admin(),producer=kafka.producer();let worker,workerExit,lines='',metrics=[],ready=false,topicsCreated=false;
+const admin=kafka.admin(),producer=kafka.producer();let worker,workerExit,lines='',metrics=[],brokerRejections=0,ready=false,topicsCreated=false;
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function until(label,check,ms=45000){const end=Date.now()+ms;do{if(await check())return;await sleep(500);}while(Date.now()<end);throw Error('Timed out: '+label);}
 async function stopWorker(){if(!worker)return;const child=worker;worker=undefined;if(child.exitCode===null&&child.signalCode===null){child.kill('SIGTERM');const timer=setTimeout(()=>child.kill('SIGKILL'),6000);try{await workerExit;}finally{clearTimeout(timer);}}}
 function startWorker(){
   ready=false;worker=spawn(process.execPath,['--max-old-space-size=40','dist/worker.mjs'],{env:process.env,stdio:['ignore','pipe','pipe']});
   workerExit=once(worker,'exit');
-  let remainder='';
-  worker.stdout.on('data',chunk=>{remainder+=chunk;const parts=remainder.split('\n');remainder=parts.pop();for(const line of parts){try{const value=JSON.parse(line);if(value.code==='worker_ready')ready=true;if(value.code==='worker_metrics')metrics.push(value);}catch{}}});
+  const listen=stream=>{let remainder='';stream.on('data',chunk=>{remainder+=chunk;const parts=remainder.split('\n');remainder=parts.pop();for(const line of parts){try{const value=JSON.parse(line);if(value.code==='worker_ready')ready=true;if(value.code==='worker_metrics'){metrics.push(value);metrics=metrics.slice(-12);}if(value.logger==='kafkajs'&&value.message?.includes('Response Produce(')&&/message.*(large|size)|record.*large|MESSAGE_TOO_LARGE/i.test(value.error??''))brokerRejections++;}catch{}}});};
+  listen(worker.stdout);listen(worker.stderr);
   // Bounded private diagnostics only. Never print broker payloads/credentials.
   worker.stderr.on('data',chunk=>{lines=(lines+chunk.toString()).slice(-16384);});
 }
@@ -41,7 +41,10 @@ if(process.argv[2]==='cleanup'){
   try{
     await admin.connect();
     const groups=await admin.listGroups();
-    if(groups.groups.some(g=>g.groupId===group))await admin.deleteGroups([group]);
+    if(groups.groups.some(g=>g.groupId===group)){
+      await until('test consumer group has no active members',async()=>!(await admin.describeGroups([group])).groups[0]?.members.length,40000);
+      await admin.deleteGroups([group]);
+    }
     const topics=await admin.listTopics(),owned=[topic,dlq].filter(t=>topics.includes(t));
     if(owned.length)await admin.deleteTopics({topics:owned,timeout:20000});
     await until('isolated topics removed',async()=>{const names=await admin.listTopics();return !names.includes(topic)&&!names.includes(dlq);},20000);
@@ -58,7 +61,9 @@ try{
   assert.equal((await db.query('SELECT blocked FROM recovery_gate WHERE id=true')).rows[0].blocked,false);
   const existing=await admin.listTopics();assert.ok(!existing.includes(topic)&&!existing.includes(dlq));
   topicsCreated=true;
-  await admin.createTopics({waitForLeaders:true,topics:[{topic,numPartitions:2,replicationFactor:1,configEntries:[{name:'min.insync.replicas',value:'1'}]},{topic:dlq,numPartitions:1,replicationFactor:1,configEntries:[{name:'min.insync.replicas',value:'2'}]}]});
+  await admin.createTopics({waitForLeaders:true,topics:[{topic,numPartitions:2,replicationFactor:1,configEntries:[{name:'min.insync.replicas',value:'1'}]},{topic:dlq,numPartitions:1,replicationFactor:1,configEntries:[{name:'min.insync.replicas',value:'1'},{name:'max.message.bytes',value:'128'}]}]});
+  const config=(await admin.describeConfigs({resources:[{type:ConfigResourceTypes.TOPIC,name:dlq,configNames:['max.message.bytes']}]})).resources[0];
+  assert.equal(config.configEntries.find(c=>c.configName==='max.message.bytes').configValue,'128');
   const tenant=randomUUID(),project=randomUUID();
   await db.query('INSERT INTO tenants(id,name) VALUES($1,$2)',[tenant,'ISOLATED DLQ ACK CHECK']);
   await db.query('INSERT INTO projects(id,tenant_id,name) VALUES($1,$2,$3)',[project,tenant,'ISOLATED DLQ ACK CHECK']);
@@ -66,13 +71,14 @@ try{
   const event={event_id:randomUUID(),event_name:'dlq_ack_boundary',distinct_id:'synthetic',event_time:new Date().toISOString(),properties:{synthetic:true},context:{source:'isolated-dlq-ack'},schema_version:1};
   const envelope=event=>({tenant_id:tenant,project_id:project,received_at:new Date().toISOString(),event});
   await producer.send({topic,acks:-1,messages:[{partition:0,key:project,value:JSON.stringify(envelope({...event,event_id:'invalid-id'}))},{partition:0,key:project,value:JSON.stringify(envelope(event))}]});
-  await until('actual failed DLQ publish metric',()=>metrics.some(m=>m.operations.some(r=>r.operation==='dlq_publish'&&r.outcomes.some(o=>o.outcome==='failed'&&BigInt(o.count)>0n))));
+  await until('actual broker rejection of DLQ record',()=>brokerRejections>0);
+  await until('Worker halts without skipping rejected DLQ',()=>worker.exitCode!==null&&worker.exitCode!==0);
   const before=await snapshot();blocked(before);await sleep(2000);const second=await snapshot();blocked(second);
   assert.deepEqual(second.rows,before.rows);assert.deepEqual(second.committed,before.committed);
-  // Stop the failed process before changing the fault. Recovery starts a new
+  // Reap the halted process before changing the fault. Recovery starts a new
   // Worker, so this does not claim same-process retry or process availability.
   await stopWorker();
-  await admin.alterConfigs({validateOnly:false,resources:[{type:ConfigResourceTypes.TOPIC,name:dlq,configEntries:[{name:'min.insync.replicas',value:'1'}]}]});
+  await admin.alterConfigs({validateOnly:false,resources:[{type:ConfigResourceTypes.TOPIC,name:dlq,configEntries:[{name:'min.insync.replicas',value:'1'},{name:'max.message.bytes',value:'1048588'}]}]});
   metrics=[];startWorker();
   await until('recovery through poison and following valid event',async()=>{const rows=await progress();return rows.find(r=>r.partition_id===0)?.next_offset==='2';},60000);
   await until('Kafka commit after PG checkpoint',async()=>{const s=await snapshot();return s.committed.find(r=>r.partition===0)?.offset==='2';});
@@ -81,9 +87,9 @@ try{
   assert.equal(dead.reason,'invalid_event_id');assert.equal(dead.source_topic,topic);assert.equal(dead.source_partition,0);assert.equal(dead.source_offset,'0');assert.equal(dead.id,createHash('sha256').update(`${topic}:0:0`).digest('hex'));
   assert.equal((await db.query('SELECT event_id::text FROM events')).rows[0].event_id,event.event_id);
   assert.equal((await db.query('SELECT blocked FROM ingest_integrity_gate WHERE id=true')).rows[0].blocked,false);
-  console.log(JSON.stringify({passed:true,fault:'rf1_dlq_min_isr2',real_worker:true,failed_dlq_publish_observed:true,blocked_snapshots:2,source_messages:2,pg_checkpoint_during_fault:'0',kafka_commit_during_fault:before.committed,following_valid_event_blocked:true,recovery:'new_worker_after_dlq_isr_restored',after,exact_source_and_event_ids:true}));
+  console.log(JSON.stringify({passed:true,fault:'dlq_max_message_bytes_128',real_worker:true,broker_dlq_rejections:brokerRejections,dlq_publish_unconfirmed_observed:true,blocked_snapshots:2,source_messages:2,pg_checkpoint_during_fault:'0',kafka_commit_during_fault:before.committed,following_valid_event_blocked:true,recovery:'new_worker_after_dlq_size_limit_restored',after,exact_source_and_event_ids:true}));
 }catch(error){
-  await writeFile('/drill-evidence/worker.log',lines,{mode:0o600}).catch(()=>{});
+  await writeFile('/drill-evidence/worker.log',lines+'\n'+JSON.stringify({ready,brokerRejections,metrics}),{mode:0o600}).catch(()=>{});
   throw error;
 }finally{
   await stopWorker();
