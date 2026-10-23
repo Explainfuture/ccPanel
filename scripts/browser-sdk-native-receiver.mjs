@@ -17,9 +17,11 @@ const server=createServer(async(req,res)=>{
     for await(const chunk of req){bytes+=chunk.length;if(bytes>65536)return reply(413,{error:'too_large'});chunks.push(chunk);}
     const body=JSON.parse(Buffer.concat(chunks).toString());
     if(body.write_key!=='synthetic-public-key'||typeof body.project_id!=='string'||!body.project_id.startsWith('native177-')||!Array.isArray(body.events)||body.events.length!==1)return reply(400,{error:'synthetic_fixture_required'});
+    if(receipts.length>=100)return reply(429,{error:'test_receiver_full'});
     receipts.push({project:body.project_id,events:body.events,mode:req.headers['sec-fetch-mode']??null});
     return reply(202,{accepted_event_ids:body.events.map(e=>e.event_id)});
   }catch{return reply(400,{error:'invalid_request'});}
 });
+server.maxConnections=8;
 server.requestTimeout=10000;server.headersTimeout=10000;
 server.listen(5196,'127.0.0.1',()=>console.log('synthetic SDK receiver listening on 127.0.0.1:5196'));
