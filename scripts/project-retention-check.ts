@@ -7,6 +7,10 @@ import {persist,EventConflict} from '../packages/server/src/consume';
 import {retainNext} from '../packages/server/src/retention';
 import {lockProjectPrivacy} from '../packages/server/src/privacy';
 import {trends} from '../packages/server/src/trends';
+import {createApp} from '../apps/api/src/app';
+import {digest,token} from '../packages/server/src/security';
+import {canonical} from '../packages/schema/src/index';
+import {replayTick} from '../packages/server/src/dlq-replay';
 import type {StoredEnvelope} from '../packages/schema/src/index';
 try{
   assert.match((await pool.query('SELECT current_database() AS name')).rows[0].name,/^ccpanel_restore_[0-9]{14}_[a-f0-9]{8}$/);
@@ -52,5 +56,30 @@ try{
   await assert.rejects(update(1,3),{status:403});assert.deepEqual(await state(),before);
   const db=await pool.connect();try{assert.equal(await retainNext(db),'completed');assert.equal(await retainNext(db),'empty');}finally{db.release();}
   assert.equal(await count('events'),1);assert.equal(await count('aggregation_jobs'),1);assert.equal(await count('event_dedup'),4);assert.equal(await count('events',other),1);
+  await pool.query("UPDATE tenant_memberships SET role='admin' WHERE tenant_id=$1 AND user_id=$2",[tenant,admin]);
+  const secret=token(),csrf=token(),key=token(),origin=process.env.PUBLIC_ORIGIN!;
+  await pool.query("INSERT INTO sessions VALUES($1,$2,$3,now()+interval '1 hour')",[digest(secret),admin,digest(csrf)]);
+  await pool.query("INSERT INTO write_keys(id,tenant_id,project_id,key_hash,label) VALUES($1,$2,$3,$4,'synthetic retention check')",[randomUUID(),tenant,project,digest(key)]);
+  let published=0;
+  const app=createApp({ready:()=>true,publish:async records=>{published+=records.length;}});
+  const root=`/api/tenants/${tenant}/projects/${project}`,headers={cookie:`ccpanel_session=${secret}`,origin,'content-type':'application/json','x-csrf-token':csrf};
+  const replay=async(r:StoredEnvelope)=>{
+    const id=digest(randomUUID());
+    await pool.query("INSERT INTO event_dedup(tenant_id,project_id,event_id,payload_hash,status) VALUES($1,$2,$3,$4,'failed')",[tenant,project,r.event.event_id,digest(canonical(r.event))]);
+    await pool.query("INSERT INTO dlq_records(id,tenant_id,project_id,reason,payload) VALUES($1,$2,$3,'invalid_storage_value',$4)",[id,tenant,project,JSON.stringify({processor_version:2,raw_base64:Buffer.from(JSON.stringify(r)).toString('base64')})]);
+    return app.request(root+'/dlq/replays',{method:'POST',headers,body:JSON.stringify({request_id:randomUUID(),record_ids:[id],reason:'Retry synthetic repair'})});
+  };
+  // Admit before policy change, then recheck the queued job at publication.
+  const queued=await replay(record(2));assert.equal(queued.status,202);const queuedId=(await queued.json()).id;
+  await update(1,3);
+  const rejected=await replay(record(2));assert.equal(rejected.status,409);assert.equal((await rejected.json()).error,'project_retention_expired');
+  await replayTick(async()=>{throw new Error('expired replay must not publish');});
+  const item=(await pool.query('SELECT status,error FROM replay_items WHERE job_id=$1',[queuedId])).rows[0];
+  assert.equal(item.status,'rejected');assert.equal(item.error,'project_retention_expired');
+  const recent=record(0.01).event,old=record(2).event;
+  const ingest=(events:typeof recent[])=>app.request('/v1/batch',{method:'POST',body:JSON.stringify({write_key:key,schema_version:1,events})});
+  const invalid=await ingest([recent,old]);assert.equal(invalid.status,400);const invalidBody=await invalid.json();
+  assert.deepEqual(invalidBody.errors,[{index:1,code:'project_retention_expired'}]);assert.equal(published,0,'batch admission is all or nothing');
+  const accepted=await ingest([recent]);assert.equal(accepted.status,202);assert.equal(published,1);
   console.log(JSON.stringify({passed:true,schema20:true,fresh_authorization:true,foreign_scope_hidden:true,no_op_no_audit:true,version_conflict:true,privacy_lock_busy:true,logical_expiry_immediate:true,extension_no_resurrection:true,expired_consumer_dedup:true,expired_identify_no_link:true,audit_atomic_rollback:true,physical_expiry_keeps_45_day_dedup:true}));
 }finally{await pool.end();}
