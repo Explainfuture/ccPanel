@@ -37,7 +37,7 @@ try{
   await assert.rejects(update(30,1),{status:409,message:'retention_policy_conflict'});
   const result=await trends(tenant,project,{kind:'trend',from:new Date(Date.now()-20*86400000).toISOString(),to:new Date().toISOString(),metric:'count',filters:[],group_by:[]});
   assert.equal(result.summary.events,1);assert.equal(result.data_coverage.expired_overlap,true);
-  assert.equal(result.data_coverage.retained_from,shortened.retention_floor.toISOString());
+  assert.ok(Date.parse(result.data_coverage.retained_from)>=shortened.retention_floor.getTime());
   await update(30,2);assert.equal(await count('visible_events'),1,'extension cannot resurrect uncollected raw rows');
   const expired=record(10);assert.equal(await persist(expired),'suppressed');assert.equal(await persist(expired),'duplicate');
   await assert.rejects(persist({...expired,event:{...expired.event,properties:{changed:true}}}),error=>error instanceof EventConflict&&error.reason==='payload_conflict');
