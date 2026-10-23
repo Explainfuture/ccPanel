@@ -18,6 +18,7 @@ jobs:
       - run: pnpm build
       - run: test "$(cat dist/schema-version.txt)" = 22
       - run: bash -n scripts/upgrade-product-preview.sh scripts/enable-retention-preview.sh scripts/validate-provision-reports-remote.sh scripts/enable-operational-collection-preview.sh
+      - run: bash -n scripts/dlq-ack-failure-remote.sh && node --check scripts/dlq-ack-failure-check.mjs
       - run: python3 scripts/check-upgrade-guards.py
       - run: python3 scripts/check-schema21-upgrade.py
       - run: python3 scripts/check-schema21-activation.py
