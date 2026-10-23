@@ -1560,3 +1560,10 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 主库暂停期间44个public关系指纹同，临时topic/group/DB/env清理，原服务恢复ready；主库raw2/dedup3/DLQ0、总位点15618/临时DB0、013未变。结果双方保留；CI加入脚本语法检查，不假称CI执行了真实broker故障。
 - 仅关闭当前版本原始COMMIT前/后这两个窗口缺口，不将历史进度已提交/Kafka未提交代理窗口直接升级为当前版本证明，不是掉电/磁盘/HA/容量验收。
 - CI Actions39956869364 verify/postgres全部success：243项测试、15套真实PG、既有进程/打包/主机保护及新脚本语法检查通过。当前构建真实强杀演练仅在VPS执行；安全结果SHA256 c675825eba2c89a2c27b16450b774628f069b4c34b0dd46c9e652990e944eb88。2026-10-24收尾再次核实仍013/HTTPS ready。
+
+### 步骤196：当前进度COMMIT后/Kafka未提交实际强杀
+
+- 用当前013 Worker及已部署一次性PG协议代理，真实接到消费进度COMMIT成功再扣响应；协调器直连证实PG1/raw1而Kafka未提交，间隔快照稳定，实际SIGKILL后PG提交仍保留。代理与本机SHA一致，不改主数据库/连接或生产代码。
+- GlpWmb首轮通过，补总任务数断言后n0ffhQ复核通过：新PID重放原ID，raw/dedup/jobs/processed/贡献各2、duplicates1、DLQ0，PG/Kafka/source分区0均2，空分区未消费按-1保留。
+- 暂停期间主库44表指纹同，临时topic/group/DB/env清理，原服务ready；主库raw2/dedup3/DLQ0、总位点15618、临时DB0、013未变。结果双方保留；CI只增加脚本语法守护，真实broker/PG演练来自VPS。
+- 与195合并覆盖当前构建三个指定提交边界，仍不扩展为掉电/磁盘/多副本HA或容量证明；测试使用私网明文协议一次性代理，主服务计划暂停。具体方法见FAULT-DRILL步骤196。

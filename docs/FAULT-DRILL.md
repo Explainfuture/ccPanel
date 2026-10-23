@@ -51,3 +51,13 @@ EXIT/TERM/INT有恢复启动保护；失败时保留fixture和日志便于检查
 隔离topics/group/DB及env/ledger清理通过；服务暂停期间主库44个public关系（包括恢复控制表）指纹完全相同，随后恢复API/Worker/HTTPS ready。主库raw2/dedup3/DLQ0、位点总15618、临时DB0、仍013。安全结果双方保存；主服务为计划暂停，不当容量或无中断证明。
 
 本轮只复核当前构建的原始事务提交前、原始提交后但独立进度提交前两个窗口。独立进度已经COMMIT而Kafka未提交的旧代理证据未据此升级为当前版本证明；主机掉电、磁盘损坏和多副本容灾也未覆盖。
+
+## 当前013独立进度COMMIT后/Kafka提交前强杀（步骤196）
+
+`checkpoint-window-remote.sh` 沿用隔离控制器和当前真实dist/worker.mjs，暂停主API/Worker，仅临时DB/topics/group。协调器直连PG；只有测试Worker的PG连接指向同一一次性容器内的协议代理，代理上游为postgres:5432、没有宿主机发布端口。复用已部署checkpoint-commit-proxy.mjs，源文件SHA25635c51212605bdac0f2b1b6fac619560c2eb85e53b6834d68825aa220223c3154与本机相同，无业务测试开关或结果篡改。
+
+代理识别消费进度UPDATE所在事务，接到PG实际CommandComplete/COMMIT后仅扣留这次成功响应，写安全布尔标记。控制器除标记外还直连查询：PG next_offset=1已持久化，raw/dedup/jobs可见1，而Kafka仍未提交、后续第二事件未处理；间隔快照要求状态稳定。实际SIGKILL并检查信号后，PG1/raw1仍保留。代理只扣一次，新PID恢复连接正常通过；Kafka从未提交位置重放首事件产生duplicate1，然后处理第二事件。
+
+首轮GlpWmb通过后，补充显式总aggregation_jobs=2断言，用新资源n0ffhQ复核最终脚本通过。最终raw/dedup/jobs/processed/桶贡献各2、duplicates1、DLQ0、精确原event_id集合；PG/Kafka/source分区0均2，空分区PG0/Kafka-1如实记录未消费。全程是实际PG/Worker/Kafka/代理和真实SIGKILL，不用sleep猜测server是否已COMMIT。
+
+服务暂停期间主库44个public关系（含恢复控制表）指纹同，临时topics/group/DB/env/ledger清理；随后原服务ready。主库raw2/dedup3/DLQ0、位点总15618、临时DB0、仍013。安全结果双方保存。结合195，当前构建的三个指定提交/进度边界均有本机实测，但仅限合成事件、PG/Kafka持续可用和该单机配置；不等于宿主机断电、磁盘持久性、多副本容灾、容量或无中断保证。代理仅支持本次私网明文PG协议路径，不用于生产或外部流量。
