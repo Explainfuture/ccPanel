@@ -26,7 +26,7 @@ function child(file,env,input='',args=[]){
 }
 try{
   const entries={migrate:'packages/server/src/migrate.ts','deletion-ledger':'packages/server/src/deletion-ledger.ts'};
-  const suites=['company-provision','report-edit','query-export','retention','partitions'];
+  const suites=['company-provision','report-edit','query-export','retention','partitions','capacity-proof'];
   for(const suite of suites)entries[suite]=`scripts/${suite}-check.ts`;
   for(const[name,entry]of Object.entries(entries))await build({entryPoints:[entry],outfile:path.join(dir,name+'.mjs'),bundle:true,platform:'node',target:'node22',format:'esm',packages:'external'});
   await admin.connect();
