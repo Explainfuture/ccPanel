@@ -5,6 +5,7 @@ import {Button} from './components/ui/button';
 import QueryStatusPanel,{type QueryStatus} from './QueryStatusPanel';
 import IntakeMetricsPanel,{type IntakeSnapshot} from './IntakeMetricsPanel';
 import HostResourcesPanel,{type HostResources} from './HostResourcesPanel';
+import OperationalHistoryPanel from './OperationalHistoryPanel';
 import type {AdmissionStatus} from '../../../packages/server/src/ingest-admission';
 type Metric={metric:string;value:string};
 type DeadLetters={categories:{category:string;count:string;oldest_created_at:string|null;oldest_age_seconds:string|null;observed_at:string}[]};
@@ -60,5 +61,6 @@ export default function DeliveryMonitor({prefix,canManage,canObservePlatform=fal
     </div></section>:null}
     {canObservePlatform?<HostResourcesPanel data={snapshot?.host_resources}/>:null}
     {canObservePlatform?<IntakeMetricsPanel data={snapshot?.intake}/>:null}
+    {canObservePlatform&&!platformError&&!error?<OperationalHistoryPanel key={prefix} prefix={prefix}/>:null}
   </>;
 }
