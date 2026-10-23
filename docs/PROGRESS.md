@@ -1552,3 +1552,10 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 主库44个public关系（含恢复控制表）指纹全同；测试topic/group/DB/env/ledger清理，原API/Worker启动/HTTPS ready。结果双方保存；CI只加shell/JS语法检查，不称CI执行了broker演练。host无Node命令，JS使用容器/本地Node验证，无安装宿主依赖。
 - 本次主预览有计划暂停，未改产品构建013或资源门槛；不等同真实PG并发冲突/网络断连、COMMIT强杀、独立DLQ broker或容量/HA通过。方法与限定见FAULT-DRILL步骤194。
 - CI Actions39955516514 verify/postgres均success：243项测试、15套真实PG、既有进程/打包/主机保护检查及新增演练shell/JS语法检查通过。实际Worker/broker事务演练仅在VPS执行，最终安全结果SHA256 c5a71dccd1128730057110aa772b1fbac64d306b79fd71794579fd89f7a71279。
+
+### 步骤195：当前Worker原始COMMIT前/后实际强杀
+
+- 发现旧59/60提交强杀证据来自早期暂存Worker，新增当前013真实dist/worker隔离演练，原始事务聚合任务INSERT前及进度UPDATE前由PG触发器/实际advisory waiter定位；核对真实SIGKILL及新PID回放，不修改Worker业务代码/statement_timeout。
+- 9keKOT实测两次KILL通过：提交前raw/dedup/jobs0、进度0，杀后回滚并恢复2；原始提交后可见3/进度仍2，杀后保留3，新Worker重复识别原第三条并完成第四条。最终四表/任务/聚合贡献4、duplicates1、DLQ0，精确ID匹配，PG/Kafka/source分区0均4，空分区未消费如实保留。
+- 主库暂停期间44个public关系指纹同，临时topic/group/DB/env清理，原服务恢复ready；主库raw2/dedup3/DLQ0、总位点15618/临时DB0、013未变。结果双方保留；CI加入脚本语法检查，不假称CI执行了真实broker故障。
+- 仅关闭当前版本原始COMMIT前/后这两个窗口缺口，不将历史进度已提交/Kafka未提交代理窗口直接升级为当前版本证明，不是掉电/磁盘/HA/容量验收。

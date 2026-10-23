@@ -35,3 +35,19 @@ EXIT/TERM/INT有恢复启动保护；失败时保留fixture和日志便于检查
 2026-10-23 013实测两轮成功：第一轮4yzjz9证明同进程回滚/恢复；补充共享锁直接断言后，用全新资源D0Rwar复核成功。最终实际触发/数据库重试日志均3次，故障两快照三表均0、PG0/Kafka-1；恢复同PID/同租约后端，raw/dedup/jobs/processed/贡献各2，DLQ0。主库全部44个public关系（含恢复控制表）前后指纹完全相同，测试topics/group/临时库删除、受限env/ledger清理，原服务启动并HTTPS ready。安全结果日志已带回工作站。
 
 这补充了114未覆盖的“PG仍在线且持有有效租约时同进程事务错误重试”证据。错误为真实PG触发器注入的40001，不等于真实并发序列化冲突、网络断开、所有SQLSTATE/磁盘故障、COMMIT边界强杀或独立DLQ broker失败。主服务有计划暂停，不能用容器restart计数替代无中断/容量保证。
+
+## 当前013 Worker的原始提交边界SIGKILL（步骤195）
+
+历史59/60使用早期暂存Worker的证据保留，不直接当成当前schema22构建全部窗口通过。新 `worker-commit-kill-remote.sh` 沿用194守护控制器（release/schema/ready/内存/部署锁/无容量检查），暂停主API/Worker，只对随机临时DB/topics/group运行当前真实dist/worker.mjs，无生产代码测试开关。
+
+在临时库aggregation_jobs插入和consumer_progress更新前安装有条件PG触发器，由独立控制连接持有advisory锁。观察到真实PG waiter后读取可见数据/消费位点，再确认waiter仍在才SIGKILL目标子进程并核对实际终止信号；等待PG释放等待锁后再次检查数据/位点，撤销故障并启动新PID回放。该锁窗口在实际SQL中，未用人为等待猜测COMMIT时刻；Worker原有5秒statement_timeout不修改，未达到目标状态则失败。
+
+013实测9keKOT passed：
+
+- before_raw_commit：聚合任务插入前被锁住，raw/dedup/jobs可见0，PG进度0、Kafka未提交；SIGKILL后仍0，新Worker恢复两条精确事件/任务/贡献。
+- after_raw_commit：下一组首事件原始事务已提交，raw/dedup/jobs可见3（含上一组2），进度UPDATE仍被锁住、PG/Kafka均停在2；SIGKILL后已提交3条保留，新Worker将第三条识别为duplicate，再消费第四条。
+- 最终raw/dedup/jobs/processed/桶贡献各4，duplicates严格1、DLQ0；PG/Kafka/source分区0均4，空分区PG0/Kafka-1不当作已消费。四个客户端原event_id集合精确匹配，无更新ID凑恢复。
+
+隔离topics/group/DB及env/ledger清理通过；服务暂停期间主库44个public关系（包括恢复控制表）指纹完全相同，随后恢复API/Worker/HTTPS ready。主库raw2/dedup3/DLQ0、位点总15618、临时DB0、仍013。安全结果双方保存；主服务为计划暂停，不当容量或无中断证明。
+
+本轮只复核当前构建的原始事务提交前、原始提交后但独立进度提交前两个窗口。独立进度已经COMMIT而Kafka未提交的旧代理证据未据此升级为当前版本证明；主机掉电、磁盘损坏和多副本容灾也未覆盖。
