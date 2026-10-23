@@ -1,4 +1,4 @@
-export const dlqHealthPolicy={source_retention_days:14,retention_warning_days:12,freshness_ms:90000} as const;
+export const dlqHealthPolicy=Object.freeze({source_retention_days:14,retention_warning_days:12,freshness_ms:90000} as const);
 const categories=['unresolved','replaying','resolved','suppressed'] as const;
 type Counts=Record<typeof categories[number],string>;
 export type DlqHealthSignal={rule:'dlq_pending'|'dlq_retention_risk';state:'clear'|'firing'|'unknown';reason:string;pending_records:string|null;oldest_pending_at:string|null;oldest_pending_age_seconds:string|null;observed_at:string|null;expires_at:string|null};
@@ -24,7 +24,7 @@ export function evaluateDlqHealth(input:unknown,now=Date.now()):DlqHealth{
     const evidence={pending_records:pending.toString(),oldest_pending_at:oldest,oldest_pending_age_seconds:age===null?null:Math.floor(age/1000).toString(),observed_at:input.observed_at,expires_at:new Date(observed+dlqHealthPolicy.freshness_ms).toISOString()};
     return output(Object.fromEntries(categories.map(k=>[k,counts[k]])) as Counts,[
       {rule:'dlq_pending',state:pending>0n?'firing':'clear',reason:pending>0n?'retained_pending':'no_retained_pending',...evidence},
-      {rule:'dlq_retention_risk',state:risk?'firing':'clear',reason:risk?(age!>=14*86400000?'retention_window_exceeded':'retention_window_near'):pending===0n?'no_retained_pending':'below_retention_warning',...evidence},
+      {rule:'dlq_retention_risk',state:risk?'firing':'clear',reason:risk?(age!==null&&age>=14*86400000?'retention_window_exceeded':'retention_window_near'):pending===0n?'no_retained_pending':'below_retention_warning',...evidence},
     ]);
   }catch{return unknown('invalid_snapshot');}
 }
