@@ -1290,3 +1290,13 @@ Ordinary company admin received 403 for platform ingest/pressure/DLQ-health/DLQ-
 After cleanup, 33 original business relations match their pre-upgrade fingerprints; the original 1,319 operational samples, 29 operational history records and 489 pressure transitions match their full row-prefix fingerprints. Only progress/current monitoring and appended monitoring history changed. Root remains raw2/dedup3/DLQ0, operators0, temporary restore databases0, synthetic companies0, and both original projects retain default policy. PostgreSQL progress equals Kafka committed and high offsets 7184/7232, lag0, precisely four message attempts beyond the source. Four containers report running/restarts0/OOMfalse, integrity gate open and HTTPS ready. DLQ states2/history2, fresh/clear at the final read.
 
 Encrypted dump and v2 ledger remain on both ends with the key separately on the workstation; verified temporary dumps, plaintext ledgers, fixture credentials and browser-cookie files were removed. Browser session closed. Actions 39930142495 passed on the migration-proof commit (same frozen product source): 206 unit tests, 15 PostgreSQL suites and 72 host-tool mock cases plus required build/package checks. Final memory snapshot: available284MiB, swap used267MiB, disk32%; a snapshot does not replace the failed capacity gate. Current preview is m4-dlq-010/schema22; no npm publication, independent external notification, continuous off-host synchronization or high-availability certification is claimed.
+
+### 步骤164：真实Worker的DLQ拒收与位点保护（2026-10-23）
+
+分支 `ops/164-dlq-ack-failure` 增加可复现独立故障控制器与实际Worker脚本，代码分为初版 `c6867cf` 和纠正注入 `83df171` 两次提交，正文各有改动/思路/验证。无产品代码或运行release更新，仍为m4-dlq-010/schema22。前一轮最终提交及integration CI分别为39930523662/39930596533，均通过。
+
+最初两次测试目录 `.XMfxGg`、`.XGxEIk` 的RF1/minISR2没有制造失败，验证器超时；第二轮诊断明确显示DLQ及后续事件均完成，不能当作位点保护通过。查阅Kafka4.1.2源码证实有效minISR受副本数限制。保留失败日志，改为仅对全新测试DLQ设置并回读128字节上限，要求真实broker Produce拒绝、Worker非零退出及数据快照；未改变生产确认标准或降低断言。
+
+最终独立演练 `/opt/ccpanel/shared/dlq-ack-failure.bh7J1x` 退出0：broker拒收1次，Worker停止；间隔两次快照PG分区0位点0、Kafka两分区未提交(-1)、源分区0高位2、DLQ高位0、原始/去重/索引0。同分区正常消息未越过毒事件。恢复测试DLQ上限并启动新Worker后，分区0 PG/Kafka提交/高位2，分区1 PG0/Kafka未提交/高位0；正常原始和去重1、DLQ索引1、DLQ高位1，精确来源及event_id匹配。该项是消息拒收后的新进程恢复，不是独立broker网络故障或同进程重试证明。
+
+暂停期间主数据库44个public关系完全相同（包含recovery_gate和recovery_import_scopes），整体指纹SHA256 `1db8f2cca943c18b167596c39fdf68d29df19401f31f144a577840e2124f0ac4`；测试日志SHA256 `489c26e33ddbe6d38db3b714f2d76356e549034e5f2000c249d353289aff0d40`。临时数据库/全部本演练前缀topics/groups均0，临时凭证及清单删除。原库schema22/raw2/dedup3/DLQ0/operators0，主业务位点仍7184/7232。采集与清理两进程均true，四容器运行/restart0/OOMfalse、HTTPS ready；曾主动stop/start，不能宣称服务连续或替代容量门槛。剩余独立broker故障、瞬时事务和真实设备/外部备份通知等仍待完成。

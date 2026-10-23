@@ -11,3 +11,15 @@ EXIT/TERM/INT有恢复启动保护；失败时保留fixture和日志便于检查
 数据库全断导致共享恢复租约丢失时API/Worker按设计退出，容器自动重启；本测试证明重启恢复及不错误确认/推进，**不证明同一进程持有有效租约时的瞬时事务失败重试**。期间重启计数不能当容量测试“无重启”证据。新instance指标归零，须按instance_id分析；本次没有制造成功写入回执或清除完整性门禁。
 
 完成后核对控制服务终态/退出码、真实HTTPS就绪、恢复门禁、PG消费进度和原数据指纹。预期仅全局消费进度按本次流记录变化；fixture PG数据与凭证应清除。Kafka中的合成原始/DLQ消息按其保留期存在，不能声称物理即时删除。该测试未覆盖DLQ broker单独失败、磁盘满、提交边界强杀、主机断电和异机切流，也不提供高可用或容量结论。
+
+## 独立 DLQ 确认拒收演练（步骤164）
+
+`scripts/dlq-ack-failure-remote.sh` 在预览机核对 `CCPANEL_EXPECTED_RELEASE`、schema22、无容量测试、就绪和至少200MiB可用内存，持有部署锁，暂停原API/Worker。它创建全新临时数据库，并只对随机 `ccpanel.drill.dlqack.<16hex>` 命名空间创建两个topic/一个group；运行当前已部署的真实 `dist/worker.mjs`，不修改主业务topic、位点或恢复门禁。两条源消息固定在同分区：无效ID毒事件在前，正常事件在后。受限临时数据库的新建清单导出/离线apply只用于初始化空测试库，不作为主数据库恢复的可信源证明。
+
+测试DLQ设置且回读确认 `max.message.bytes=128`，制造真实 Produce 拒收。必须观测到broker消息过大拒绝及Worker非零退出；两次间隔快照均要求PG位点0、Kafka未提交、源高位2、DLQ高位0、原始/去重/索引均0。恢复测试DLQ上限为1048588并启动新Worker后，PG/已消费分区Kafka位点均2，原始/去重各1、DLQ索引1、DLQ高位1，核对毒事件精确topic/partition/offset及hash、正常事件精确event_id。空分区Kafka仍可为-1而PG初始化0，不伪称该分区已有提交。
+
+控制器删除临时数据库，确认测试topic/group均消失，删除临时环境/清单；暂停期间主数据库44个public关系（包括恢复门禁和导入scope）逐行指纹完全相同，再恢复原服务并等待HTTPS就绪。失败也执行清理/启动保护并保留受限日志；外层SIGKILL/主机损毁仍需人工检查。整个演练有意中断预览，不能作为无中断/无重启容量证据。
+
+首次两轮的RF1/minISR2注入无效：消息正常得到确认，验证器超时，均记录失败，不作为A15通过证据。Kafka4.1.2的[实际Partition实现](https://github.com/apache/kafka/blob/4.1.2/core/src/main/scala/kafka/cluster/Partition.scala#L354-L360)将有效minISR取配置与副本数的较小值；仅把RF1的minISR配置为2不能制造缺副本拒收。后续改为明确验证过的消息上限拒收。最终实测见PROGRESS步骤164。
+
+本项证明的是DLQ对该记录拒收时不跳过，以及修复配置后新进程恢复；不证明独立DLQ broker网络断连、真实缺副本、磁盘满、同进程无限重试或高可用，A15其余条件仍按各自证据验收。
