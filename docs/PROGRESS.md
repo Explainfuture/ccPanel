@@ -1370,3 +1370,11 @@ fix/170-load-abort-evidence的0fc3c2c增加fsync/原子manifest、排他输出�
 步骤170最终验证：0323242的[Actions39940730998](https://github.com/Explainfuture/ccPanel/actions/runs/39940730998)完整通过217测试/15PG及既有主机/构建/打包检查；实际CLI日志posix_sigint_sigterm_checked=true，两种信号、控制文件和强杀均执行通过。Windows仅对控制文件/强杀作实际证明，不假称POSIX信号经过Windows验证。
 
 服务器只同步shared/capacity-finalize-remote.sh，SHA256 `6851cee5c3065caa6a2057ef56eee1744556556fc1679581de17002da23f514b`，旧版保留在shared/validation-capacity170。校验哈希、bash语法及真正Linux Python段的aborted输入拒绝/无完整快照；不是完整shell/Docker导出正向演练。无新容量unit或测试流量，应用仍m4-durability-011/schema22，raw2/dedup3/DLQ0、位点总15607，四服务running/restart0/OOMfalse、HTTPS ready。容量旧结论不变，趋势三视图源码仍待发布。
+
+### 步骤171a：趋势三视图发布的新备份与恢复证明
+
+冻结e78d2e1构建m4-trends-012/schema22，144文件归档SHA256 `9c17b7f99f7b644bb0d5547c01c50e415b65808f4c90c38631bc5050491e6710`。从m4-durability-011受控停止API/Worker并关闭维护/采样，生成本次新备份，证据 `/opt/ccpanel/shared/product-upgrade.JzzIdx`；不复用先前恢复证明。源最终CI39941164940通过。
+
+新dump310088字节及v2完整两项目清单在工作站AES-GCM加密/解密逐字节相同，解密副本回传后实际隔离恢复5秒，42个备份覆盖的public关系指纹相同、临时数据库清除。注意backup-fingerprint按设计排除恢复门禁与导入scope，它们不由旧备份自动恢复；这里不是44表全部操作状态恢复、整机切流或自动RPO证明。后续正式恢复仍需新鲜权威清单与门禁流程。
+
+明文SHA256 `98e86ff00365f5bfaeac122bad442bed30b3812971f5571ee6b6e3691425a489`，密文 `96b54654298a622df92c99b2a29b560cd1ac5e76bce6e81658c925a9c3425847`，指纹文件 `714ce66ed03d5c8bf86347fd8fc52a405a40679bfb37a13edc26d470d7b3f670`。密文保留两端、密钥仅在工作站；最终部署/真实查询/页面与清理另外记录。当前没有新容量窗口。
