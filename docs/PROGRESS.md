@@ -1477,3 +1477,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 两次服务器读取成功，冻结第二份：heap-space used154815104、generation capacity200294400、old used113345024、metaspace used13471784字节、80 live线程。used不等于存活量，不据此压低192MiB堆；不同维度/时刻的Swap与heap不混减。
 - 过滤JSON双方保存，SHA256 cc936e4ca370046678df28c29cb42245d22534781b4631e861a178b8aeb4c78f；工具基于实际运行容器PID，只读且不更改012或资源配置。不是容量测试，已有失败结论不变。具体方法/官方格式链接及限制见 CAPACITY.md。
 - 步骤183后续 CI Actions 39948616798 verify/postgres 已全部 success：238 项测试、15 套真实 PG 与既有打包及部署保护检查。步骤184探针另以两次真实只读 JVM 文件读取验证，不把183单测称作其解析器测试。
+
+### 步骤 185：真实 Chrome sendBeacon=false
+
+- 扩展隔离本机接收端，增加单个65536字节keepalive占位及15秒自动释放。依据Fetch标准配额，用真实在途请求让原生beacon返回false，而非navigator mock/网络拦截/时钟模拟。
+- Chrome155实测：false后真实IndexedDB仍1、事件回执0；释放占位并原生reload（旧SDK未destroy），普通请求以原ID取得202后清空，真实HTTP事件回执仅1。两版试验分别记录，最终不destroy版本通过；构建SHA256 158e90697d30571e855a552e8a94fe6e1fa99e215bc44fb326615e43ae0887f4。
+- 只增加测试接收端/脚本，语法检查和真实浏览器断言通过；浏览器与接收端关闭。未改产品/VPS，不是完整A05/设备或容量验收。操作与标准链接见SDK-BROWSER-CHECKS.md。

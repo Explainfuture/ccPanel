@@ -53,3 +53,13 @@ npx --yes --package @playwright/cli playwright-cli -s=sdk177 close
 服务端以客户端原 ID 精确验证 raw/dedup/jobs 各 1，processed=1、bucket_events=1、DLQ=0。ID 集合 SHA256 `434f3465962da4e4a74b91857a4b60ddefc718ded354f3facb8776aa8659fad3`。消费总位点 15614→15616，两个分区 7725/7891，PG=Kafka committed=high，lag=0。清理临时公司、登录会话和两端夹具后，33 个原业务关系指纹一致、临时公司 0、HTTPS ready；浏览器与本机服务均终止。Kafka 仍按保留策略保存历史合成消息，不宣称物理抹除。
 
 本次仅一条唯一事件、两次上报，不是容量测试，也未覆盖 sendBeacon false、操作系统强杀、全部浏览器/真实移动设备、BFCache 或公网故障矩阵。不会据此通过完整 A05/容量门槛。
+
+## 原生 sendBeacon=false 与重载恢复（步骤 185）
+
+使用步骤177的本机接收端（新增单个有界 /hold、/hold-state、/release-hold，仅供隔离验收；最大65536字节、15秒自动释放，最多一个占位请求），打开独立会话 sdk185，执行 `scripts/browser-sdk-native-beacon-false.cjs`。
+
+方法参考 [Fetch Standard keepalive 配额](https://fetch.spec.whatwg.org/#http-network-or-cache-fetch)：保持一个真实65536字节 keepalive请求等待响应，确认接收端已收完请求体后调用SDK beacon。未替换 navigator、未拦截网络、未改时钟。该场景是共享配额竞争，不是在产品中降低事件/批次限制，也不新增SDK keepalive重试。
+
+2026-10-23 Chrome155.0.8059.85：原生beacon返回false，真实IndexedDB仍1，接收端事件回执0；释放占位请求并原生reload（原SDK监听器仍在），新SDK普通cors请求用原ID取得202后count0，接收端只有1次事件回执。脚本先试验过主动destroy旧实例，再移除该步骤后重跑，通过；最终脚本验证了旧监听器仍存在的原生重载。Browser构建SHA256 158e90697d30571e855a552e8a94fe6e1fa99e215bc44fb326615e43ae0887f4。专用浏览器/接收端已关闭。
+
+此证据补充Chrome原生false分支；调用SDK beacon方法触发原生API，未通过关窗触发第一次false，未覆盖VPS/Kafka/PG、系统强杀、BFCache或完整设备矩阵。不能把本机包回执测试记为完整A05或容量通过。
