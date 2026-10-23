@@ -231,4 +231,11 @@ capacity-workload-report读取最终public CLI结果，核对完整目标时长/
 
 核验返回evidenceValid和dataLoadPass分开：诚实记录的延迟失败可以是有效证据，但不能通过负载门槛。CLI输出绑定输入原始文件SHA256、拒绝覆盖报告、最大输入2MiB，失败仍写出可审阅结果并返回非零。它校验已报告统计的一致性，不重算缺少原始延迟明细的p95，不证明HTTP请求实际送达、公司归属或服务端事件集合，也不替代独立PG和宿主机资源证据。旧格式缺workload明确拒绝，不回填。
 
-独立单测包含一致健康、真实失败、窗口截短和计数/字节/游标标记/ID/延迟不一致反例；真实CLI合成fetch正反例也交给该核验器检查。该工具在工作站开发和验证，不修改正在测量的m4-alerts-006或原生成器脚本。步骤139仍等待原会话终态。
+独立单测包含一致健康、真实失败、窗口截短和计数/字节/覆盖标记/ID/延迟不一致反例；真实CLI合成fetch正反例也交给该核验器检查。该工具在工作站开发和验证，不修改正在测量的m4-alerts-006或原生成器脚本。步骤139仍等待原会话终态。
+
+仅在原负载进程终态已确认后使用（输出报告路径必须不存在）：
+
+```sh
+pnpm exec esbuild scripts/capacity-workload-report-cli.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=.local/capacity-workload-report.mjs
+node .local/capacity-workload-report.mjs final-load.json workload-report.json 1800
+```
