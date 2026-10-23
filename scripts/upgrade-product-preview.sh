@@ -15,6 +15,10 @@ unset CCPANEL_PROGRESS_BOOTSTRAP_REASON CCPANEL_RECOVERY_LEDGER
 test "$(sha256sum /opt/ccpanel/shared/release.tar.gz | cut -d' ' -f1)" = "$CCPANEL_ARCHIVE_SHA256"
 archive_schema=$(tar -xOf /opt/ccpanel/shared/release.tar.gz dist/schema-version.txt)
 test "$archive_schema" = "$target_schema" || { echo 'Archive schema does not match explicit upgrade target; no services stopped' >&2; exit 1; }
+if [ "$target_schema" = 19 ]; then
+  helper_sha=$(tar -xOf /opt/ccpanel/shared/release.tar.gz scripts/operational-collection-env.py | sha256sum | cut -d' ' -f1)
+  test "$(sha256sum /opt/ccpanel/shared/operational-collection-env.py | cut -d' ' -f1)" = "$helper_sha" || { echo 'Stage the archive-matching collection helper before stopping services' >&2; exit 1; }
+fi
 running_capacity=$(systemctl list-units --type=service --state=running 'ccpanel-capacity-*' --no-legend --plain)
 test -z "$running_capacity" || { echo 'Capacity sampler still running; defer deployment' >&2; exit 1; }
 # Physical expiry legitimately changes rows: keep it disabled until the
@@ -42,6 +46,9 @@ if [ "$mode" = prepare ]; then
   printf '%s\n' "$target_schema" >"$dir/target-schema.txt"
   printf '%s\n' "$CCPANEL_ARCHIVE_SHA256" >"$dir/archive.sha256"
   docker compose stop api worker
+  if [ "$target_schema" = 19 ]; then
+    python3 /opt/ccpanel/shared/operational-collection-env.py set false /opt/ccpanel/shared/runtime.env /opt/ccpanel/current/infra/.env
+  fi
   # Freeze the original column projection. New metadata columns may be added,
   # but every existing value and relation count must remain unchanged.
   docker compose exec -T postgres psql -X -U ccpanel -d ccpanel -At -v ON_ERROR_STOP=1 >"$dir/fingerprint.sql" <<'SQL'
@@ -54,6 +61,9 @@ SQL
   docker compose run --rm -T --no-deps api node dist/deletion-ledger.mjs export >"$dir/source-ledger.json"
   echo "Upgrade prepared; services offline; verify an off-host encrypted backup and isolated restore before apply: $dir"
 elif [ "$mode" = apply ]; then
+  if [ "$target_schema" = 19 ]; then
+    python3 /opt/ccpanel/shared/operational-collection-env.py check false /opt/ccpanel/shared/runtime.env /opt/ccpanel/current/infra/.env
+  fi
   dir=$(realpath -e "${CCPANEL_UPGRADE_DIR:?Set prepared upgrade directory}")
   [[ "$dir" =~ ^/opt/ccpanel/shared/product-upgrade\.[A-Za-z0-9]{6}$ ]]
   test "$(cat "$dir/target-release.txt")" = "$CCPANEL_RELEASE"

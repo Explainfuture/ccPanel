@@ -3,8 +3,10 @@ import {startOperationalCollector} from './operational-collector';
 import {storeOperationalSnapshot} from './operational-history';
 import {evaluateAndStoreOperationalAlerts} from './operational-alert-store';
 import type {OperationalSnapshot} from './operational-snapshot';
+import {operationalCollectionEnabled} from './operational-collection-config';
 
 export function startOperationalCollection(snapshot:()=>OperationalSnapshot){
+  if(!operationalCollectionEnabled(process.env))return async()=>{};
   // Dedicated one-connection pool: monitoring cannot occupy business pool slots.
   const pool=new pg.Pool({connectionString:process.env.DATABASE_URL,max:1,connectionTimeoutMillis:500,idleTimeoutMillis:10000,statement_timeout:1000,query_timeout:2000,application_name:'ccpanel_operational_history'});
   const failed=()=>console.error(JSON.stringify({code:'operational_history_write_failed'}));

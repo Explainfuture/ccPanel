@@ -17,6 +17,9 @@ try{
     const restarted=structuredClone(snapshot);restarted.observed_at=new Date(Date.parse(snapshot.observed_at)+1).toISOString();restarted.started_at=new Date(Date.parse(snapshot.started_at)-1).toISOString();assert.equal((await storeOperationalSnapshot(db,restarted)).status,'conflict','retained instance start must not change');
     assert.equal((await pool.query("SELECT snapshot->'responses'->0->>'batches' AS n FROM operational_samples")).rows[0].n,'9007199254740993');
     await blocker.query('BEGIN');await blocker.query('SELECT pg_advisory_xact_lock(169202637)');assert.equal((await storeOperationalSnapshot(db,new WorkerMetrics().snapshot())).status,'busy');await blocker.query('ROLLBACK');assert.equal(await count(),1);
+    const previousConfig=process.env.OPERATIONAL_COLLECTION_ENABLED;process.env.OPERATIONAL_COLLECTION_ENABLED='false';let disabledReads=0;
+    try{const stopDisabled=startOperationalCollection(()=>{disabledReads++;return new IntakeMetrics().snapshot();});await new Promise(resolve=>setTimeout(resolve,31000));await stopDisabled();assert.equal(disabledReads,0);assert.equal(await count(),1);assert.equal((await pool.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE application_name='ccpanel_operational_history' AND datname=current_database()")).rows[0].n,0);}
+    finally{if(previousConfig===undefined)delete process.env.OPERATIONAL_COLLECTION_ENABLED;else process.env.OPERATIONAL_COLLECTION_ENABLED=previousConfig;}
     await pool.query("INSERT INTO operational_samples(source,instance_id,started_at,observed_at,payload_hash,snapshot) VALUES('api',$1,CURRENT_TIMESTAMP-interval '9 days',CURRENT_TIMESTAMP-interval '8 days',$2,'{}')",[randomUUID(),'0'.repeat(64)]);
     assert.equal((await storeOperationalSnapshot(db,new WorkerMetrics().snapshot())).expired_deleted,1);assert.equal(await count(),2);
     await pool.query('DELETE FROM operational_samples');
