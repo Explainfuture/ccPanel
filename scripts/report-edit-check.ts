@@ -31,7 +31,7 @@ try{
   const sources=['unresolved','replaying','resolved','suppressed','expired'];
   for(const name of sources)await pool.query(`INSERT INTO dlq_records(id,tenant_id,project_id,reason,payload,created_at) VALUES($1,$2,$3,'fixture',$4,CURRENT_TIMESTAMP-($5::int*interval '1 day'))`,[name,a,project,JSON.stringify(name==='suppressed'?{redacted:true}:{}),name==='expired'?15:2]);
   await pool.query("INSERT INTO dlq_records(id,tenant_id,project_id,reason,payload) VALUES('foreign',$1,$2,'fixture','{}')",[b,otherProject]);
-  for(const [name,status]of [['replaying','published'],['resolved','stored'],['unresolved','failed']]){
+  for(const [name,status]of [['replaying','published'],['resolved','stored'],['resolved','failed'],['resolved','published'],['suppressed','stored'],['unresolved','failed']]){
     const job=randomUUID();await pool.query("INSERT INTO replay_jobs(id,tenant_id,project_id,user_id,request_hash,reason) VALUES($1,$2,$3,$4,'fixture','fixture')",[job,a,project,admin]);
     await pool.query("INSERT INTO replay_items(tenant_id,project_id,job_id,record_id,event_id,payload_hash,status) VALUES($1,$2,$3,$4,$5,'fixture',$6)",[a,project,job,name,randomUUID(),status]);
   }
