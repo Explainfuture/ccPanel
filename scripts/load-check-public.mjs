@@ -80,7 +80,7 @@ for(let n=0;n<seconds;n++){
   const event={event_id:randomUUID(),event_name:'capacity_public_probe',distinct_id:'probe-'+(n%20),event_time:new Date().toISOString(),properties:{padding:'x'.repeat(720),test:true},context:{source:'off-host-capacity-probe'},schema_version:1};
   ids.push(event.event_id);
   try{await publishEvidence(output+'.manifest.json',manifest());}catch{ids.pop();abort('evidence_write_failed');break;}
-  pending.set(event.event_id,Date.now());backlog.push(event);if(n>0&&n%50===0)retryCopies.push(event);pump();
+  pending.set(event.event_id,Date.parse(event.event_time));backlog.push(event);if(n>0&&n%50===0)retryCopies.push(event);pump();
 }
 const generationSeconds=(Date.now()-start)/1000;
 await sleep(Math.max(0,start+seconds*1000-Date.now()));
