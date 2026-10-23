@@ -1470,3 +1470,10 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 回到容量未通过问题，只读检查发现 Kafka 主进程/容器存在历史换出，而 API/Worker cgroup Swap 为0；Docker内存显示不能涵盖已换出部分。新增采样 swapBytes=memory.swap.current，以及报告完整性/起点/终点/已观察峰值。旧数据缺失为未知；非法值拒绝；不改变主机换页活动或资源门槛。
 - 238 项测试/typecheck通过。VPS 新采样器有限十秒、两帧自然完成，无生成流量：Kafka185380864、PG7499776、API/Worker0字节，主机换入换出页差0。原证据双方保留，SHA256 ac5e3c620090fc40f6bb71e02f726acf9dff696c2739f1024a8571338e39efba。
 - 未改限额/JVM/Swap策略、未重启或替换012，不是完整容量窗口，旧失败/提前终止结论保持。具体解释和实测范围见 CAPACITY.md 步骤183。
+
+### 步骤 184：Kafka JVM 低开销只读诊断
+
+- 镜像仅 JRE 无 jcmd/jstat，依据 OpenJDK21 PerfData2.0 格式增加数字白名单探针，不安装工具/attach/GC/heapdump，不输出启动参数或原始字符串。结构/边界/版本检查，布局不符失败，不介入容量门槛。
+- 两次服务器读取成功，冻结第二份：heap-space used154815104、generation capacity200294400、old used113345024、metaspace used13471784字节、80 live线程。used不等于存活量，不据此压低192MiB堆；不同维度/时刻的Swap与heap不混减。
+- 过滤JSON双方保存，SHA256 cc936e4ca370046678df28c29cb42245d22534781b4631e861a178b8aeb4c78f；工具基于实际运行容器PID，只读且不更改012或资源配置。不是容量测试，已有失败结论不变。具体方法/官方格式链接及限制见 CAPACITY.md。
+- 步骤183后续 CI Actions 39948616798 verify/postgres 已全部 success：238 项测试、15 套真实 PG 与既有打包及部署保护检查。步骤184探针另以两次真实只读 JVM 文件读取验证，不把183单测称作其解析器测试。

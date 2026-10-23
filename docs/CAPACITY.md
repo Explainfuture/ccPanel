@@ -340,3 +340,13 @@ POSIX支持SIGINT/SIGTERM；Windows外部Stop-Process/信号API可能直接强�
 2026-10-23 对仍为 012 的 VPS 只读检查：初始可用内存约309MiB，Java 主进程 VmSwap 约162.5MiB，API/Worker cgroup Swap 为0。十秒有限采样实际完成两帧（未生成事件），Kafka cgroup Swap 两帧均185380864字节、PG 7499776、API/Worker0；主机换入/换出页差均0。此处与初始瞬时数值可能不同，保留各时刻读数，不拼接成同一快照。证据 /opt/ccpanel/shared/swap183/frames.jsonl，SHA256 ac5e3c620090fc40f6bb71e02f726acf9dff696c2739f1024a8571338e39efba，已下载。只证明采样字段能读取和该短时窗口现象，不是容量通过。
 
 本次不改 JVM/内存限额、不关 Swap、不清缓存或重启容器，未替换运行版本或启动负载；新采样器仅以 capacity-sample183.py 独立文件做有限验证，未来完整窗口需使用新源码归档并记录 hash。238 项测试和 typecheck通过，新增完整/缺失/部分字段、gauge下降及非法值覆盖。仍需针对 Kafka 的匿名内存/已换出部分进一步分析，不能从此次读数直接断言“病毒”或“内存泄漏”。
+
+## 步骤184：Kafka JVM 数字计数取证
+
+镜像为 Temurin OpenJDK 21.0.10 JRE，无 jcmd/jstat；没有为诊断安装 JDK、附加 JVM、触发 GC 或导出堆。新增 `scripts/kafka-memory-probe.py`（Linux root 操作员只读工具），通过 Docker 的实际 PID 读取 /proc/PID/root/tmp/hsperfdata_appuser/1，仅输出白名单数字：代/空间容量和 used、元空间、压缩类空间及线程数。不输出 JVM 参数、环境、完整 perfdata 或应用对象。固定目标 ccpanel-kafka-1，不适用其他布局时失败，不能补零。
+
+格式依据 [OpenJDK 21 perfMemory.hpp](https://github.com/openjdk/jdk21u/blob/master/src/hotspot/share/runtime/perfMemory.hpp)：只支持 PerfData 2.0，检查 magic/大小/可访问性、端序、结构范围及前后结构头一致。各数字为近同时读取，不是停机原子快照；该私有诊断格式不作为生产采样或容量通过门槛。堆 used 是占用而非强制完整 GC 后的存活量，不能由此认定泄漏、全部为活对象或计算必须配置的最小堆。
+
+2026-10-23 012 实测数字证据：空间 used 总计154815104字节（约148MiB），代 capacity 总计200294400（约191MiB）；老年代 used113345024/capacity133316608，metaspace used13471784，线程live80。此前183的Kafka Swap gauge与本次heap used不是同一时刻且不是同一统计维度，不能相减推导精确native占用。当前192MiB堆上限下，单凭这些数据不足以安全缩减堆，也没有增加堆/禁用Swap来美化资源结果。
+
+安全过滤后的 JSON 保存在双方：服务器 /opt/ccpanel/shared/swap183/kafka-perf184.json，SHA256 cc936e4ca370046678df28c29cb42245d22534781b4631e861a178b8aeb4c78f。两次只读探测均成功；第二次是上述冻结证据，第一次不拼入该快照。程序未改容器、配置或消费状态；没有压力生成器或新容量通过结论。后续要评估可重复的资源配置变更，仍须备份/固定release与配置，再进行独立完整窗口，保留此前失败证据。
