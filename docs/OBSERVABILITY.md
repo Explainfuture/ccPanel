@@ -141,3 +141,9 @@ schema19新增4个固定规则状态行及变化历史。API/Worker各自30秒�
 OPERATIONAL_COLLECTION_ENABLED默认true，仅接受严格true/false；false时不建立采集池、定时器或告警评估，stop仍可等待。未知值启动拒绝。schema19可信升级先校验共享env工具与已验SHA归档内文件一致，缺失/不匹配在停服务前拒绝；prepare停旧API/Worker后才将两份env显式设false，apply再核对false。新运行时继续暂停直到原关系指纹核对和恢复/消费门禁通过，不跳过operational_samples原始值。
 
 scripts/enable-operational-collection-preview.sh要求明确目标release、schema19及已核对的升级证据、相等原指纹、backup证明、门禁和两进程实际开关一致；容量采样活动时拒绝。env工具先验证两文件一致/配置不歧义，再仅替换该项、临时文件600+fsync/原子替换，其他配置不输出；两个文件各自替换不是跨文件原子事务，失败后不自动绕过cmp。启用/停用需明确CCPANEL_COLLECTION_STATE并重建两个进程，核对实际开关及就绪；同状态不额外重建。暂停不会停止宿主机压力探测、事件消费、日志或恢复保护，只暂停持久快照/告警评估。尚未在VPS执行。
+
+## 步骤138：schema19真实上线
+
+当前m4-alerts-006/schema19，按离机加密/解密恢复验证、显式18→19及采集false核对上线：原关系指纹全一致，新alert_states0行。恢复物理保留后首次采集激活因相对env路径被严格工具拒绝，未改采集开关；提交935724b改绝对路径，更新共享可信激活脚本后同证据启用成功。归档内旧激活包装脚本仍保留原字节，不改不可变release；操作使用共享修正版，后续归档使用修正源码。
+
+启用后真实HTTPS得到4即时clear、4持久fresh、8条启动/基线变化，revision/id字符串；真实Chrome三表、桌面/390px与撤权清旧表/重载隐藏通过。双用户SDK/重复/异步趋势及SQL精确ID各2、DLQ0；测试账号/资格/数据已清理。原140条监控记录完整保留，新增采样是预期变化，其他原关系仅consumer_progress推进4。UTC04:03附近API76/Worker74采样，4规则clear、历史8；采集和保留均true、门禁open/ready。四个2秒vmstat区间si/so0只是短窗口，单次可用306MiB/Swap206MiB不能代替本版完整容量或独立外部告警证明。

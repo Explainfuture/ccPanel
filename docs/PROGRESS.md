@@ -1012,3 +1012,13 @@ public CLI记录接入尝试/成功/失败/尝试事件数及UTF-8请求体字�
 类型/构建、166单测和真实Python env工具验收通过：缺省/严格值/disabled stop、其他字段保留、两env一致、重复/非法值/文件不一致时不写。CI加入Linux脚本语法和env工具验收，第8套体系中的定时采集验收增加实际等待31秒关闭模式不取快照/不写入/无采集连接，再恢复原配置验证正常采集；等待CI。未访问VPS，线上仍m4-history-005/schema18，尚未部署19。
 
 步骤137 CI39897356813（8cf3f4a）success：166单测、构建/marker19/Linux bash语法与env工具、CLI正反例及8套真实PG通过，包含31秒关闭后无采样/写入/连接及恢复正常定时采集。同步集成分支/草稿PR；本步没有服务器配置变更、schema19上线或生产容量结论，后续按受控流程部署。
+
+### 步骤138：schema19受控升级和真实告警页面
+
+核实服务器schema18后构建123文件516175字节归档SHA dde9aec16a7d854c5246329894bcbc3ea202bca688d3e8b51a3aba6071b7a612。共享env工具与归档SHA校验、Linux脚本语法通过，禁用保留/停旧API与Worker，显式采集false。product-upgrade.t0VZhz及备份20261023T035648Z-7e351f55，经工作站加密/解密逐字节、回传隔离PG全表恢复3秒验证后apply18→19；原列指纹完全相同，采集实际仍false、alert_states0行。就绪轮询曾连接reset/empty reply，随后正常，不隐藏启动瞬态。
+
+恢复保留后首次采集激活因.env相对路径违反工具绝对路径契约安全拒绝，实际状态仍0、容器running。提交935724b修复PWD/.env，更新共享激活脚本（未修改不可变release归档）后使用同证据成功开启两进程采集。该修正CI39897946967 success，166单测/构建/CLI/8套PG通过；实机激活也验证修正路径。原归档仍含旧包装脚本，部署操作使用共享修正版，后续归档自动包含修正源码。
+
+真实SDK双用户入队/确认、原ID重复、异步趋势2成功，SQL raw/dedup/job精确集合各2、processed/bucket2、DLQ0，集合SHA5a996b350d050ac9e63e5e7f07fc8679442006156ee531edf5955bfbef26f506。临时平台资格HTTPS读取4即时clear、4持久fresh、8变化及字符串revision/id、两来源历史/no-store通过；初始新进程基线等待后得到真实30秒区间。线上Chrome告警三表、1280/390px完整截图已查看、无文档横溢；撤权后清除旧表、父失败卸载、重载隐藏均通过，浏览器关闭。
+
+清理测试公司/账号/会话、资格/平台审计及业务数据后，所有原关系除预期consumer_progress和新增operational_samples外完全一致；按received_at保留前140条原监控记录的原列hash单独一致。PG位点p0=6259/p1=6310，总12569，预期+4且来源check通过；raw2/dedup3/DLQ0、临时DB/合成公司/平台资格0。两进程采集/保留true，恢复/完整性门禁open、HTTPS ready，当前四容器running/restart0/OOMfalse（升级中有计划重建）。UTC04:03采样API76/Worker74、4告警clear/历史8；可用306MiB、Swap存量206MiB，四个2秒区间si/so0仅短样本，不是新容量通过。加密备份保留，临时明文/ledger/fixture/私有浏览器日志两端已清理。完整新容量、外部通知/其他规则、持续异机同步等继续。
