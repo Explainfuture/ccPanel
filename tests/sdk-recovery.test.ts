@@ -9,7 +9,7 @@ it('migrates bounded memory events back to durable storage with unchanged IDs an
   }
   const q=new FlakyQueue('recovery-'+crypto.randomUUID());let sent:string[]=[];
   const client=new Analytics({endpoint:'https://example.invalid/v1/batch',projectId:'p',writeKey:'k',consent:true,queue:q,flushInterval:60000,fetch:async(_u,init)=>{sent=JSON.parse(init!.body as string).events.map((e:{event_id:string})=>e.event_id);return Response.json({accepted_event_ids:sent},{status:202});}});
-  try{await client.flush();const row=await client.track('click');expect(row.status).toBe('queued-memory');q.fail=false;await client.flush();expect(sent).toEqual([row.event_id]);expect((await client.getQueueStatus()).count).toBe(0);expect((await q.stats()).count).toBe(0);}finally{client.destroy();}
+  try{await client.flush();const row=await client.track('click');expect(row.status).toBe('queued-memory');expect((await client.getQueueStatus()).pending_writes).toBe(0);expect((await client.getQueueStatus()).pending_bytes).toBe(0);q.fail=false;await client.flush();expect(sent).toEqual([row.event_id]);expect((await client.getQueueStatus()).count).toBe(0);expect((await q.stats()).count).toBe(0);}finally{client.destroy();}
 });
 it('serializes consent withdrawal and regrant without retaining old records',async()=>{
   const q=new IndexedQueue('consent-race-'+crypto.randomUUID());

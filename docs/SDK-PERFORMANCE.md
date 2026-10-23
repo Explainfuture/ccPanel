@@ -61,3 +61,9 @@ Node trackFor对每个调用快照显式distinct_id，不改变共享实例身�
 ## 步骤109：运行时授权收紧
 
 构造及setConsent仅布尔true授权，其余运行时输入按未授权/撤回处理；两项测试先复现truthy字符串漏洞，后修复通过。真实Chrome IndexedDB新增字符串初始化拒绝、true持久入队、字符串撤回清空验证，原跨页/关闭重开流程仍通过。相同工作站80秒基准1200条20EPS全部持久，同步p95/p99=0.4/0.6ms、入队3.5/6.1ms，无长任务/诊断/内存降级/待发或可见性变化。Browser/Node gzip5935/6925字节；未控制整机后台，网络stub，不作跨版本因果或服务器吞吐结论。
+
+## 步骤115：慢存储待写预算
+
+待写调用独立按主队列持久1000/5MiB或内存100/512KiB限制，序列化完整事件字节不等于JS对象或RSS。超额显式rejected_pending_overflow，预留最终释放；Node共用。getQueueStatus新增pending与其上限，已存与待完成可暂时重叠，不作为唯一事件总数。详见Browser README。
+
+Chrome155/Windows/20逻辑处理器、浏览器报告16GiB，真实IndexedDB生命周期通过；10秒基线+10秒空闲+60秒20EPS，1200条全部持久。同步p95/p99=0.5/0.6ms，持久完成3.3/4.1ms；无长任务/诊断/内存降级/可见性变化，最终pending及已存队列0。基准期间未执行构建/单测，未控制全机后台，不作跨版因果比较；HTTP202内存stub，不代表公网/Kafka吞吐。gzip Browser6029/Node7022字节。

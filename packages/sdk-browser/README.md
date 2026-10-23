@@ -8,6 +8,10 @@ ESM打包产物已验证TypeScript Bundler及NodeNext解析（浏览器项目启
 
 IndexedDB 不可用时进入有界内存缓冲并调用 onError；内存事件关闭后无法恢复。存储恢复后以原 ID 和重试元数据迁回持久队列，恢复探测间隔受限。撤回/重新授权操作串行执行，先停采集、再清空旧记录，避免并发调用遗留旧数据。getQueueStatus 区分持久和内存记录数。
 
+慢存储下未完成的track另有预算：主队列持久时最多1000个调用/5MiB序列化事件，主队列内存时100个/512KiB，任一先达到即返回`rejected`、reason为`rejected_pending_overflow`并调用onError；不会无限排队等名额。条数已满时不再读取新调用的properties；字节预算按验证、快照、隐私过滤后的完整事件UTF-8大小计算。写入失败、队列满或撤回完成后释放预留。Node SDK及trackFor沿用此规则。
+
+getQueueStatus新增`pending_writes`、`pending_bytes`、`pending_limit_count`、`pending_limit_bytes`。pending不表示已经持久入队，原count/bytes仍只统计队列记录；两者在写入完成与返回之间可能短暂重叠，不可相加当唯一事件数。待写预算与已存队列预算独立，序列化字节不是JavaScript对象开销或进程RSS上限；主持久队列失败后的内存缓冲仍限100条/512KiB。业务应处理明确拒绝，不能无界重试或解释为服务器已收到。
+
 开发验收页面 /sdk-lab.html 需要手工输入测试项目与写入凭证，显式产生 sdk_lifecycle_test。它不是自动采集入口。真实浏览器关闭矩阵、设备性能验收仍未全部完成，不能作为已通过 PRD 全部验收的稳定版发布。
 
 项目可导出 ProjectEvents 类型，并调用 `createAnalytics<ProjectEvents>(options)`：事件名获得补全，必填属性与值类型在编译期检查；不提供泛型时仍支持通用事件。服务端的运行时校验始终保留，TypeScript 不能作为可信数据边界。

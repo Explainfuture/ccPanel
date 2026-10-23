@@ -22,7 +22,7 @@ export class Analytics {
   private owner=crypto.randomUUID();private identityKey:string;
   private consentKey:string;
   private consentMarker:string|null=null;
-  private batchSize:number;private running=true;private pendingWrites=0;
+  private batchSize:number;private running=true;private pendingWrites=0;private pendingBytes=0;
   private needsRecovery=false;private nextRecovery=0;
   private consentChanges:Promise<void>=Promise.resolve();
   private allowedProperties:Map<string,Set<string>>|undefined;
@@ -80,6 +80,7 @@ export class Analytics {
   // Node request handlers use this path so concurrent users cannot overwrite it.
   protected async trackWithIdentity(name:string,properties:Record<string,Json>,distinctId:string,anonymousId?:string):Promise<TrackResult>{
     if(!this.hasConsent()||!this.running)return{status:'rejected',reason:'consent_required'};
+    if(this.pendingWrites>=(this.queue.persistent?1000:100)){this.error('rejected_pending_overflow');return{status:'rejected',reason:'rejected_pending_overflow'};}
     const version=this.epoch;
     // Freeze the payload before the first await so identity changes and caller mutation cannot rewrite it.
     let event:AnalyticsEvent;
@@ -101,9 +102,11 @@ export class Analytics {
       const scrub=(v:Json):Json=>Array.isArray(v)?v.map(scrub):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).filter(([k])=>!sensitive.test(k)).map(([k,x])=>[k,scrub(x)])):v;
       event.properties=scrub(event.properties) as Record<string,Json>;
     }catch{this.error('invalid_properties');return{status:'rejected',reason:'invalid_properties'};}
-    if(this.snapshot.length<this.batchSize&&byteLength(this.envelope([...this.snapshot,event]))<=limits.batchBytes)this.snapshot.push(event);
-    this.pendingWrites++;
+    const eventBytes=byteLength(event);
+    if(this.pendingBytes+eventBytes>(this.queue.persistent?5*1024*1024:512*1024)){this.error('rejected_pending_overflow');return{status:'rejected',reason:'rejected_pending_overflow'};}
+    this.pendingWrites++;this.pendingBytes+=eventBytes;
     try{
+      if(this.snapshot.length<this.batchSize&&byteLength(this.envelope([...this.snapshot,event]))<=limits.batchBytes)this.snapshot.push(event);
       let stored=false;
       try{stored=await this.queue.add(event,this.queue.persistent?1000:100,this.queue.persistent?5*1024*1024:512*1024);}
       catch{this.needsRecovery=true;this.error('storage_error');stored=await this.memory.add(event,100,512*1024);}
@@ -112,7 +115,7 @@ export class Analytics {
       const status=this.queue.persistent&&!(await this.memory.peek(100)).some(r=>r.event.event_id===event.event_id)?'queued-persistent':'queued-memory';
       const stats=await this.getQueueStatus();if(stats.count>=this.batchSize||stats.bytes>=limits.batchBytes)queueMicrotask(()=>void this.flush());
       return{status,event_id:event.event_id};
-    }finally{this.pendingWrites--;}
+    }finally{this.pendingWrites--;this.pendingBytes-=eventBytes;}
   }
   async identify(userId:string){if(!userId||userId.length>256)throw new Error('invalid_user_id');if(!this.hasConsent())return;this.user=userId;this.saveIdentity();return this.track('$identify');}
   reset(){this.user=undefined;this.anonymous=this.hasConsent()?crypto.randomUUID():'';if(this.consent)this.saveIdentity();}
@@ -152,7 +155,7 @@ export class Analytics {
   updateWriteKey(key:string){if(!key||key.length>256)throw new Error('invalid_key');this.options.writeKey=key;this.paused=false;void this.flush();}
   private envelope(events:AnalyticsEvent[]){return{write_key:this.options.writeKey,project_id:this.options.projectId,schema_version:1,events};}
   private async stores(){return this.queue===this.memory?[this.queue]:[this.queue,this.memory];}
-  async getQueueStatus(){let count=0,bytes=0,persistent_count=0,memory_count=0,oldest:number|null=null;for(const q of await this.stores()){try{const s=await q.stats();count+=s.count;bytes+=s.bytes;if(q.persistent)persistent_count+=s.count;else memory_count+=s.count;if(s.oldest!==null)oldest=oldest===null?s.oldest:Math.min(oldest,s.oldest);}catch{this.error('storage_error');}}return{count,bytes,persistent_count,memory_count,oldest,last_error:this.lastError,storage:this.needsRecovery?'memory-fallback':this.queue.persistent?'persistent-with-memory-fallback':'memory'};}
+  async getQueueStatus(){let count=0,bytes=0,persistent_count=0,memory_count=0,oldest:number|null=null;for(const q of await this.stores()){try{const s=await q.stats();count+=s.count;bytes+=s.bytes;if(q.persistent)persistent_count+=s.count;else memory_count+=s.count;if(s.oldest!==null)oldest=oldest===null?s.oldest:Math.min(oldest,s.oldest);}catch{this.error('storage_error');}}return{count,bytes,persistent_count,memory_count,oldest,pending_writes:this.pendingWrites,pending_bytes:this.pendingBytes,pending_limit_count:this.queue.persistent?1000:100,pending_limit_bytes:this.queue.persistent?5*1024*1024:512*1024,last_error:this.lastError,storage:this.needsRecovery?'memory-fallback':this.queue.persistent?'persistent-with-memory-fallback':'memory'};}
   flush():Promise<{confirmed:number;pending:number}>{
     if(this.flight)return this.flight;
     this.flight=this.send().catch(()=>{this.error('send_error');return{confirmed:0,pending:0};}).finally(()=>{this.flight=undefined;});return this.flight;
