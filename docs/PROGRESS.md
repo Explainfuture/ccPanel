@@ -1256,3 +1256,11 @@ VPS只读挂载新bundle，在独立临时schema21 PG运行同SQL/Hono factory�
 VPS新归档/私有wrapper在两个临时库分别运行旧21引导的持久化和当前22引导的即时+历史HTTP，均通过；新stage只读，挂载点先检查创建，不改运行代码。证据/归档见OBSERVABILITY。最终37非动态监控关系全同，root21/raw2/dedup3/DLQ0/operators0、位点7182/7230，新DLQ持久表在主库仍不存在；临时库/凭证/一次性容器0，四服务running/restart0/OOMfalse/ready。安全摘要.local/dlq160-final-preservation.json；持久test log SHA 9f993543d29400f1cbb37b34a028bf783c8302d2d0129d204d268542161e51cb，HTTP log SHA 71e665434d9a9ccceed746942cc2d9478edeb554c5637dbd45649c87c4b764d0。
 
 线上仍m4-pressure-009/schema21；源码22不能绕过仍至21的可信升级工具。DLQ历史页面、22受控升级与实际发布、独立外部通知/备份规则、资源/HA/持续异机最新状态同步和浏览器真机矩阵等仍未完成，目标继续进行。
+
+### 步骤161：DLQ持久历史页面（未部署）
+
+ffa7110加入手动历史/严格客户端守卫和平台可见性，204e67f新增两项纯校验单测。显示最新两规则、当时/当前状态、数量/修订/源到期，最近50变化及discarded历史不完整提示；请求开始单调计时、网络等待/本地过期/visibility校正，不新增轮询。完整字段、固定规则、来源一致、共享纯评估和BigInt约束，额外字段/伪造健康/坏计数/重复ID/不完整最新状态拒绝；unknown不能掩盖坏源计数。父失败卸载、失权清数据、prefix唯一键保留。
+
+本地206单测/58文件、类型/构建通过，CI39926863062全部success（206/15 PG及37主机保护例）。Chrome合成HTTP各项通过：精确修订/数量、两张表、自然过期和2秒网络等待后current unknown但历史firing保留、discard1提示、invalid最新隐藏但history保留、空/畸形/403/429/503清旧数据、平台失败卸载、普通admin无请求、无duplicate key；1280/390截图已查看无文档横向溢出。证据.local/dlq161-*；浏览器与Vite均关闭。
+
+没有新VPS操作或运行文件改动，线上仍m4-pressure-009/schema21；schema22尚未部署，前一轮VPS临时库后端证据不冒称新页面公网认证。下一步扩展22可信升级/启用保护及隔离验收，制作新归档/离机备份/实际恢复后发布。独立通知、备份规则、自动异机最新状态同步、资源/HA/真实设备矩阵等继续未完成。
