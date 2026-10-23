@@ -706,3 +706,15 @@ schema17增加逻辑30天事件视图、全局过期索引及可显式启用的W
 针对步骤101自动重试现象，在迁移610锁之后增加与行清理共用635非阻塞事务锁；行清理持锁时直接busy退让，不进入父表NOWAIT。固定15秒轮询改为上一轮完成后自行安排下轮，初始15–20秒/忙15–30秒/失败60–75秒随机退避/成功约1小时，避免与5秒清理循环持续重合；停止后不再安排新轮，最多一份连接获取/事务。55P03表示busy而非通用错误，completed/busy/retry及允许格式SQLSTATE均有日志，不输出SQL/载荷。
 
 本地132项单测与构建通过，新增关闭开关不建连、连接获取中停止不重叠/最终释放且不再安排定时器两项测试后针对测试及类型检查通过（总134）。真实PG控制器追加持635时返回busy。首次历史错误码未记录，因此“周期碰撞”是发现的调度风险与修复理由，不宣称已证明原3次错误的唯一成因；真实CI及修复版自动运行仍待验证。
+
+步骤102验收补充：Actions39876073353（02e8ca1）verify/postgres均success，134项完整单测及5套真实PG控制器通过，含retention_lock_skips:true。步骤103发布后，未人工调用维护函数的新Worker自动产生partition_maintenance_completed=1、busy0/retry0、retention_retry0；原业务关系hash保留，修复版自动执行已获实际证据，不再依赖人工tick。
+
+### 步骤 103：调度补丁可信发布与自动维护运行验收
+
+升级控制器增加显式17→17可信代码补丁白名单，仍要求目标17维护关闭、无容量任务、离机备份验证及原字段指纹；开关控制器增加显式true/false、默认仍true，原子替换后fsync目录。shell/内嵌Python语法通过，实测先将旧维护false并仅重建Worker，再prepare停机备份，不在原字段核验时让合法清理改行。
+
+归档2be4612bd4d81eaabe37dac321f77adfaf5d25ac3d0a558892374c9babe72c3e，112文件/455955字节；源备份/opt/ccpanel/shared/backups/20261023T000824Z-0b5512f6，明文93327/密文93363字节，SHA0e84d684e007fead9cf88068d705462532cc76f1533d5ec7c6aa0c6a69c3482d。工作站独立AESGCM解密回传，临时PG恢复2秒、全表hash一致，fresh source清单另加密离机。核验后apply退出0，当前/opt/ccpanel/releases/m4-retention-002/schema17，原行/字段指纹保留、消费进度check/HTTPS通过。
+
+对账完成后再true启用，仅重建Worker。没有对新版本人工调用维护函数；实际日志worker_ready、automatic_partition_completed=1、partition_busy0/partition_retry0/retention_retry0。所有仍存在的原关系hash保持不变；raw2/dedup3/可见桶2、聚合pending0/error0、临时库0、physical_retention_enabled=true。此前失败的自动运行在修复版已通过一次真实执行，首次历史三次retry未记录SQLSTATE故不回填未证实错误原因。
+
+两端本次备份/解密dump及source-ledger明文已删除，旧版本临时诊断bundle移除；保留密文、独立工作站密钥和/opt/ccpanel/shared/product-upgrade.o1SVGE证据。当前版本容量未测，既有持续Swap资源失败结论保持；自动异机备份/最新删除事故状态同步及完整设备矩阵仍未完成。

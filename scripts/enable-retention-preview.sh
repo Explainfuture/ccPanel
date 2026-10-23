@@ -5,6 +5,8 @@ umask 077
 exec 8>/opt/ccpanel/shared/deploy.lock
 flock -n 8 || { echo 'Another deployment is active' >&2; exit 1; }
 : "${CCPANEL_EXPECTED_RELEASE:?Set reconciled release name}"
+state=${CCPANEL_MAINTENANCE_STATE:-true}
+[[ "$state" = true || "$state" = false ]]
 [[ "$CCPANEL_EXPECTED_RELEASE" =~ ^[A-Za-z0-9_-]+$ ]]
 test "$(readlink -f /opt/ccpanel/current)" = "/opt/ccpanel/releases/$CCPANEL_EXPECTED_RELEASE"
 running_capacity=$(systemctl list-units --type=service --state=running 'ccpanel-capacity-*' --no-legend --plain)
@@ -20,23 +22,27 @@ test "$(docker compose exec -T postgres psql -X -U ccpanel -d ccpanel -Atqc 'SEL
 docker compose run --rm -T --no-deps api node dist/deletion-ledger.mjs check
 docker compose run --rm -T --no-deps api node dist/consumer-progress.mjs check
 cmp /opt/ccpanel/shared/runtime.env .env
-python3 - <<'PY'
-import os,pathlib,tempfile
+python3 - "$state" <<'PY'
+import os,pathlib,sys,tempfile
+state=sys.argv[1];assert state in ('true','false')
 paths=[pathlib.Path('/opt/ccpanel/shared/runtime.env'),pathlib.Path('/opt/ccpanel/current/infra/.env')]
 source=paths[0].read_text();lines=source.splitlines()
 values=[line.split('=',1)[1].strip().strip('\"\'') for line in lines if line.startswith('RETENTION_ENABLED=')]
 assert not values or values in (['false'],['true']),'Ambiguous retention configuration'
-text='\n'.join([line for line in lines if not line.startswith('RETENTION_ENABLED=')]+['RETENTION_ENABLED=true'])+'\n'
+text='\n'.join([line for line in lines if not line.startswith('RETENTION_ENABLED=')]+['RETENTION_ENABLED='+state])+'\n'
 for path in paths:
     fd,name=tempfile.mkstemp(prefix='.retention-env-',dir=path.parent)
     try:
         with os.fdopen(fd,'w') as file:
             os.fchmod(file.fileno(),0o600);file.write(text);file.flush();os.fsync(file.fileno())
         os.replace(name,path)
+        directory=os.open(path.parent,os.O_RDONLY|os.O_DIRECTORY)
+        try:os.fsync(directory)
+        finally:os.close(directory)
     finally:
         if os.path.exists(name):os.unlink(name)
-print('Retention environment configured without exposing other values')
+print('Maintenance state configured without exposing other values')
 PY
 docker compose up -d --no-deps worker
 curl -fsS https://192.236.151.125/ready
-echo 'Maintenance enabled; inspect the new Worker and retention/partition evidence'
+echo "Maintenance state applied: $state; inspect the new Worker and maintenance evidence"
