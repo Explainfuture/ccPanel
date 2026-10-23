@@ -1510,3 +1510,4 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 将内部初始化/定时/联网/阈值/授权/换钥触发统一处理超时reject，避免未处理Promise异常。Node shutdown走原始底层flight，保留自己的10秒等待截止和真实I/O完成才close/释放锁的语义，不因flush调用超时提前关闭。
 - 完整243项测试、typecheck/build/两个SDK tarball仓库外验证通过。新增忽略AbortSignal慢fetch、共享超时视图/无并发重发/迟到ACK恢复，以及初始化慢storage无网络请求、无未处理reject和恢复后可继续调用；受控Promise与fake clock，不声称真实磁盘/OS挂死验证。188真实文件锁与晚确认用例继续通过。
 - Chrome155重新验证本机原生pagehide HTTP+IndexedDB恢复、原生beacon false配额/重载恢复，两场景passed。浏览器及接收端关闭；未动VPS012、未运行容量窗口，完整设备/生产容量仍未通过。
+- CI Actions39951320748 verify/postgres均成功，包含243项测试、15套真实PG及既有打包/进程故障/部署保护检查。
