@@ -692,3 +692,11 @@ schema17增加逻辑30天事件视图、全局过期索引及可显式启用的W
 证明摘要核验后apply原会话退出0，当前/opt/ccpanel/releases/m4-retention-001/schema17。所有原字段/行数指纹保留，进度完整性通过、HTTPS ready；raw2/dedup3/可见桶2、聚合pending0/error0/临时库0，实际Worker physical_retention_enabled=false。新旧前端资源保留控制器首次真实执行owned11/previous11，未覆盖新资源。两端本次dump/解密dump/source-ledger明文删除，保留密文与独立工作站密钥；升级证据/opt/ccpanel/shared/product-upgrade.byZiqb，工作站pre-retention-20261023.*。
 
 步骤92–99代码已发布预览；物理保留及分区定时器尚未开启，待单独操作验收。容量仍未批准，schema16实测持续Swap失败不因发布成功而改变；当前版本未做新容量评估。持续异机备份/最新删除及事故状态同步、真实移动设备/多浏览器仍待补齐。
+
+### 步骤 101：维护开关真实启用、业务保留核验及发现自动分区重试
+
+新增受限preview启用控制器：固定release/schema17、无活动容量任务、匹配可信升级目标与before/after原字段指纹、门禁及进度check通过、共享runtime.env与当前.env完全一致后，原子写入RETENTION_ENABLED=true并仅重建Worker；不输出其他环境值。shell及内嵌Python语法通过，实际命令退出0、Worker确认true、HTTPS ready。备份已验证且升级指纹冻结后才执行。
+
+真实运行检查retention_retry0，但partition_maintenance_retry累计3，**自动分区维护尚未验收通过**。只读复核所有尚存在的原关系hash不变；人工用同一maintainPartitions函数执行一轮成功，回收原空public.events_2026_08（原数量/hash均0），再次核验其他关系完全不变。该成功不冒充自动定时器成功；首次错误未输出SQLSTATE，具体原因尚不能确定。代码存在5秒行清理和15秒DDL周期同步争锁风险，后续独立修复互斥/退避及可观测日志。
+
+真实HTTPS对上版11个哈希静态资源逐一GET均200，新SDK SHA4674f8113c7b2061a273f1c6914403e1d8b0d23156fc25272efe8b4cdcfe20ca与本地构建一致。临时诊断bundle仅执行同维护函数、不输出载荷/凭据；未更改API/Worker程序。容量仍未批准。
