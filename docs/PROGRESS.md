@@ -1218,3 +1218,11 @@ VPS当前m4-recovery-008/schema20，先只读检查无容量任务、raw2/dedup3
 最终pressure-upgrade157对账37个非动态监控关系原字段/行数全同，原653采样/15告警历史前缀保留；raw2/dedup3/DLQ0/operators0、临时库0、主库压力表不存在，位点7180/7228。原API/Worker采集/保留true，四容器restarts0/OOMfalse，恢复/完整性/HTTPS就绪检查通过。临时数据库及env/ledger均清理，摘要.local/pressure157-{final-preservation,isolated-suites}.json和日志两端留存；源代码/隔离验收不冒称实际schema21升级、新版SDK端到端或整机恢复证据。
 
 下一步仍需新release归档、离机备份/实际隔离恢复、20→21真实升级及页面权限/采集后对账，再单独启用。外部通知、持续异机最新状态同步、低配资源门槛/HA和浏览器真机矩阵仍未完成，目标继续进行。
+
+### 步骤158：schema21发布候选与升级前恢复证明
+
+从cf8fb5a源码构建m4-pressure-009候选，135文件579001字节，归档SHA 2b54556a978d8d9b12a2df60e3ee509d84b726fce0242470a97e59d9d70849f2；冻结归档后不因后续证据提交改写。当前实际代码由ba4f2ac/CI39918815291验收。服务器初检仍schema20/raw2/dedup3/位点7180/7228，无容量任务；可用270MiB/Swap304MiB/磁盘32%仅快照，不替代资源门槛。
+
+可信准备证据product-upgrade.lfSdJw：先按旧版本已核对证据关闭物理保留，prepare停止API/Worker并关闭采集后冻结旧字段；归档SHA目标CLI从原源导出v2完整两项目清单。新备份20261023T074259Z-53fee244，明文189342字节/SHA b047dd7621b1dd5550eab02cb659c9f074257cbdd7ed536fc63e89b35eb07f71；AES-GCM密文189378字节/SHA cf9ecf4a02dbb9b2d7a676aeb8ee7ec9a61d7f91ffc18c9ade5b1cef8c4de24c，fingerprint SHA 9ff56449af62b6b42192072c39baf4d7853b9a3a0be6bbcf630933f2ae260895。
+
+工作站加密/解密逐字节相同，回传解密副本在真正独立PG库pg_restore，3秒完成且全部公共关系指纹相同，临时库自动删除；证明文件已回传，源数据库尚未迁移。备份与源v2清单密文两端保留、密钥工作站单独保管，临时明文待apply检查完成后按hash清理。API/Worker此阶段离线，接着执行受控20→21/原字段对账，采集和保留在对账后单独启用。
