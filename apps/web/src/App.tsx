@@ -57,7 +57,7 @@ type Project = {
   origins: string[];
   schema_mode: string;
 };
-type Me = { user: { email: string }; tenants: Tenant[]; csrf_token: string };
+type Me = { user: { email: string }; tenants: Tenant[]; csrf_token: string;platform_operator?:boolean };
 type EventRow = {
   registered?:boolean;
   project_schema_version?:number;
@@ -977,7 +977,7 @@ export default function App() {
               {tab === 'schemas' && project ? <Suspense fallback={<div className="chart-loading">正在读取事件规范…</div>}><SchemaWorkspace key={prefix} prefix={prefix} project={project} canEdit={tenant.role==='admin'} onSaved={reloadProjects}/></Suspense> : null}
               {tab === 'privacy' && project ? <Suspense fallback={<div className="chart-loading">正在读取删除任务…</div>}><PrivacyWorkspace key={prefix} prefix={prefix} projectName={project.name} canManage={tenant.role==='admin'}/></Suspense> : null}
               {tab === 'replay' && project ? <Suspense fallback={<div className="chart-loading">正在读取重放任务…</div>}><ReplayWorkspace key={prefix} prefix={prefix} canManage={tenant.role==='admin'}/></Suspense> : null}
-              {tab === 'delivery' && project ? <Suspense fallback={<div className="chart-loading">正在读取投递监控…</div>}><DeliveryMonitor key={prefix} prefix={prefix} canManage={tenant.role==='admin'}/></Suspense> : null}
+              {tab === 'delivery' && project ? <Suspense fallback={<div className="chart-loading">正在读取投递监控…</div>}><DeliveryMonitor key={prefix} prefix={prefix} canManage={tenant.role==='admin'} canObservePlatform={me.platform_operator===true&&tenant.role==='admin'}/></Suspense> : null}
               {tab === "events" && project ? (
                 <section className="panel">
                   <div className="panel-heading">
