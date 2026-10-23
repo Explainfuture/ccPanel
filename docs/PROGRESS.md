@@ -1124,3 +1124,9 @@ VPS只读核对仍m4-alerts-006/schema19、四容器running、ready，项目2/ra
 步骤149最终CI39906690649（3e97beb）全部success，177单测、构建/CLI/Python及10套真实PG通过；实际schema19→20保留40原关系，失败原子回滚、默认值/epoch/可见性及大位点/监控记录保持。通过真实写服务改为7天后再次迁移，策略/version/floor/epoch和原字段指纹不变；七类停止前拒绝检查也全部通过。
 
 已本地构建候选归档.local/release-retention150.tar.gz（130文件/538336字节，SHA26824c82ce18719c5111b9ba8fd6e24f44080c927dfb0ea0084427e804c7f3e7），不含env或凭证，尚未上传。候选包含3e97beb运行源码和149升级脚本，后续纯文档提交不重写归档；部署仍需新备份、离机核对、隔离恢复及准备/应用证据，不能复用旧升级证明。同步集成分支/草稿PR。
+
+### 步骤150：schema20真实升级、备份与恢复证明
+
+重新只读核对schema19/原计数/位点及无容量任务后，上传149候选归档和匹配采集工具。依t0VZhz原升级证据关闭物理清理；19→20 prepare停止API/Worker、将采集false并冻结原字段。新证据product-upgrade.pCxanJ，新备份20261023T054105Z-f74f2190；工作站加密/解密逐字节一致、解密回传隔离PG恢复2秒且公共关系指纹相同，证明通过后才apply。
+
+实际上线m4-retention-007/schema20，原字段数量/指纹完全一致，两原项目均30天/version1/floor空；采集false直至核对后分别开启清理和监控。部署启动等待期间三次curl reset/empty reply，随后HTTPS ready和进度检查通过；没有旧数据库回滚或bootstrap。归档保持原SHA和字节，环境/凭证不进Git，资源限额和副本数量未改。备份字节/SHA及边界见BACKUP-RECOVERY。
