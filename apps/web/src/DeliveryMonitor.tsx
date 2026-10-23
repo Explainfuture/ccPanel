@@ -68,8 +68,8 @@ export default function DeliveryMonitor({prefix,canManage,canObservePlatform=fal
     {canObservePlatform&&!platformError&&!error?<PressureSignalsPanel key={prefix+':'+platformRequestedAt} data={snapshot?.pressure_alerts} requestedAt={platformRequestedAt}/>:null}
     {canObservePlatform?<HostResourcesPanel data={snapshot?.host_resources}/>:null}
     {canObservePlatform?<IntakeMetricsPanel data={snapshot?.intake}/>:null}
-    {canObservePlatform&&!platformError&&!error?<OperationalHistoryPanel key={prefix} prefix={prefix}/>:null}
-    {canObservePlatform&&!platformError&&!error?<OperationalAlertsPanel key={prefix} prefix={prefix}/>:null}
-    {canObservePlatform&&!platformError&&!error?<PressureHistoryPanel key={prefix} prefix={prefix}/>:null}
+    {canObservePlatform&&!platformError&&!error?<OperationalHistoryPanel key={prefix+':operational-history'} prefix={prefix}/>:null}
+    {canObservePlatform&&!platformError&&!error?<OperationalAlertsPanel key={prefix+':operational-alerts'} prefix={prefix}/>:null}
+    {canObservePlatform&&!platformError&&!error?<PressureHistoryPanel key={prefix+':pressure-history'} prefix={prefix}/>:null}
   </>;
 }
