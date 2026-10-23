@@ -40,6 +40,13 @@ const ledger = (): DeletionLedger => ({
 it("accepts a complete scoped ledger including an actor absent from the old backup", () => {
   expect(parseDeletionLedger(ledger(), now).jobs[0]!.user_id).toBeNull();
 });
+it('requires every deletion scope to have policy metadata in version2',()=>{
+  const base=ledger(),value={...base,schema_version:2,retention:[]};
+  expect(()=>parseDeletionLedger(value,now)).toThrow();
+  const policy={tenant_id:tenant,project_id:project,raw_days:30,version:1,floor:null,effective_from:new Date(now-30*86400000).toISOString()};
+  expect(parseDeletionLedger({...value,retention:[policy]},now).schema_version).toBe(2);
+  expect(()=>parseDeletionLedger({...value,retention:[{...policy,tenant_id:crypto.randomUUID()}]},now)).toThrow();
+});
 it("rejects cross-company reference changes, duplicate identities and incomplete graphs", () => {
   const forged = ledger();
   forged.barriers[0]!.tenant_id = crypto.randomUUID();

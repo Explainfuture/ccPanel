@@ -27,7 +27,7 @@ function child(file,env,input='',args=[]){
 }
 try{
   const entries={migrate:'packages/server/src/migrate.ts','deletion-ledger':'packages/server/src/deletion-ledger.ts'};
-  const suites=['company-provision','report-edit','query-export','retention','partitions','capacity-proof','operational-history','operational-alerts','project-retention','schema-upgrade'];
+  const suites=['company-provision','report-edit','query-export','retention','partitions','capacity-proof','operational-history','operational-alerts','project-retention','schema-upgrade','retention-recovery'];
   for(const suite of suites)entries[suite]=`scripts/${suite}-check.ts`;
   for(const[name,entry]of Object.entries(entries))await build({entryPoints:[entry],outfile:path.join(dir,name+'.mjs'),bundle:true,platform:'node',target:'node22',format:'esm',packages:'external'});
   // Actual immutable schema19 source, not a reverse-edited schema20 fixture.
@@ -47,7 +47,7 @@ try{
       // Export from this freshly created empty source, never from a restored DB.
       const ledger=await child('deletion-ledger',env,'',['export']);
       assert.ok(ledger.length>0);
-      const parsed=JSON.parse(ledger);assert.equal(parsed.schema_version,1);assert.equal(parsed.projects.length,0);
+      const parsed=JSON.parse(ledger);assert.equal(parsed.schema_version,suite==='schema-upgrade'?1:2);assert.equal(parsed.projects.length,0);
       await child('deletion-ledger',{...env,CCPANEL_OFFLINE_RESTORE:'true'},ledger,['apply']);
       process.stdout.write(await child(suite,env));
     }finally{if(created)await admin.query(`DROP DATABASE ${database} WITH (FORCE)`);}
