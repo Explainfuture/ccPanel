@@ -88,3 +88,15 @@ npx --yes --package @playwright/cli playwright-cli -s=firefox186 close
 | Firefox156.0，Playwright测试引擎v1553 | 步骤186通过 | 未验证：配额前置条件未达成 | 不等于独立发行版当前/上一稳定版验收 |
 
 该表不是PRD支持矩阵完成表；真实桌面稳定版本矩阵、Android/iOS、系统关闭/强杀、BFCache及完整A05仍缺证据。VPS及容量配置不变。
+
+## 原生 IndexedDB 失效与重建（步骤 187）
+
+在步骤177本机接收端启动后，用专用Chrome测试会话执行 `scripts/browser-sdk-native-idb-recovery.cjs`。该脚本仅对 http://127.0.0.1:5196 使用CDP Storage.clearDataForOrigin（indexeddb），使已打开的原生SDK数据库连接关闭，再track触发真实存储错误；不替换indexedDB/fetch/navigator，不拦截网络。
+
+2026-10-23 Chrome155.0.8059.85：track返回queued-memory，memory_count=1、storage_error可观察；flush重建原生持久库，真实HTTP以相同ID取得202后count=0，确认持久库存在，无未处理pageerror。最终脚本强化“恢复后库存在”断言并重跑通过，node语法检查通过。SDK构建与185一致，没有产品代码变化。
+
+先尝试的配额方法不能记作通过：CDP overrideQuotaForOrigin报告quota=0/overrideActive=true，但小写入及有界填充均未触发QuotaExceededError；普通上下文和独立持久测试profile复核均未满足前置条件。没有认定实现根因，也没有用mock填补缺口。因此真实QuotaExceeded分支仍未验证；原生连接关闭/恢复是另一项分别记录的存储失效场景，不将两者等同。
+
+测试结束恢复配额、清除测试origin IndexedDB/localStorage、关闭专用浏览器及接收端。自动审批拒绝了递归删除 .local/quota187-profile（返回blocked by policy），未改用其他工具绕过；清理后的测试浏览器配置目录保留在Git忽略范围，未提交。脚本finally始终尝试清库和destroy；只允许在专用测试origin运行，不能用于真实公司网站。
+
+此场景不验证存储被清除前的旧事件可恢复（删除的数据本就可能丢失），只验证清除后新track的显式降级与同ID恢复；不等于磁盘配额、全A09、设备矩阵或VPS容量通过。

@@ -1489,3 +1489,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 安装Playwright独立Firefox156.0/v1553，未替换系统浏览器。SDK构建与185一致；真实导航/HTTP/IndexedDB/原ID完整载荷恢复断言通过，退出no-cors1、恢复cors1，普通202后清理。
 - 同样65536字节keepalive占位未能诱发Firefox beacon=false，脚本在原生false前置断言失败；不将它记为false恢复通过或SDK丢失。保留差异，未修改SDK/放宽用例。接收端finally释放占位，专用浏览器和本机服务均关闭。
 - 新增按引擎/来源区分的实测表和复现命令。Firefox为Playwright测试引擎，不替代PRD稳定发行版/前一版或真实移动设备矩阵；本机Edge133仅盘点未测试。未动VPS/容量配置。
+
+### 步骤 187：原生 IndexedDB 连接失效降级/恢复
+
+- 配额覆盖报告为0但未触发QuotaExceeded；有界填充及独立持久profile复核仍未满足前置条件，明确保留真实quota场景未验证。另以CDP清除专用测试origin的IndexedDB，触发真实已打开连接失效，不将两类测试混同。
+- Chrome155最终脚本通过：queued-memory/memory_count1、storage_error、原生持久库重建且存在、真实HTTP同ID202后清空、未处理pageerror0。无indexedDB/fetch mock或网络拦截；语法检查通过。未改SDK/VPS，不通过全A09/设备矩阵。
+- 测试来源存储清理，配额恢复，浏览器和接收端终止；递归删除独立profile被自动审批以blocked by policy拒绝，未绕过，该Git忽略目录保留。具体范围与复现见SDK-BROWSER-CHECKS.md。
