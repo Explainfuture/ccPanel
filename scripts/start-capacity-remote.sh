@@ -32,10 +32,17 @@ PY
 unit="ccpanel-capacity-$(date -u +%Y%m%d%H%M%S)"
 printf '%s\n' "$unit" >"$dir/unit.txt"
 systemd-run --unit "$unit" --property=MemoryMax=32M --property=CPUQuota=5% --property=RuntimeMaxSec=2050 --property=NoNewPrivileges=true --property=ProtectSystem=strict --property=ProtectHome=true --property=PrivateTmp=true --property=PrivateNetwork=true --property=ProtectControlGroups=true --property=CapabilityBoundingSet= --property="ReadWritePaths=$dir" /usr/bin/python3 /opt/ccpanel/shared/capacity-sample.py --config "$dir/containers.json" --output "$dir/samples.jsonl" --seconds 1980
-for attempt in $(seq 1 30); do if [ -s "$dir/samples.jsonl" ]; then break; fi; sleep 0.1; done
 python3 - "$dir/samples.jsonl" <<'PY'
-import json,sys
-row=json.loads(open(sys.argv[1]).readline());assert 'error' not in row
+import json,pathlib,sys,time
+path=pathlib.Path(sys.argv[1]);deadline=time.monotonic()+30
+while time.monotonic()<deadline:
+    try:
+        line=path.open().readline();row=json.loads(line)
+        assert 'error' not in row,'Sampler first frame invalid; inspect the existing service'
+        break
+    except (FileNotFoundError,json.JSONDecodeError):
+        time.sleep(.25)
+else:raise RuntimeError('Sampler first frame timeout; service may still be running: inspect the same unit, do not restart blindly')
 print(json.dumps({'sampler_first_frame_valid':True,'capturedAt':row['capturedAt']}))
 PY
 # Exclude operator fixture setup from the measured window. Require two

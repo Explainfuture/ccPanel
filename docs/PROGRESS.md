@@ -868,3 +868,11 @@ Worker主路径包装persist、DLQ发布、DLQ索引及Kafka checkpoint，固定
 新增memory-diagnostic.py，仅读取固定容器PID/cgroup v2、宿主机meminfo/vmstat/PSI和前20个已换出进程的名称/RSS/Swap，不读args/env或完整inspect。实际运行成功；各容器独立值与宿主机值分开，失败明确抛出，禁止缺失补0。说明及一次真实结果见MEMORY-DIAGNOSTIC.md。
 
 UTC02:06:27最新预览可用内存约322MiB、Swap约105MiB；API/Worker无容器Swap，PG4.58MiB、Kafka20.37MiB，host的fail2ban/更新/容器运行时也有换出页。四个短增量vmstat无活动，不替代长期验收。未改任何服务/内存/Swap/安全更新配置，未重复部署。下一步只对从未正式测过的m4-telemetry-auth-004做一次固定配置30分钟容量测试，不重复测试同版本直到“碰巧通过”，也不放宽Swap门槛。
+
+### 步骤121：schema17/auth004正式容量测试（进行中，未得结论）
+
+当前release固定m4-telemetry-auth-004，未改服务/Swap/heap/确认标准。原表基线/opt/ccpanel/shared/capacity-auth121-before.jsonl；新证据/opt/ccpanel/shared/capacity-integrity.IusWZe，采样服务ccpanel-capacity-20261023020816.service有限1980秒。启动器原3秒等首帧超时，命令终止但实际服务active/running，随后文件出现；未重启/停止/替换采样器。手工等待同一服务两个新鲜host样本，elapsed60000ms且剩余覆盖充足，记录manual-baseline.json，再启动正式生成器。
+
+本地原始负载会话71955，命令load-check-public.mjs，1800秒/1EPS及每10秒趋势查询，结果.local/capacity-auth121-result.json，凭证独立私有fixture文件；服务器容器/配置/工件基线已保存。启动后检查采样仍active、9帧、elapsed80001ms、采样错误0，不是容量通过。期间不部署/停服务/修改配置，等待同一原始生成器终态，再导出冻结窗口、唯一ID/PG/聚合对账及资源报告，清理后等采样器自然终态。下一轮不可因本地观察超时或未见结果文件就重开负载。
+
+另在源码修正首帧等待为有界30秒并说明超时后检查既有服务；当前运行采样器不受该源码变更影响。尚未验证新版启动脚本完整实机流程，不能把手工续接冒充其通过。
