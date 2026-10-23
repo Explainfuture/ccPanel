@@ -184,3 +184,27 @@ UTC2026-10-22 23:20:21.065至23:50:21.076，实际1800.011秒，生成器原会�
 链路、重试去重、唯一ID及活动聚合对账通过；持续Swap仍存在，**PRD资源门槛未通过**，conservativeResourcePass=false。不得以较低换入总量忽略更长连续活动，也不将单机实验外推为生产高可用或高并发承诺。本轮没有schema17保留/分区维护，后续版本不能直接沿用其资源结论。
 
 原始证据在服务器/opt/ccpanel/shared/capacity-integrity.HMjyru，以及工作站.local/capacity-schema16-{result,resource-report,baseline,final}.json和capacity-schema16-samples.jsonl。结束快照冻结后才运行verify/cleanup；1800个稳定event_id全部匹配，活动聚合任务与可见桶1800、0DLQ。仅删除本次合成公司/项目/账号及两端凭据，所有原关系旧字段/数量指纹与升级前一致，唯一预期变化为全局consumer_progress（包括前次4条UI夹具及本轮1835条Kafka记录）；当前next_offset合计10713，实际进度完整性检查通过、HTTPS就绪。UTC23:53:02实际复核原有限采样器inactive/dead、Result=success、ExecMainStatus=0，按原33分钟配置自然结束，未人为停止或重启。
+
+## 2026-10-23：schema17 / m4-telemetry-auth-004
+
+固定上述预览release和资源配置，物理保留开启，1EPS、720字节padding的约1KiB合成事件，同时每10秒尝试一次趋势查询（单在途）。原负载会话71955实际退出0；UTC02:09:30.374至02:39:31.063，共1800.689秒，1800个唯一ID全部确认且可见，35次重复请求；最终backlog/not_visible/errors均0，最大生成调度延迟16ms。程序未记录精确查询执行次数或实际平均请求字节，故不声称完成180次查询或精确平均字节。
+
+采样器ccpanel-capacity-20261023020816有限1980秒，初始文件观察超时后核对实际进程active并手工取得两个新鲜基线，沿用同一进程，没有重启或修改窗口。冻结原始189帧，正式窗口选取183/183有效帧，SHA校验和配置前后核对通过；evidenceValid/configurationChecked均true。工作站同期有源码/本地UI验证工作，未做整机静默隔离；服务器配置与服务未改，生成调度延迟如实记录，不作跨版本因果比较。
+
+| 项目 | 实测 |
+|---|---|
+| 接入 / 可见 / 趋势查询p95 | 324.16 / 3117 / 842.67 ms |
+| raw / dedup / 完成聚合任务 / 可见桶贡献 | 各1800 |
+| 三阶段原始ID集合匹配 / DLQ | 各1800 / 0 |
+| CPU空闲 / 最低可用内存 | 70.35% / 251.46MiB |
+| API / Worker / Kafka / PG观察内存峰值 | 61.59 / 31.26 / 257.00 / 91.75MiB |
+| 磁盘最低可用 / 容器替换或重启 / OOM | 64.02% / 0 / 无 |
+| Swap换入 / 换出 | 30.62 / 16.64MiB |
+| Swap活动区间 / 最长连续活动 | 73 / 88.36秒 |
+| Swap换入 / 换出最高速率 | 1517.86 / 1430.85KiB/s |
+
+**数据链路对账通过；保守资源验收未通过**：conservativeResourcePass=false、swapReviewRequired=true。没有放宽原门槛，不能凭无OOM、较短连续活动或接收延迟达标宣称生产就绪/高并发。当前报告仅此release，未部署的host资源缓存/UI不在测量内；持久监控、完整浏览器矩阵、离机恢复/RPO/RTO和生产HA仍待完成。
+
+冻结资源证据后，使用通过6套PG控制器的新版只读验证器直接匹配raw、dedup及aggregation_jobs的1800个ID，已处理任务及桶贡献1800。集合SHA256为864231f0fa9344312425433eb5e6bcb120f85212861de44e187b039d5b8ba40b；另替换一个请求ID，实机验证1799/1800明确失败，没有改数据库记录。原始证据：/opt/ccpanel/shared/capacity-integrity.IusWZe；工作站.local/capacity-auth121-*。
+
+清理后所有原表指纹一致，只有消费进度按1800正常+35重复推进：p0=6257/p1=6304，总12561，与Kafka committed/high一致、lag0。两端临时凭证、合成PG公司/用户/事件/聚合已清除，临时DB0；Kafka合成消息按保留期存在。门禁open、完整性检查通过、HTTPS ready，采样器实际inactive/dead、Result success、ExecMainStatus0，自然结束。

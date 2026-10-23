@@ -910,3 +910,13 @@ Node语法检查通过。尚未执行本轮数据库对账；须原始生成器7
 类型/生产构建通过。Chrome mock验证322MiB/1GiB/128MiB及原始字节、70%/4KiB秒/0B秒、首帧不伪造0、stale/invalid/unavailable清除、普通admin/viewer无资源面板、桌面和390px截图已查看/无文档溢出，表格可横滚。浏览器及本地服务关闭，CI待本分支，未部署。VPS原负载71955仍live，25分钟确认1500、错误0；当前固定版本容量测量不含124–125源码改动。
 
 步骤125 CI补充：Actions39890446035（bc00e20）success，156项单测、构建及6套真实PG控制器通过。同步preview/integration/草稿PR1；资源UI及缓存仍未部署。原容量窗口临近结束，下一步优先观察原生成器71955终态并冻结/对账，不将此CI代替运行证据。
+
+### 步骤126：auth004正式容量收尾与精确集合证明
+
+原始71955实际终态exit0，UTC02:09:30.374–02:39:31.063，1800唯一事件全部确认/可见、35重复，backlog/not_visible/errors0，最大生成延迟16ms。负载端passed true不替代资源判断。上传原始结果后，finalize冻结189帧及边界配置；重新从当前capacity-report-cli源码构建，正式183/183帧、evidenceValid/configurationChecked true。资源报告CPU idle70.35%、最低可用251.46MiB，容器峰值API61.59/Worker31.26/Kafka257/PG91.75MiB，无替换/重启/OOM、磁盘余64.02%；Swap换入30.62/出16.64MiB，73活动区间/最长88.36秒，保守资源false需review。完整表见CAPACITY，不弱化标准或重跑同配置直到通过。
+
+冻结窗口后仅在临时操作容器只读挂载新版load-fixture，1800 raw/dedup/job ID全部直接匹配，已处理及bucket贡献1800、DLQ0，集合SHA864231f0fa9344312425433eb5e6bcb120f85212861de44e187b039d5b8ba40b与工作站计算一致。替换一个请求ID的反例1799!==1800实际拒绝，未改DB。结果/原始样本/指纹/配置在capacity-integrity.IusWZe与.local/capacity-auth121-*，没有拿CI代替本轮SQL。
+
+合成公司、账号/会话、事件/去重/聚合、两端fixture凭证清理后，所有原表哈希一致，唯一consumer_progress按1835消息推进：6257/6304总12561，与Kafka committed/high一致、lag0；raw2/dedup3/DLQ0、测试公司/临时DB0，门禁open/完整性passed/HTTPS ready。原采样服务实际inactive/dead、Result success/ExecMainStatus0，自然结束，无人工重启/停止。Kafka合成消息未物理即时删除。
+
+窗口外UTC02:45:22只读诊断容器Swap占用API3.62/Worker3.16/PG17.57/Kafka90.93MiB，存量不是I/O归因，且前后诊断不等于正式窗口，未据此改参数。当前生产资源门槛仍未获通过，查询实际次数/平均字节未记录（不夸称精确次数），后续资源方案、持续离机备份、持久告警/策略/设备矩阵和生产拓扑继续推进。124–125源码未部署，不能沿用此旧版容量证据。
