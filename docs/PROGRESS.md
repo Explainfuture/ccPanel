@@ -1666,3 +1666,4 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - Chrome155.0.8059.85真实历史返回、同文档trusted persisted生命周期、真实IDB/HTTP通过两种场景：B仅撤回，以及B撤回后重新授权并持久化新事件。恢复A后观察2000ms无自动新回执，旧实例track拒绝/consent_required、beacon拒绝；显式重新授权前不会恢复采集，且不会清除B新授权留下的事件。
 - 显式授权后新事件普通fetch确认，旧事件未重放；每场景HTTP严格no-cors/cors、最终队列0、新身份、pageerror0。撤回前已经收到的退出beacon仍算一次，未声称撤回删除服务端数据。冻结JSON见docs/evidence/bfcache-consent-chrome155-209.json。
 - SDK源码和VPS未改；复用208原生配置，仅新增测试及CI语法检查。浏览器/接收端已关闭、5196无监听。不是Kafka/PG、完整浏览器矩阵或容量验证。
+- Actions40083263436 verify/postgres全部success；既有测试与17套实际PG回归通过，新增原生脚本语法通过。实际BFCache授权测试仍为本机Chrome证据。
