@@ -38,6 +38,16 @@ pnpm backup:capture /private/work/run-unique /private/keys/backup.key 22
 
 CI第17套验收从真实CLI产出候选、验证无明文残留/排他输出/权限/清单，再独立认证解密并实际隔离PG恢复；核验通过也不回写候选的验证标记。当前命令没有接入offhost配置、可信最新状态、独立目的地或调度，生产恢复门禁规则继续适用。
 
+### VPS隔离候选实测（步骤207）
+
+`capture-candidate-vps-remote.sh` 只允许精确013/schema22预览，部署锁、无活动容量测试、HTTPS ready及至少200MiB可用内存；有计划暂停主API/Worker后，创建两个随机恢复库，根库44个public关系冻结前后核对。新源库仅迁移/空v2初始化及合成公司夹具，不导出根库数据。测试check脚本有独立VPS模式，要求临时库名、私网172地址、ccpanel角色、固定容器和Node22.22.3；不设置GITHUB_ACTIONS伪装CI。
+
+宿主原先没有Node，现只在 `/opt/ccpanel/shared/tools207/node` 放置现有API容器的同字节可执行文件。版本v22.22.3、SHA256 e6ec2c188d83d813f81f2de8aea084d74dce603ac1abedd0a30ad941b10087b2，源镜像ID e21fc383b50d5347dc7a9f1cae45b8f4e2f0d39f7ade28e4eef7d2934522b752；与容器内binary直接比较。没有更改系统PATH/服务。独立操作目录只读引用013 node_modules，CLI/check bundle及crypto脚本另放shared目录，不覆盖不可变release。
+
+H74NK9首轮普通宿主执行通过（密文121496字节）；补充systemd一次性控制组后以全新1RpHZ5再通过（密文121495字节）。最终控制组MemoryMax192MiB、RuntimeMax180秒、KillMode=control-group，Node堆32MiB；控制器先创建/持有两个临时库的清理责任，服务异常也先停组再处理已知库。正常测试已证实服务结束后cgroup不存在、unit not-found/inactive；这不是强制OOM/超时或宿主故障演练。
+
+最终实际CLI退出2，认证解密恢复43关系/公司夹具一致；候选未验证状态不变。临时数据库、测试密钥和工作文件均清理，env/清单文件不存在，源库44关系冻结指纹一致，原服务013/HTTPS ready。主库raw2/dedup3/DLQ0、总位点15618、临时DB0。安全结果双方保存，最终SHA256240c3f8a65a5060c144efd1f08f66908a15517874eef7809388336fa8e943af9；独立工具归档b808b7f2ef55a4abd616a7f2a883a66b2fae94eb8995f7f189e650fa6cc827be。没有上传正式离机密钥，只有测试脚本现场生成的合成夹具密钥。此为VPS隔离功能验收，不是根库在线备份、离机目的地、容量、无中断或HA证明。
+
 正常完成须文件fsync、排他hard-link发布、移除临时名及目录fsync；已有文件/竞争发布者绝不覆盖。回执仅为captured_unverified/bytes/hash，尚需共享快照回调整体成功、加密、目的地往返及真实恢复核验后，外层才能发布verified manifest。hard-link已发生但后续失败时返回archive_publish_uncertain，保留可能存在的不可变文件，不能据其存在登记成功或盲目重写。调用方须保留证据再处理。内核不可中断I/O、宿主掉电、恶意同UID修改私有目录和远程docker exec内部进程的异常终止不由此原语验收；CI的取消用真实本地Node写进程，PG导出成功路径用服务容器客户端。
 
 1. 将 `scripts/backup-fingerprint.sql` 放在当前发布目录的 scripts/ 中，以 root 执行 `bash scripts/backup-remote.sh`。输出受限备份目录，不输出凭证。该演练要求安静窗口，前后指纹不同则停止并重试，不宣称完成对账；pg_dump 本身仍使用一致性快照。

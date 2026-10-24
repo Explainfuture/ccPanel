@@ -24,6 +24,7 @@ jobs:
       - run: bash -n scripts/checkpoint-window-remote.sh && node --check scripts/checkpoint-window-check.mjs
       - run: bash -n scripts/retained-gap-window-remote.sh && node --check scripts/retained-gap-window-check.mjs
       - run: bash -n scripts/pressure-sdk-window-remote.sh && node --check scripts/pressure-sdk-window-check.mjs
+      - run: bash -n scripts/capture-candidate-vps-remote.sh
       - run: python3 scripts/check-upgrade-guards.py
       - run: python3 scripts/check-retired-drills.py
       - run: python3 scripts/check-schema21-upgrade.py
