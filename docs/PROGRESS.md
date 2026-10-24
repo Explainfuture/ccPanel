@@ -1,7 +1,3 @@
-# 开发进度与验证记录
-
-实施依据：PRD v1.1。只将已实现且验证通过的能力标为完成；线上演示不等于生产验收。
-
 ## 分支与提交规范
 
 每个可验证步骤使用 feat/NN-topic 或 fix/NN-topic 分支；后续分支从上一阶段通过验证的提交继续，均推送 origin。提交正文包含 Changes（改动）、Reasoning（思路）、Validation（验证）。阶段成果暂不自动合并 main，保留清晰的可审查分支历史。
@@ -1660,3 +1656,13 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 首轮单次通过后强化双轮新上下文复核：Chrome155.0.8059.85同文档/同SDK两次trusted persisted pagehide/pageshow；真实IDB退出202保留，恢复不显式flush/重建，由可见事件自动取得202清队列0。四HTTP严格no-cors/cors/no-cors/cors，两对完整载荷相同、新操作ID不同、pageerror0。冻结安全JSON纳入docs/evidence。
 - 结果后CDP清专用origin，浏览器/接收端均关闭、5196无监听。仅本机原生BFCache窗口，未扩大为A05/A07全组合/设备矩阵/KafkaPG/容量；VPS不变。CI新增语法检查，实际浏览器测试不在CI伪装执行。
 - Actions40082535786 verify/postgres全部success，294测试通过/3平台跳过、既有17套PG及新脚本语法检查通过。原生双轮Chrome结果仍单独以冻结JSON记录，不把CI绿色当成本机浏览器/全矩阵通过证明。
+### 步骤209：BFCache跨文档撤回授权
+
+- Chrome155.0.8059.85真实历史返回、同文档trusted persisted生命周期、真实IDB/HTTP通过两种场景：B仅撤回，以及B撤回后重新授权并持久化新事件。恢复A后观察2000ms无自动新回执，旧实例track拒绝/consent_required、beacon拒绝；显式重新授权前不会恢复采集，且不会清除B新授权留下的事件。
+- 显式授权后新事件普通fetch确认，旧事件未重放；每场景HTTP严格no-cors/cors、最终队列0、新身份、pageerror0。撤回前已经收到的退出beacon仍算一次，未声称撤回删除服务端数据。冻结JSON见docs/evidence/bfcache-consent-chrome155-209.json。
+- SDK源码和VPS未改；复用208原生配置，仅新增测试及CI语法检查。浏览器/接收端已关闭、5196无监听。不是Kafka/PG、完整浏览器矩阵或容量验证。
+
+
+# 开发进度与验证记录
+
+实施依据：PRD v1.1。只将已实现且验证通过的能力标为完成；线上演示不等于生产验收。
