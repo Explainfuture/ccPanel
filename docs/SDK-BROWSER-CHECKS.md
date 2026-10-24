@@ -1,3 +1,21 @@
+# SDK 业务时间与退出 TTL 的浏览器检查
+
+使用已构建的 Browser SDK，在独立 Playwright Chrome 会话运行：
+
+1. `pnpm build`
+2. 在仓库根目录单独终端运行 `python -m http.server 5195 --bind 127.0.0.1`（仅本机监听，测试后关闭）。
+3. `npx --yes --package @playwright/cli playwright-cli -s=sdk175 open http://127.0.0.1:5195 --browser chrome`
+4. `npx --yes --package @playwright/cli playwright-cli -s=sdk175 run-code --filename scripts/browser-sdk-time-expiry.cjs`
+5. 读取 Result 的 passed 及具体字段，然后 `npx --yes --package @playwright/cli playwright-cli -s=sdk175 close`。失败时也关闭该专用会话与本地 HTTP 服务。
+
+脚本仅使用合成凭证和随机项目标识；用真实 IndexedDB、页面 reload 和浏览器 sendBeacon。接收端通过 Playwright route 模拟 503/202，显式推进 Date.now 以覆盖重试等待及七天 TTL。没有连接 VPS/Kafka/PG。脚本访问本地 SDK 构建产物；运行前必须构建，避免误测旧产物。
+
+断言：业务时间在调用前后修改选项时不变；503 后页面重载仍恢复原 ID/时间/载荷；退出批次跳过过期项且每周期最多一次；beacon true 不视为确认或清理；后续普通 flush 的过期计数只增加一次；destroy 后不再发送。此处直接调用 SDK beacon，未模拟操作系统杀进程、真实用户关窗、后台节流或 BFCache。
+
+步骤 175 实测：2026-10-23，Chrome 155.0.8059.85，passed=true。冻结源 b54da1b，Browser SDK SHA256 `40788b0b6152ba4dd5a6a16a6a1376f5b79b1a9531698539f06cdbf8b7173d2b`。真实 IndexedDB、重载恢复及 sendBeacon 均通过，expired=1。初次导航 README.md 被浏览器识别为下载，改为同源根页面后执行成功；下载未参与测试。已关闭专用浏览器会话与本地服务。
+
+这不代表当前/上一稳定 Chrome/Edge/Firefox/Safari 或真实 Android/iOS 的完整矩阵通过，也不代表线上接入、容量或关窗送达保证。
+
 ## 原生导航与未确认事件恢复（步骤 176）
 
 沿用上面的本地服务与构建步骤，打开独立会话 sdk176，执行 `npx --yes --package @playwright/cli playwright-cli -s=sdk176 run-code --filename scripts/browser-sdk-pagehide-recovery.cjs`，结束后关闭 sdk176 和本地服务。
@@ -104,6 +122,7 @@ npx --yes --package @playwright/cli playwright-cli -s=bfcache208 close
 若没有观察到同文档/可信persisted pageshow，脚本返回passed=false/precondition且不认定SDK丢失，不能把CLI退出0当验收通过。这里实测结果确实passed=true。finally仅在结果采集后destroy SDK，用CDP清除专用origin的IDB/localStorage；CDP未用于制造BFCache恢复。浏览器与接收端已关闭，5196端口确认无监听。
 
 CI只做新脚本语法及既有回归，不宣称在CI执行了本机Chrome原生用例。该证据仅补A07中这个单机BFCache窗口，未覆盖并发多标签/崩溃租约所有组合、其他引擎、当前/上一稳定版完整矩阵、Android/iOS、OS强杀、Kafka/PG或容量。首个控制台404来自夹具未提供favicon，不是pageerror；原生用例未观察到JS未处理异常。
+
 ## BFCache返回期间跨文档授权变更（步骤209）
 
 脚本`scripts/browser-sdk-native-bfcache-consent.cjs`沿用208接收端和原生Chrome配置，将run-code的filename替换为该文件即可。冻结结果见[evidence JSON](evidence/bfcache-consent-chrome155-209.json)。Chrome155.0.8059.85、SDK449f14f构建、真实IDB和HTTP，两种独立场景均passed=true：B撤回授权后返回A；以及B撤回后重新授权、留下新队列再返回A。
@@ -111,22 +130,3 @@ CI只做新脚本语法及既有回归，不宣称在CI执行了本机Chrome原�
 要求A同文档、可信persisted恢复，未观察到时返回前提失败而非伪造事件。恢复后2000ms内无自动新回执，旧SDK仍拒绝track/beacon；检查整份持久化队列与B留下的状态一致，证明旧实例不会误删新授权事件。随后显式授权才发送有效新事件，完整载荷匹配、新身份、旧事件不重放、最终队列0、pageerror0。每场景两次HTTP为退出no-cors与授权后cors，撤回前已被接收的beacon不因客户端撤回而删除。
 
 本机测试结束后清专用origin并关闭浏览器/接收端。CI仅检查脚本语法和既有回归；2000ms是有界负向观察，不代表无限时长、全设备、Kafka/PG或容量保证。SDK产品源码未改。
-
-
-# SDK 业务时间与退出 TTL 的浏览器检查
-
-使用已构建的 Browser SDK，在独立 Playwright Chrome 会话运行：
-
-1. `pnpm build`
-2. 在仓库根目录单独终端运行 `python -m http.server 5195 --bind 127.0.0.1`（仅本机监听，测试后关闭）。
-3. `npx --yes --package @playwright/cli playwright-cli -s=sdk175 open http://127.0.0.1:5195 --browser chrome`
-4. `npx --yes --package @playwright/cli playwright-cli -s=sdk175 run-code --filename scripts/browser-sdk-time-expiry.cjs`
-5. 读取 Result 的 passed 及具体字段，然后 `npx --yes --package @playwright/cli playwright-cli -s=sdk175 close`。失败时也关闭该专用会话与本地 HTTP 服务。
-
-脚本仅使用合成凭证和随机项目标识；用真实 IndexedDB、页面 reload 和浏览器 sendBeacon。接收端通过 Playwright route 模拟 503/202，显式推进 Date.now 以覆盖重试等待及七天 TTL。没有连接 VPS/Kafka/PG。脚本访问本地 SDK 构建产物；运行前必须构建，避免误测旧产物。
-
-断言：业务时间在调用前后修改选项时不变；503 后页面重载仍恢复原 ID/时间/载荷；退出批次跳过过期项且每周期最多一次；beacon true 不视为确认或清理；后续普通 flush 的过期计数只增加一次；destroy 后不再发送。此处直接调用 SDK beacon，未模拟操作系统杀进程、真实用户关窗、后台节流或 BFCache。
-
-步骤 175 实测：2026-10-23，Chrome 155.0.8059.85，passed=true。冻结源 b54da1b，Browser SDK SHA256 `40788b0b6152ba4dd5a6a16a6a1376f5b79b1a9531698539f06cdbf8b7173d2b`。真实 IndexedDB、重载恢复及 sendBeacon 均通过，expired=1。初次导航 README.md 被浏览器识别为下载，改为同源根页面后执行成功；下载未参与测试。已关闭专用浏览器会话与本地服务。
-
-这不代表当前/上一稳定 Chrome/Edge/Firefox/Safari 或真实 Android/iOS 的完整矩阵通过，也不代表线上接入、容量或关窗送达保证。
