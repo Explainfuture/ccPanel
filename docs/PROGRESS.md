@@ -1630,3 +1630,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 第16套真实PG验收补充：DDL独占时不进入备份回调；快照实际pg_locks共享租约1条、迁移独占try失败、真实maintainPartitions返回busy；并发DML/流式dump+restore/独立SQL核对继续运行；成功/schema拒绝/超时清理后独占锁可重新取得，分区维护恢复completed。
 - typecheck与diff检查通过，实际PG互斥/恢复路径待CI。不保护绕过协议的人工DDL、发布文件替换或真实离机目的地，外层发布锁/版本绑定仍必需。执行器/可信最新状态自动同步及容量/HA门槛保持。
 - Actions40079513299 verify/postgres全部success。实际PG确认共享租约、DDL忙时回调不运行、独占键被阻止、真实分区维护busy及清理后completed；成功/拒绝/超时后租约释放，导出连接0。实际归档122307字节，独立hash/流式恢复/43关系与既有SQL一致，正常并发DML完成。16套PG及既有单元/构建/打包检查通过；仅CI隔离源，没有VPS发布或自动备份启用。
+
+### 步骤205：流式加密与认证副本实际恢复
+
+- encrypt-backup新增自动化encrypt-stream，只读已有受限32字节密钥，拒绝符号链接/公开权限/错误长度/源与密钥同inode，stdout仅CCPBK001密文；源变化或流错误非零失败，密钥内存清零。保持旧手动encrypt/decrypt兼容，不自动创建密钥，不提供未经认证明文的流式恢复入口。
+- 第16套PG验收在有界dump落盘后流式加密捕获，独立复核密文hash，再真实认证解密、对比原始hash；仅从解密副本流式pg_restore，保留43关系/既有SQL/DDL租约验证。CI密钥独立临时目录，清理已知原始/密文/解密文件和密钥，不当作实际异机传输。
+- typecheck/脚本语法及本机原有加密往返、Windows自动拒绝通过；3项POSIX新增加密测试明确跳过，待Linux CI验证兼容性、随机IV、篡改拒绝、已有密钥和空输入。未改VPS或启用备份调度/外部目的地。

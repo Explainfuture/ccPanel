@@ -1,10 +1,40 @@
 // AES-256-GCM envelope for off-host backup copies. Never print the key or plaintext.
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { createReadStream, createWriteStream } from 'node:fs';
+import { createReadStream, createWriteStream,constants } from 'node:fs';
 import { open, readFile, link, stat, unlink, writeFile } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 const [mode,input,output,keyPath]=process.argv.slice(2);
+if(mode==='encrypt-stream'){
+  // Automation-only output mode. stdout contains ciphertext bytes, never JSON.
+  // Keep legacy manual encrypt/decrypt behavior below unchanged.
+  let key,source,keyFile,sourceStream;
+  try{
+    if(process.argv.slice(2).length!==3||!input||!output||process.platform==='win32')throw Error('unsupported');
+    const flags=constants.O_RDONLY|(constants.O_NOFOLLOW??0)|(constants.O_NONBLOCK??0);
+    keyFile=await open(output,flags);const metadata=await keyFile.stat();
+    if(!metadata.isFile()||metadata.size!==32||(metadata.mode&0o077)!==0||metadata.uid!==process.geteuid())throw Error('unsafe_key');
+    const bytes=Buffer.alloc(33);
+    try{if((await keyFile.read(bytes,0,33,0)).bytesRead!==32)throw Error('changed_key');key=Buffer.from(bytes.subarray(0,32));}finally{bytes.fill(0);}
+    source=await open(input,flags);const before=await source.stat();
+    if(!before.isFile()||(before.mode&0o077)!==0||before.uid!==process.geteuid()||(before.dev===metadata.dev&&before.ino===metadata.ino))throw Error('unsafe_source');
+    const magic=Buffer.from('CCPBK001'),iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key,iv);cipher.setAAD(magic);
+    const write=bytes=>new Promise((resolve,reject)=>process.stdout.write(bytes,error=>error?reject(error):resolve()));
+    process.stdout.on('error',()=>{});
+    await write(Buffer.concat([magic,iv]));
+    sourceStream=source.createReadStream({autoClose:false});
+    await pipeline(sourceStream,cipher,process.stdout,{end:false});sourceStream.destroy();
+    const after=await source.stat();
+    if(before.size!==after.size||before.mtimeMs!==after.mtimeMs||before.ctimeMs!==after.ctimeMs)throw Error('source_changed');
+    await write(cipher.getAuthTag());
+  }catch{
+    console.error(JSON.stringify({code:'backup_stream_encryption_failed'}));process.exitCode=1;
+  }finally{
+    key?.fill(0);sourceStream?.destroy();
+    const closed=await Promise.allSettled([source?.close(),keyFile?.close()]);
+    if(closed.some(result=>result.status==='rejected')){console.error(JSON.stringify({code:'backup_stream_encryption_failed'}));process.exitCode=1;}
+  }
+}else{
 if(!['encrypt','decrypt'].includes(mode)||!input||!output||!keyPath)throw new Error('Usage: node scripts/encrypt-backup.mjs encrypt|decrypt input output key-file');
 try{await stat(output);throw new Error('Output already exists');}catch(e){if(e.code!=='ENOENT')throw e;}
 if(mode==='encrypt'){
@@ -30,3 +60,4 @@ try{
   await link(temporary,output);await unlink(temporary);
   console.log(JSON.stringify({mode,bytes:(await stat(output)).size,completed:true}));
 }catch(e){await unlink(temporary).catch(()=>{});throw e;}finally{key.fill(0);}
+}

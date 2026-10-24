@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
-import {readFile,mkdtemp,unlink,rmdir} from 'node:fs/promises';
+import {readFile,mkdtemp,unlink,rmdir,writeFile} from 'node:fs/promises';
 import {createReadStream} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -25,10 +25,12 @@ const writer=new pg.Client({connectionString:source.href,statement_timeout:5000,
 const restoreDb=new pg.Client({connectionString:target.href,statement_timeout:10000,options:'-c timezone=UTC'});
 let created=false,restoreConnected=false;
 const archiveDirectory=await mkdtemp(join(tmpdir(),'ccpanel-shared-archive-')),archivePath=join(archiveDirectory,'database.dump');
-let archiveCreated=false;
-function command(args:string[],input?:Buffer|Readable,signal?:AbortSignal):Promise<{code:number|null;signal:NodeJS.Signals|null;data:Buffer}>{
+const keyDirectory=await mkdtemp(join(tmpdir(),'ccpanel-shared-key-')),keyPath=join(keyDirectory,'backup.key');
+const cipherPath=join(archiveDirectory,'database.dump.enc'),authenticatedPath=join(archiveDirectory,'authenticated.dump');
+let archiveCreated=false,cipherCreated=false,authenticatedCreated=false,keyCreated=false;
+function command(args:string[],input?:Buffer|Readable,signal?:AbortSignal,localNode=false):Promise<{code:number|null;signal:NodeJS.Signals|null;data:Buffer}>{
   return new Promise((resolve,reject)=>{
-    const child=spawn('docker',['exec','-i',container,...args],{stdio:['pipe','pipe','pipe']});
+    const child=spawn(localNode?process.execPath:'docker',localNode?args:['exec','-i',container,...args],{stdio:['pipe','pipe','pipe']});
     const chunks:Buffer[]=[];let bytes=0,overflow=false,inputFailed=false;
     child.stdout.on('data',(chunk:Buffer)=>{bytes+=chunk.length;if(bytes>8*1024*1024){overflow=true;child.kill('SIGKILL');}else chunks.push(chunk);});
     // Keep diagnostics private: PG stderr can include identifiers/SQL.
@@ -43,6 +45,7 @@ function command(args:string[],input?:Buffer|Readable,signal?:AbortSignal):Promi
 const dumpArgs=(id:string)=>['pg_dump','-U','ccpanel_ci','-d',source.pathname.slice(1),'--format=custom','--no-owner','--no-acl','--exclude-table-data=public.recovery_gate','--exclude-table-data=public.recovery_import_scopes','--snapshot='+id];
 const dump=(id:string,signal?:AbortSignal)=>command(dumpArgs(id),undefined,signal);
 try{
+  await writeFile(keyPath,randomBytes(32),{mode:0o600,flag:'wx'});keyCreated=true;
   await admin.connect();await writer.connect();
   assert.equal((await writer.query('SELECT count(*)::int AS n FROM tenants')).rows[0].n,0);
   const kept=randomUUID(),deleted=randomUUID(),later=randomUUID();
@@ -77,13 +80,20 @@ try{
     const archive=await captureBackupArchive({output:archivePath,command:'docker',args:['exec','-i',container,...dumpArgs(snapshot.snapshotId)],maxBytes:8*1024*1024,timeoutMs:30000,signal:snapshot.signal});archiveCreated=true;
     assert.equal(archive.status,'captured_unverified');assert.ok(archive.bytes>0);
     const independentlyHashed=createHash('sha256');for await(const chunk of createReadStream(archivePath))independentlyHashed.update(chunk);assert.equal(archive.sha256,independentlyHashed.digest('hex'));
-    const restoredResult=await command(['pg_restore','-U','ccpanel_ci','-d',restored,'--single-transaction','--exit-on-error','--no-owner','--no-acl'],createReadStream(archivePath),snapshot.signal);
+    const cipher=await captureBackupArchive({output:cipherPath,command:process.execPath,args:['scripts/encrypt-backup.mjs','encrypt-stream',archivePath,keyPath],maxBytes:8*1024*1024+36,timeoutMs:30000,signal:snapshot.signal});cipherCreated=true;
+    assert.equal(cipher.bytes,archive.bytes+36);
+    const cipherHash=createHash('sha256');for await(const chunk of createReadStream(cipherPath))cipherHash.update(chunk);assert.equal(cipher.sha256,cipherHash.digest('hex'));
+    const authenticated=await command(['scripts/encrypt-backup.mjs','decrypt',cipherPath,authenticatedPath,keyPath],undefined,snapshot.signal,true);
+    assert.equal(authenticated.code,0);assert.equal(authenticated.signal,null);assert.equal(JSON.parse(authenticated.data.toString()).completed,true);authenticatedCreated=true;
+    const authenticatedHash=createHash('sha256');for await(const chunk of createReadStream(authenticatedPath))authenticatedHash.update(chunk);assert.equal(authenticatedHash.digest('hex'),archive.sha256);
+    // Restore only from authenticated decryption, never from the original dump.
+    const restoredResult=await command(['pg_restore','-U','ccpanel_ci','-d',restored,'--single-transaction','--exit-on-error','--no-owner','--no-acl'],createReadStream(authenticatedPath),snapshot.signal);
     assert.equal(restoredResult.code,0);assert.equal(restoredResult.signal,null);
     await restoreDb.connect();restoreConnected=true;
     assert.deepEqual(await readBackupFingerprints(restoreDb),snapshot.fingerprints);
     assert.deepEqual((await restoreDb.query('SELECT id::text,name FROM tenants ORDER BY id')).rows,[{id:kept,name:'before'},{id:deleted,name:'deleted-after-snapshot'}].sort((a,b)=>a.id.localeCompare(b.id)));
     assert.equal((await restoreDb.query('SELECT count(*)::int AS n FROM recovery_gate')).rows[0].n,0,'old snapshot cannot restore an open recovery gate');
-    return {relations:snapshot.fingerprints.length,bytes:archive.bytes,streamed_archive:true,archive_hash_independently_verified:true,restore_input_streamed:true};
+    return {relations:snapshot.fingerprints.length,bytes:archive.bytes,encrypted_bytes:cipher.bytes,streamed_archive:true,archive_hash_independently_verified:true,stream_encrypted_existing_key:true,cipher_hash_independently_verified:true,authenticated_plaintext_hash_matches:true,restore_input_streamed:true,restored_only_from_authenticated_cipher:true};
   });
   const invalid=await dump(expired);assert.notEqual(invalid.code,0,'exported snapshot must expire after transaction ends');
   await assert.rejects(withBackupSnapshot(source.href,{expectedSchema:999},async()=>{throw Error('must not run');}),/backup_schema_mismatch/);
@@ -101,5 +111,6 @@ try{
 }finally{
   if(restoreConnected)await restoreDb.end();await writer.end();await pool.end();
   if(created)await admin.query(`DROP DATABASE ${restored} WITH (FORCE)`);await admin.end();
-  if(archiveCreated)await unlink(archivePath);await rmdir(archiveDirectory);
+  if(authenticatedCreated)await unlink(authenticatedPath);if(cipherCreated)await unlink(cipherPath);if(archiveCreated)await unlink(archivePath);await rmdir(archiveDirectory);
+  if(keyCreated)await unlink(keyPath);await rmdir(keyDirectory);
 }
