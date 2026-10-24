@@ -1636,3 +1636,4 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - encrypt-backup新增自动化encrypt-stream，只读已有受限32字节密钥，拒绝符号链接/公开权限/错误长度/源与密钥同inode，stdout仅CCPBK001密文；源变化或流错误非零失败，密钥内存清零。保持旧手动encrypt/decrypt兼容，不自动创建密钥，不提供未经认证明文的流式恢复入口。
 - 第16套PG验收在有界dump落盘后流式加密捕获，独立复核密文hash，再真实认证解密、对比原始hash；仅从解密副本流式pg_restore，保留43关系/既有SQL/DDL租约验证。CI密钥独立临时目录，清理已知原始/密文/解密文件和密钥，不当作实际异机传输。
 - typecheck/脚本语法及本机原有加密往返、Windows自动拒绝通过；3项POSIX新增加密测试明确跳过，待Linux CI验证兼容性、随机IV、篡改拒绝、已有密钥和空输入。未改VPS或启用备份调度/外部目的地。
+- 独立FileHandle探针复现destroy读取流后stat为EBADF，修正为读取结束后先核对源状态、写认证tag，最后统一销毁/关闭。此探针不绕过Windows自动化权限拒绝；实际POSIX加密仍由CI验证。

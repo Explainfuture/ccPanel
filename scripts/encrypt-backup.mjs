@@ -23,7 +23,7 @@ if(mode==='encrypt-stream'){
     process.stdout.on('error',()=>{});
     await write(Buffer.concat([magic,iv]));
     sourceStream=source.createReadStream({autoClose:false});
-    await pipeline(sourceStream,cipher,process.stdout,{end:false});sourceStream.destroy();
+    await pipeline(sourceStream,cipher,process.stdout,{end:false});
     const after=await source.stat();
     if(before.size!==after.size||before.mtimeMs!==after.mtimeMs||before.ctimeMs!==after.ctimeMs)throw Error('source_changed');
     await write(cipher.getAuthTag());
