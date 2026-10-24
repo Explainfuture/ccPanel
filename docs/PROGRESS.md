@@ -1629,3 +1629,4 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 核对现有migrate与maintainPartitions均持169202610独占事务锁；备份在BEGIN前try取得同键共享会话租约。已有DDL时直接backup_managed_ddl_busy，不创建旧MVCC快照后等待；连接关闭释放锁，正常数据写入不被阻止。未改迁移/Worker业务源码或VPS构建。
 - 第16套真实PG验收补充：DDL独占时不进入备份回调；快照实际pg_locks共享租约1条、迁移独占try失败、真实maintainPartitions返回busy；并发DML/流式dump+restore/独立SQL核对继续运行；成功/schema拒绝/超时清理后独占锁可重新取得，分区维护恢复completed。
 - typecheck与diff检查通过，实际PG互斥/恢复路径待CI。不保护绕过协议的人工DDL、发布文件替换或真实离机目的地，外层发布锁/版本绑定仍必需。执行器/可信最新状态自动同步及容量/HA门槛保持。
+- Actions40079513299 verify/postgres全部success。实际PG确认共享租约、DDL忙时回调不运行、独占键被阻止、真实分区维护busy及清理后completed；成功/拒绝/超时后租约释放，导出连接0。实际归档122307字节，独立hash/流式恢复/43关系与既有SQL一致，正常并发DML完成。16套PG及既有单元/构建/打包检查通过；仅CI隔离源，没有VPS发布或自动备份启用。
