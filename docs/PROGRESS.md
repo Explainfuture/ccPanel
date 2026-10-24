@@ -1643,4 +1643,5 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 
 - 新增captureSnapshotCandidate与pnpm backup:capture，组合已有组件，显式源URI/匹配pg_dump或同源本机Docker客户端，已有私有密钥，排他私有目录/空间预检、共享快照/DDL租约、限额dump/加密、原子候选清单和成功捕获后的工作明文清理。没有开启offhost模板/SSH/调度或传输目的地。
 - capture.json含来源database/schema、原始/密文hash和精确文本指纹；无密钥路径/连接凭证。候选始终captured_unverified、恢复/异机/最新状态/发布来源验证均false，CLI退出2；异常退出1、私有不完整集合保留，重试不覆盖。没有将候选目录存在当备份完成。
-- 新增第17套实际PG CI：真实CLI产出，验证权限/文件集合/清单/hash、重复输出拒绝、schema不符无清单，再独立认证解密实际恢复并比较指纹和原事件夹具；即使独立验证也不悄悄更改候选状态。typecheck通过，本机3项拒绝/CLI测试通过、POSIX空间预检1项跳过；Linux实际流程待CI。
+- 新增第17套实际PG CI：真实CLI产出，验证权限/文件集合/清单/hash、重复输出拒绝、schema不符无清单，再独立认证解密实际恢复并比较指纹和公司夹具；即使独立验证也不悄悄更改候选状态。typecheck通过，本机3项拒绝/CLI测试通过、POSIX空间预检1项跳过；Linux实际流程待CI。
+- Actions40080704131 verify/postgres全部success：294测试通过/3平台专属跳过，17套实际PG完成。第17套使用真实编译CLI/Docker PG客户端，退出2/captured_unverified；密文122317字节、权限/无工作明文/重复拒绝/schema失败无清单/独立hash和认证恢复43关系均通过，清单验证标记未被测试回写。仅CI候选捕获，不是VPS部署、独立目的地、可信最新状态同步或调度验收。
