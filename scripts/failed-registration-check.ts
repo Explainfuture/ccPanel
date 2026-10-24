@@ -1,0 +1,50 @@
+// Run only against an empty, disposable ccpanel_restore_* database. Never
+// installs its deliberate failing constraint in a running source database.
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { pool } from '../packages/server/src/db';
+import { persist,EventConflict } from '../packages/server/src/consume';
+import { indexDeadLetter,type DeadLetter } from '../packages/server/src/dead-letter';
+import { digest } from '../packages/server/src/security';
+import { replayCandidate } from '../packages/server/src/dlq-replay-policy';
+import type { StoredEnvelope } from '../packages/schema/src/index';
+try{
+  const database=(await pool.query('SELECT current_database() AS name')).rows[0].name;
+  assert.match(database,/^ccpanel_restore_[0-9]{14}_[a-f0-9]{8}$/);
+  assert.equal(Number((await pool.query('SELECT count(*) FROM tenants')).rows[0].count),0,'empty temporary database required');
+  const tenant=randomUUID(),project=randomUUID();
+  await pool.query('INSERT INTO tenants VALUES($1,$2)',[tenant,'FAILED REGISTRATION TEMP']);
+  await pool.query('INSERT INTO projects(id,tenant_id,name) VALUES($1,$2,$3)',[project,tenant,'FAILED REGISTRATION TEMP']);
+  const record:StoredEnvelope={tenant_id:tenant,project_id:project,received_at:new Date().toISOString(),event:{event_id:randomUUID(),event_name:'failed_registration_fixture',distinct_id:'fixture-user',event_time:new Date().toISOString(),properties:{test:true},context:{},schema_version:1}};
+  const raw=Buffer.from(JSON.stringify(record,null,2));
+  const dead:DeadLetter={id:digest(randomUUID()),reason:'invalid_storage_value',source:{topic:'isolated-fixture',partition:0,offset:'0'},tenant_id:tenant,project_id:project,identity_hashes:[],raw_base64:raw.toString('base64'),processor_version:2};
+  await pool.query("ALTER TABLE events ADD CONSTRAINT test_registration_failure CHECK(event_name<>'failed_registration_fixture')");
+  await assert.rejects(()=>persist(record),e=>e instanceof EventConflict&&e.reason==='invalid_storage_value');
+  assert.equal((await pool.query('SELECT 1 FROM event_dedup')).rowCount,0,'failed raw TX rolls back registration');
+  await indexDeadLetter(dead,record);
+  let registered=(await pool.query('SELECT * FROM event_dedup')).rows[0];
+  assert.equal(registered.status,'failed');
+  const firstCreated=registered.created_at.getTime();
+  assert.equal(replayCandidate({tenant,project,reason:dead.reason,payload:dead,registration:registered}).raw.equals(raw),true);
+  await assert.rejects(()=>persist(record),e=>e instanceof EventConflict&&e.reason==='invalid_storage_value');
+  assert.equal((await pool.query('SELECT status FROM event_dedup')).rows[0].status,'failed','promotion rolled back with raw failure');
+  await pool.query('ALTER TABLE events DROP CONSTRAINT test_registration_failure');
+  const outcomes=await Promise.all([persist(record),persist(record)]);
+  assert.deepEqual(outcomes.sort(),['duplicate','inserted']);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM events')).rows[0].n,1);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM aggregation_jobs')).rows[0].n,1);
+  await indexDeadLetter(dead,record);
+  registered=(await pool.query('SELECT * FROM event_dedup')).rows[0];
+  assert.equal(registered.status,'stored');assert.equal(registered.created_at.getTime(),firstCreated,'retries do not extend registration age');
+  const conflict={...record,event:{...record.event,properties:{test:false}}};
+  await assert.rejects(()=>persist(conflict),e=>e instanceof EventConflict&&e.reason==='payload_conflict');
+  assert.deepEqual((await pool.query('SELECT properties FROM events')).rows[0].properties,{test:true});
+  const job=randomUUID();
+  await pool.query("INSERT INTO deletion_jobs(id,tenant_id,project_id,scope) VALUES($1,$2,$3,'project')",[job,tenant,project]);
+  await pool.query("INSERT INTO deletion_barriers SELECT $1,$2,'*',$3,clock_timestamp(),clock_timestamp()",[tenant,project,job]);
+  const removed={...record,event:{...record.event,event_id:randomUUID()}};
+  await indexDeadLetter({...dead,id:digest(randomUUID()),raw_base64:Buffer.from(JSON.stringify(removed)).toString('base64')},removed);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM dlq_records')).rows[0].n,1,'barrier blocks a new index copy after Kafka acknowledgement');
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM event_dedup')).rows[0].n,1,'barrier blocks new failed registrations');
+  console.log(JSON.stringify({passed:true,failed_registration:true,rollback_preserves_failed:true,concurrent_replay_once:true,raw:1,aggregation_jobs:1,first_timestamp_preserved:true,conflict_preserves_original:true,deleted_scope_blocked:true}));
+}finally{await pool.end();}

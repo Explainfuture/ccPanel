@@ -1,0 +1,352 @@
+# 试验机容量验收
+
+本报告针对单机试验环境，不代表生产吞吐承诺。最终结果以完成的测试记录为准，运行中的快照不计为通过。
+
+## 场景与运行方式
+
+PRD 首轮基线：持续 30 分钟，每秒生成一个约 1 KiB 的事件，每 10 秒查询一次趋势，每 50 个事件额外重发原 ID。使用临时独立公司、用户、项目和写入密钥，结束后删除夹具，不污染业务数据。
+
+在已部署的发布目录运行：
+
+```sh
+cd /opt/ccpanel/current/infra
+docker compose exec -T api node scripts/load-check.mjs 1800
+```
+
+同时在宿主机另行采样 `vmstat 10 181`、`docker stats --no-stream`、`df -h`，测试前后比较容器重启次数、OOM 状态。压力生成器运行在 API 容器内，报告应注明其额外开销；此测试不覆盖客户端公网延迟。
+
+API 容器内 `/tmp/ccpanel-load-progress.json` 为最近一分钟快照，`/tmp/ccpanel-load-result.json` 为最终对账。结果不含凭证。运行前删除或核对旧结果时间，避免误读此前测试。
+
+## 测量口径
+
+- 接入耗时：单次 HTTP 请求开始到 Kafka 确认后的 202 响应，包括重复请求。
+- 可见耗时：从生成事件到轮询发现 PG 去重记录；原始事件与去重记录同事务提交。轮询约每秒执行，因此含采样间隔，不能当作精确的 Worker 执行耗时。
+- 查询耗时：趋势接口 HTTP 响应耗时，查询随本次事件数量增长；未模拟大历史数据或复杂漏斗。
+- 对账：原始事件、去重记录、聚合任务均应恰好等于生成的唯一事件数，DLQ 为零；已确认数、待重试数和待观察数单独列出。
+
+脚本检查健康场景接入 p95 < 1 秒、PG 可见 p95 < 10 秒、没有错误和未清空积压。无 OOM/重启、无持续 swap 换入换出、磁盘保留至少 20% 由宿主机证据另行核实，不能只看脚本 `passed`。
+
+## 2026-10-23 首轮结果
+
+配置为 1 vCPU、约 961 MiB RAM、1 GiB swap、20 GB 磁盘，Kafka 单副本。后端冻结为 m4-recovery-001，测试期间有静态验收页及下一版发布包上传，未切换后端、执行迁移或安装依赖。压力生成器与服务共享 API 容器资源。
+
+| 指标 | 结果 |
+|---|---:|
+| 持续时间 / 目标流量 | 1800 秒 / 1 EPS |
+| 唯一生成 / 已确认 / PG 原始事件 | 1800 / 1800 / 1800 |
+| 去重记录 / 聚合任务 | 1800 / 1800 |
+| 同 ID 额外重试 | 35 次 |
+| DLQ / 错误 / 最终积压 | 0 / 0 / 0 |
+| 接入 p95 | 53.33 ms |
+| PG 轮询可见 p95 | 1065 ms |
+| 趋势查询 p95 | 231.05 ms |
+| 容器重启 / OOM | 均为 0 |
+| 磁盘占用 / 可用 | 27% / 约 14 GiB |
+| 180 次 vmstat 的平均 CPU 空闲 | 75.79% |
+| 有 swap 活动的采样 | 54 / 180 |
+| 连续 swap 活动最长时段 | 100 秒 |
+| swap 换入 / 换出最大值 | 120 / 4908 KiB/s |
+
+结论：事件闭环、幂等和本场景延迟目标通过；**整体资源门槛尚未通过**。出现重复 swap 活动，不能凭无 OOM 推断内存充足。应将生成器移到独立机器后复测，必要时减少非必要内存开销或升级 RAM，不降低 Kafka 成功确认标准。不得据此提升负载或宣称生产 SLA。
+
+服务器证据保存在受限共享目录 `load-baseline-20261023.json` 与 `load-vmstat-baseline-20261023.log`。测试结束后已清理临时公司夹具，再部署新版本；后续版本需单独记录测试条件。
+
+独立生成器复测及资源门槛通过后才能分级增加流量；还需完成异机备份恢复、故障窗口强杀、磁盘满和浏览器矩阵，不能把链路对账通过表述为整套生产验收通过。
+
+## 独立生成器复测流程
+
+使用 `scripts/load-fixture.mjs create` 在 API 容器创建临时公司，将输出直接重定向到权限 600 的私有文件，不在终端展示凭证。通过已校验主机指纹的 SFTP 取到本机，再运行：
+
+```sh
+node scripts/load-check-public.mjs PRIVATE_FIXTURE_JSON PRIVATE_RESULT_JSON 1800
+```
+
+本机经 HTTPS 请求真实接入、事件列表和趋势 API，延迟包含公网往返；它与首轮容器内的延迟不能直接当成同一口径比较。结果包含原始 event_id 列表，不包含密码或写入密钥。将结果回传到当前发布的 scripts/ 受限文件，再用夹具工具的 verify 模式与 PG 逐 ID 对账，最后 cleanup 清理专用公司。服务器另行记录 vmstat、OOM/重启和磁盘。
+
+首个公网运行的生成/观察串行，受网络往返影响，61 条耗时约 65 秒，因此作为诊断结束，不计为正式容量结果；其采样重定向缺口也保留记录。修复后独立计时生成，发送、可见性观察和趋势查询各自最多一个在途；时钟最大偏差超过 1 秒直接判失败。10 条试跑最大偏差 14 ms、全部 ID 对账通过。新公司已重新启动 1800 秒正式测试，资源采样在生成前启用。资源门槛仍为待验证状态。
+
+## 2026-10-23 独立生成器正式结果
+
+UTC 17:29:36.169–17:59:36.524，后端固定 m4-query-jobs-001，Windows 工作站独立计时生成，全部流量经受信任公网 HTTPS，测试期间没有部署或迁移。
+
+| 指标 | 结果 |
+|---|---:|
+| 时长 / 生成 / 确认 / PG 逐 ID 匹配 | 1800 秒 / 1800 / 1800 / 1800 |
+| 原始 / 去重 / 聚合任务 | 1800 / 1800 / 1800 |
+| 同 ID 额外重试 | 35 次 |
+| 错误 / DLQ / 最终积压 | 0 / 0 / 0 |
+| 生成时钟最大偏差 | 19 ms |
+| 公网接入 p95 | 241.88 ms |
+| 经事件 API 观察可见 p95 | 2690 ms |
+| 公网趋势查询 p95 | 830.27 ms |
+| 容器重启 / OOM | 均为 0 |
+| 平均 CPU 空闲 / 磁盘占用 | 79.84% / 27% |
+| 有 swap 活动的采样 | 101 / 180 |
+| 连续活动最长时段 | 120 秒 |
+| swap 换入 / 换出最大值 | 1060 / 2 KiB/s |
+
+结论：独立生成器证明提供速率和逐 ID 数据闭环、幂等与延迟目标通过；**资源门槛仍未通过**。本轮主要为换入、换出很少，不能把任何 swap 活动都解释为同等程度的内存抖动，但持续换入仍需分析、调整和复测，不因去掉生成器就自动宣称内存达标。保留现有确认标准，不提高流量。
+
+180 次宿主机采样在生成前启用，采样结束与生成尾部有几秒边界差异；最终全生命周期 OOM/重启状态另行核实。测试后将全部原始 ID 交由 PG 对账，并已清理临时公司。证据位于本机 `.local/load-public-clocked-result.json` 和服务器 `load-public-clocked-baseline-20261023.log`；当前新版后端需另行测试。
+
+## schema10 新版复测（已结束，资源门槛未通过）
+
+2026-10-23在m4-integrity-001/schema10启动同一1EPS/1800秒公网独立生成器与每10秒趋势查询；结果文件为工作站`.local/capacity-integrity-result.json`，运行期间保持发布版本固定。此处仅记录已启动，不将旧版结果套用为新版容量。
+
+新增有限时长只读采样脚本capacity-sample.py，每10秒保存持续宿主机遥测与四个固定容器的cgroup memory.current、memory.events、cpu.stat；不读取进程参数或环境，不逐轮运行Docker CLI。采样器从负载前开始、计划运行1980秒，32MiB/CPU5%上限，首轮实际MemoryCurrent约6.18MiB；观察器开销计入同机资源，不从报告中扣除。容器ID与重启/OOM起始状态另存受限基线，结束仍需对比。
+
+启动时服务ccpanel-capacity-integrity-20261022210155已确认active/running，首5帧有效；证据目录为服务器`/opt/ccpanel/shared/capacity-integrity.dMizyM`。采样过期、cgroup缺失等写错误帧而非伪造零值。最终已确认生成器退出0、采样器自然结束inactive/dead且Result=success/ExecMainStatus=0；没有依据文件存在推断成功。
+
+最终资源分析使用scripts/capacity-report-cli.ts：输入完整samples.jsonl、公网load结果、基线、结束metadata及一个不存在的输出文件。基线可为`{release,containers}`；本次早期采样基线是容器字典，结束metadata需从原始release.txt读取releaseStart，并带当前release和containers（id/restartCount/oomKilled/startedAt）。不能手填推断版本或只读取最后一个OOM状态代替生命周期计数。
+
+报告须同时包住负载开始/结束的捕获时间和真实宿主机计数时间，保留边界区间的少量额外观察。缺失/过期/错误帧、超过20秒捕获间隔、计数器回退、版本变化、容器替换均使evidenceValid=false；重复宿主机样本不重复累加。输出加权CPU空闲、各容器内存峰值、最小磁盘余量、实际swap字节与速率/最长连续活动、OOM和重启。conservativeResourcePass只在证据完整且无swap活动等条件时给出充分保守通过；有swap活动必须单独评估PRD的持续性要求，不据“swap已占用”直接判定抖动，也不自行改写验收标准。此报告不替代逐事件ID和DLQ对账。
+
+### 新版最终实测
+
+UTC 2026-10-22 21:02:08.030–21:32:08.038，1800秒，固定m4-integrity-001/schema10。构建与流量生成在工作站，服务器包含有限资源采样与少量SSH只读运维/文件暂存开销；未部署、更改配置或在窗口内启动额外数据库测试。资源分析取负载前一帧至源计数覆盖结束的首帧，共183帧，均有效，捕获与宿主机时间覆盖完整，evidenceValid=true。后续数据库验证不在该窗口内。
+
+| 指标 | 结果 |
+|---|---:|
+| 生成 / 确认 / PG逐ID匹配 | 1800 / 1800 / 1800 |
+| 原始 / 去重 / 聚合任务 | 1800 / 1800 / 1800 |
+| 额外重复请求 / DLQ / 最终积压 / 错误 | 35 / 0 / 0 / 0 |
+| 生成时钟最大偏差 | 16ms |
+| 公网接入p95 / 可见p95 / 趋势查询p95 | 235.64ms / 1475ms / 717.47ms |
+| CPU空闲 / 最低可用内存 | 51.01% / 266.92MiB |
+| API / Worker / Kafka / PG memory.current采样峰值 | 69.31 / 35.87 / 222.28 / 66.92MiB |
+| 最低磁盘可用比例 | 64.46% |
+| 容器替换 / 重启 / OOM事件 | 0 / 0 / 0 |
+| swap换入 / 换出总量 | 95.71MiB / 173.32MiB |
+| 出现swap活动的有效增量区间 | 159 |
+| 最长连续swap活动 | 1293.76秒（约21.6分钟） |
+| swap换入 / 换出最高速率 | 2305.14 / 10099.91KiB/s |
+
+链路、去重和延迟通过；**资源门槛未通过**，持续swap活动明确存在，不提高流量或宣称稳定容量。memory.current峰值是10秒观察到的采样峰值，不是内核memory.peak全生命周期峰值。结束后仅按已验证测试公司清理数据与账号，原有关系指纹完全保留，HTTPS正常。
+
+首轮PowerShell时间转换丢失UTC偏移和毫秒，导出时间偏差8小时38ms，被CLI的窗口一致性校验拒绝，没有产生错误通过报告。保留初始错误导出，改为直接读取负载JSON中的UTC completed_at；确认初始183帧本来就覆盖真实UTC窗口，再正确导出并核对摘要。工作站证据为`.local/capacity-integrity-result.json`、`capacity-integrity-resource-report.json`与相应快照/状态文件，服务器保留同目录证据。端上与服务器测试凭据已移除。
+
+窗口结束后的只读进程快照显示Kafka Java进程及fwupd有较多换出页，swappiness=60；这只是后续定位线索，不足以归因全部持续换页。后续需评估系统服务用途、JVM与内核内存策略，调整后重新测量；不通过关闭WAL/fsync、跳过确认或改写验收标准换取表面通过。
+
+## swappiness10 专用KVM配置复测（运行中）
+
+完成PROGRESS步骤69的环境核实与可回退配置后，固定同一m4-integrity-001/schema10，以同一工作站生成器启动新1800秒/1EPS复测。服务为ccpanel-capacity-20261022214411，证据目录`/opt/ccpanel/shared/capacity-integrity.Hivo2c`；工作站结果目标`.local/capacity-tuned-result.json`。开始时实际服务active/running、首两帧有效，生成器已启动；尚无最终资源结论。
+
+本轮起始基线额外保存swappiness、页大小/总内存、相关unit状态、四个容器memory.max/memory.swap.max/cpu.max，以及API/Worker/Compose文件摘要。结束快照重新独立采集，报告按排序后的JSON内容比较；缺失或变化使资源证据无效，不因键顺序不同误报。配置读取不包含环境、进程参数、数据库URL或完整Docker配置。启动脚本拒绝已有运行中的容量服务或残留测试公司，生成新目录，不重用上次数据。
+
+109项测试与类型检查通过，包括配置变化/缺失及CLI实际接线；Python与远程bash语法检查通过。结束时必须使用新版capacity-report-cli（本地已构建为`.local/capacity-tuned-report.mjs`），避免旧产物缺少配置核验。本轮不变更部署、限额或内核配置，不启动额外数据库测试；原未通过结论保持到实际完成和重新对账。
+
+## 内存配置调整后的完整复测（2026-10-23）
+
+UTC21:44:22.648–22:14:23.187，实际窗口1800.539秒，仍为m4-integrity-001/schema10，1EPS、约1KiB事件、每10秒趋势查询。内存配置与服务状态在起止独立核验一致，evidenceValid=true、configurationChecked=true，183/183窗口帧有效、无采样缺口；生成器实际退出0后读取原始UTC结果再导出，无中断或重启负载。
+
+| 项目 | 实测 |
+|---|---:|
+| 生成 / 确认 / PG唯一ID / 去重记录 / 聚合任务 | 1800 / 1800 / 1800 / 1800 / 1800 |
+| 重复请求 / DLQ / 请求错误 / 最终积压 | 35 / 0 / 0 / 0 |
+| 接入 / 可查询 / 趋势查询p95 | 217.34 / 1437 / 647.75ms |
+| 最大调度延迟 | 18ms |
+| CPU空闲 / 最低可用内存 | 79.25% / 311.94MiB |
+| API / Worker / Kafka / PG观察内存峰值 | 75.43 / 34.80 / 212.70 / 93.42MiB |
+| 最低磁盘可用比例 | 64.43% |
+| 容器替换 / 重启 / OOM | 0 / 0 / 0 |
+| Swap换入 / 换出 | 24.85 / 0.90MiB |
+| Swap活动增量区间 / 最长连续活动 | 102 / 120.61秒 |
+| Swap换入 / 换出最高速率 | 803.18 / 84.46KiB/s |
+
+链路、去重、数据对账与延迟通过；Swap明显减少但仍连续活动，**资源门槛仍未通过**，conservativeResourcePass=false。保持试验预览，不因优化有效就放宽PRD或承诺生产吞吐。未采用swapoff、清缓存或降低Kafka确认标准。该窗口未运行schema11–15或聚合处理器，不能把结论外推到新功能。
+
+证据保留于服务器`/opt/ccpanel/shared/capacity-integrity.Hivo2c`及工作站`.local/capacity-tuned-{result,resource-report,baseline,final}.json`、`capacity-tuned-samples.jsonl`；不可变结束快照185帧，报告选择其中183帧覆盖完整窗口，SHA256及结束时间一致。逐条verify后仅清理本次合成公司/项目/账号，两端夹具凭据已删除，原业务关系指纹与升级前一致，消费进度检查通过，HTTPS就绪。完整窗口导出后才运行新的隔离PG验收；采样器按原有限时配置自行结束，另核对最终状态。
+
+UTC22:17:19实际复核本轮有限采样器为inactive/dead、Result=success、ExecMainStatus=0；它按原33分钟配置自行退出，无人为停止或重启。
+
+## schema16活动聚合基线（已完成，资源未通过）
+
+新独立运行使用m4-dashboard-001/schema16，label=schema16-active-aggregation，固定配置仍为swappiness10与相同容器限额。采样器ccpanel-capacity-20261022231949，证据目录/opt/ccpanel/shared/capacity-integrity.HMjyru；生成器输出.local/capacity-schema16-result.json。夹具初始化容器先退出，再等待两份新宿主机帧后开始1EPS/趋势10秒/30分钟负载；本轮包含实际聚合处理器，结尾将额外核对已处理任务及桶计数。以下记录本轮实际完整结束对账及资源分析。
+
+
+UTC2026-10-22 23:20:21.065至23:50:21.076，实际1800.011秒，生成器原会话正常退出0。未经修改的原JSON上传并冻结187帧样本，报告选择183/183有效帧完整覆盖窗口，SHA与结束UTC毫秒一致，evidenceValid/configurationChecked均true；运行期间配置/实例未替换。
+
+| 指标 | 实测 |
+|---|---:|
+| 唯一事件 / 额外重复确认 | 1800 / 35 |
+| raw / dedup / 聚合任务 / 已处理聚合 | 1800 / 1800 / 1800 / 1800 |
+| 可见桶事件总数 / DLQ / 未可见 / 剩余积压 / 错误 | 1800 / 0 / 0 / 0 / 0 |
+| 接入 / 端到端可见 / 趋势查询 p95 | 228.99 / 1448 / 642.74 ms |
+| 最大生成调度延迟 | 17ms |
+| CPU空闲 / 最低可用内存 | 77.21% / 291.25MiB |
+| API / Worker / Kafka / PG观察内存峰值 | 57.01 / 31.55 / 248.59 / 90.43MiB |
+| 最低磁盘可用比例 | 64.28% |
+| 容器替换 / 重启 / OOM | 0 / 0 / 0 |
+| Swap换入 / 换出 | 15.46 / 3.00MiB |
+| Swap活动增量区间 / 最长连续活动 | 117 / 451.41秒 |
+| Swap换入 / 换出最高速率 | 507.31 / 282.02KiB/s |
+
+链路、重试去重、唯一ID及活动聚合对账通过；持续Swap仍存在，**PRD资源门槛未通过**，conservativeResourcePass=false。不得以较低换入总量忽略更长连续活动，也不将单机实验外推为生产高可用或高并发承诺。本轮没有schema17保留/分区维护，后续版本不能直接沿用其资源结论。
+
+原始证据在服务器/opt/ccpanel/shared/capacity-integrity.HMjyru，以及工作站.local/capacity-schema16-{result,resource-report,baseline,final}.json和capacity-schema16-samples.jsonl。结束快照冻结后才运行verify/cleanup；1800个稳定event_id全部匹配，活动聚合任务与可见桶1800、0DLQ。仅删除本次合成公司/项目/账号及两端凭据，所有原关系旧字段/数量指纹与升级前一致，唯一预期变化为全局consumer_progress（包括前次4条UI夹具及本轮1835条Kafka记录）；当前next_offset合计10713，实际进度完整性检查通过、HTTPS就绪。UTC23:53:02实际复核原有限采样器inactive/dead、Result=success、ExecMainStatus=0，按原33分钟配置自然结束，未人为停止或重启。
+
+## 2026-10-23：schema17 / m4-telemetry-auth-004
+
+固定上述预览release和资源配置，物理保留开启，1EPS、720字节padding的约1KiB合成事件，同时每10秒尝试一次趋势查询（单在途）。原负载会话71955实际退出0；UTC02:09:30.374至02:39:31.063，共1800.689秒，1800个唯一ID全部确认且可见，35次重复请求；最终backlog/not_visible/errors均0，最大生成调度延迟16ms。程序未记录精确查询执行次数或实际平均请求字节，故不声称完成180次查询或精确平均字节。
+
+采样器ccpanel-capacity-20261023020816有限1980秒，初始文件观察超时后核对实际进程active并手工取得两个新鲜基线，沿用同一进程，没有重启或修改窗口。冻结原始189帧，正式窗口选取183/183有效帧，SHA校验和配置前后核对通过；evidenceValid/configurationChecked均true。工作站同期有源码/本地UI验证工作，未做整机静默隔离；服务器配置与服务未改，生成调度延迟如实记录，不作跨版本因果比较。
+
+| 项目 | 实测 |
+|---|---|
+| 接入 / 可见 / 趋势查询p95 | 324.16 / 3117 / 842.67 ms |
+| raw / dedup / 完成聚合任务 / 可见桶贡献 | 各1800 |
+| 三阶段原始ID集合匹配 / DLQ | 各1800 / 0 |
+| CPU空闲 / 最低可用内存 | 70.35% / 251.46MiB |
+| API / Worker / Kafka / PG观察内存峰值 | 61.59 / 31.26 / 257.00 / 91.75MiB |
+| 磁盘最低可用 / 容器替换或重启 / OOM | 64.02% / 0 / 无 |
+| Swap换入 / 换出 | 30.62 / 16.64MiB |
+| Swap活动区间 / 最长连续活动 | 73 / 88.36秒 |
+| Swap换入 / 换出最高速率 | 1517.86 / 1430.85KiB/s |
+
+**数据链路对账通过；保守资源验收未通过**：conservativeResourcePass=false、swapReviewRequired=true。没有放宽原门槛，不能凭无OOM、较短连续活动或接收延迟达标宣称生产就绪/高并发。当前报告仅此release，未部署的host资源缓存/UI不在测量内；持久监控、完整浏览器矩阵、离机恢复/RPO/RTO和生产HA仍待完成。
+
+冻结资源证据后，使用通过6套PG控制器的新版只读验证器直接匹配raw、dedup及aggregation_jobs的1800个ID，已处理任务及桶贡献1800。集合SHA256为864231f0fa9344312425433eb5e6bcb120f85212861de44e187b039d5b8ba40b；另替换一个请求ID，实机验证1799/1800明确失败，没有改数据库记录。原始证据：/opt/ccpanel/shared/capacity-integrity.IusWZe；工作站.local/capacity-auth121-*。
+
+清理后所有原表指纹一致，只有消费进度按1800正常+35重复推进：p0=6257/p1=6304，总12561，与Kafka committed/high一致、lag0。两端临时凭证、合成PG公司/用户/事件/聚合已清除，临时DB0；Kafka合成消息按保留期存在。门禁open、完整性检查通过、HTTPS ready，采样器实际inactive/dead、Result success、ExecMainStatus0，自然结束。
+
+## 步骤133：后续负载测量口径
+
+public load CLI新增workload字段：接入尝试/202且回执匹配的成功请求/失败请求、每次尝试所含事件数（包含重试与重复副本）、序列化请求体UTF-8总/最小/最大/平均字节、可见性请求数；字节不含HTTP头、TLS或响应，不是Kafka记录大小。总字节包含失败尝试；均值按请求尝试数，不按唯一事件数。没有请求时min/max/mean为null。
+
+查询另记机会、真正启动、成功、失败、因上一请求未结束而跳过的次数；开始时一次，随后约10秒一次，包含排空阶段。结束前等待在途请求，最终attempts=successes+failures，opportunities=attempts+skipped_busy。进度文件可能在途，不能要求当时终态等式。query_schedule_coverage要求至少一个机会且无busy跳过，passed另要求该覆盖及至少一次成功；不能将跳过的机会算作已施加查询负载。没有放宽既有事件/延迟/资源条件。
+
+真实CLI的独立合成fetch验收覆盖非ASCII UTF-8逐次请求体字节、接入503后的重试、慢查询跨过下一机会及应失败的覆盖判断。它不访问VPS，不证明服务器性能。旧容量结果没有这些字段，不回填查询次数或均值；m4-history-005尚未完成完整新负载窗口。
+
+## 步骤139：schema19新窗口（运行中，未验收）
+
+固定m4-alerts-006/schema19，label=schema19-monitor-on-v1，证据capacity-integrity.HfanpA，采样器ccpanel-capacity-20261023040704.service。新配置边界证明v2增加API/Worker持久采集/保留的固定枚举开关，不导出环境变量；实机基线两进程均enabled。应用产物/容器身份/限额等仍在边界核对。首帧及设置后两帧新鲜基线通过，新版30秒等待逻辑实际运行成功，没有重开采样器。
+
+原始负载工具会话58941，目标1EPS×1800秒，使用含实际查询和请求体字节账本的CLI，源码SHA256 44d0c0fccdd995da38a7630b77fc70be7f1962a070c581840b17380a46798831。首分钟generated61/ack60，另1在途、pending可见7、错误0；实际query6/成功6/跳过0，已尝试请求体总66557/平均1073.5字节（该帧仍有在途，不当最终总数）。接入/可见/查询p95约611ms/5.249s/678ms，仅中途读数。
+
+截至UTC04:09后核对，原生成器仍live；原采样器ActiveState=active/SubState=running，17帧、最后elapsed160001ms、无错误。systemd的Result=success/ExecMainStatus0在active期间不表示结束。尚无1800事件集合证明、冻结资源报告或容量结论；保持原版本与配置，不以进度文件代替进程状态，不盲目重启。后续必须观察原58941终态、同一采样器覆盖边界后冻结，再独立PG集合对账/清理，不能用旧版本通过项替代。
+
+## 步骤140：最终负载证据离线核验
+
+capacity-workload-report读取最终public CLI结果，核对完整目标时长/生成时长、唯一UUID集合数量、确认/积压边界、尝试=成功+失败、查询机会=实际+忙跳过、实际=成功+失败、错误数、每请求1–20事件、字节min/max/total/mean、有效延迟摘要及原passed标记是否一致。BigInt用于大整数等式，避免校验自身出现整数加法溢出。健康门槛沿用接入p95<1秒、可见p95<10秒、生成延迟<1秒、期望原ID重发完成及查询无忙跳过；查询p95只报告，不新增或放宽标准。
+
+核验返回evidenceValid和dataLoadPass分开：诚实记录的延迟失败可以是有效证据，但不能通过负载门槛。CLI输出绑定输入原始文件SHA256、拒绝覆盖报告、最大输入2MiB，失败仍写出可审阅结果并返回非零。它校验已报告统计的一致性，不重算缺少原始延迟明细的p95，不证明HTTP请求实际送达、公司归属或服务端事件集合，也不替代独立PG和宿主机资源证据。旧格式缺workload明确拒绝，不回填。
+
+独立单测包含一致健康、真实失败、窗口截短和计数/字节/覆盖标记/ID/延迟不一致反例；真实CLI合成fetch正反例也交给该核验器检查。该工具在工作站开发和验证，不修改正在测量的m4-alerts-006或原生成器脚本。步骤139仍等待原会话终态。
+
+仅在原负载进程终态已确认后使用（输出报告路径必须不存在）：
+
+```sh
+pnpm exec esbuild scripts/capacity-workload-report-cli.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=.local/capacity-workload-report.mjs
+node .local/capacity-workload-report.mjs final-load.json workload-report.json 1800
+```
+
+## 步骤141：清理后的原关系保留核对
+
+capacity-preservation.py离线比较试验前/清理后关系指纹，以及单独查询的原监控记录子集。Python整数精确保留PG有符号64位hash；不经JS浮点解析。业务表要求行数/hash均相同；只允许空的events_YYYY_MM维护分区出现/消失，未知关系或有数据的分区变化拒绝。消费位点允许内容推进但分区行数不能变，四条告警状态允许评估更新但规则行数必须4；这两项仍需独立位点及告警状态证据。
+
+监控采样按received_at/source/instance_id/observed_at取试验前条数，告警历史按id取试验前条数，原子集hash必须与基线相同，不能仅把整张监控表排除。如果保留/容量清理移除了旧记录，核对会失败，需人工解释和额外证据，不自动当作保留成功。比较时间点仍依赖外部受控流程：原负载终态、冻结资源后、清理夹具后才能取得after和prefix，不能用运行中快照验收。
+
+```sh
+python scripts/capacity-preservation.py sql before.jsonl > original-prefix.sql
+# 在冻结窗口/清理后，用同一PG的只读psql执行original-prefix.sql得到original-prefix.jsonl。
+python scripts/capacity-preservation.py verify before.jsonl after-cleanup.jsonl original-prefix.jsonl preservation-report.json
+```
+
+报告绑定三份输入SHA256、拒覆盖，不读取业务载荷或凭证。独立精确事件ID集合、Kafka/PG位点/lag、门禁和资源报告仍必须另外验收。步骤139的基线包含160条采样和8条告警历史；本工具尚未用于该运行中的窗口最终核对。
+
+## 步骤142：schema19正式结果（数据通过，资源未通过）
+
+原生成器58941实际终态exit0，UTC2026-10-23T04:07:44.434Z至04:37:46.707Z，共1802.273秒；生成阶段1799.006秒，最大生成延迟17ms。m4-alerts-006/schema19、API/Worker持久采集与保留始终开启，期间无部署/资源配置变更。工作站同时有离线工具开发/单测，不冒称纯净客户端；最大调度延迟仍按实际记录报告。
+
+| 项目 | 实测 |
+|---|---:|
+| 唯一生成 / 确认 / 未可见 / 最终积压 / 错误 | 1800 / 1800 / 0 / 0 / 0 |
+| 原ID额外重发 / 尝试事件份数 | 35 / 1835 |
+| 实际接入请求 / 成功 / 失败 | 1830 / 1830 / 0 |
+| 实际查询 / 成功 / 忙跳过 | 181 / 181 / 0 |
+| 请求体UTF-8总字节 / 平均每次尝试 | 1969403 / 1076.18 |
+| 请求体最小 / 最大（存在批量请求） | 1073 / 3034字节 |
+| 接入 / 可见 / 查询p95 | 603.36ms / 9044ms / 1245.87ms |
+| raw / dedup / job精确ID匹配、完成聚合、桶贡献 | 各1800 |
+| DLQ / Kafka最终lag | 0 / 0 |
+| 有效资源帧 / 边界配置核对 | 183/183 / 一致 |
+| CPU idle / 最低可用内存 | 74.67% / 282.57MiB |
+| API / Worker / Kafka / PG内存峰值 | 59.39 / 33.21 / 208.42 / 91.13MiB |
+| 最低磁盘可用 / 重启或替换 / OOM | 63.86% / 0 / 无 |
+| Swap换入 / 换出 | 15.34 / 0.80MiB |
+| Swap活动区间 / 最长连续活动 | 107 / 218.75秒 |
+| Swap最高换入 / 换出速率 | 881.87 / 73.85KiB/s |
+
+最终离线负载报告evidenceValid/dataLoadPass均true，输入SHA256 36a5afe23ef0472856150fc2fc5881691185ea26894a9d04a987d0e512bb60eb；资源evidenceValid/configurationChecked true，但conservativeResourcePass=false、swapReviewRequired=true。**接入/可见与数据对账通过；持续Swap使保守资源门槛未通过。**没有放宽条件或重跑同配置直到绿色，不据此承诺生产高并发。
+
+原采样器补齐结束后的host边界才冻结188帧文件，第一次边界未覆盖时等待同一单位后成功，实际选择183帧。冻结后独立SQL直接匹配1800个raw/dedup/job ID、已处理/桶贡献1800、DLQ0；集合SHA256 51e154993b18e576a22a682419c270a8b49a3b23f13917849118a98cec43b698，替换一个请求ID时1799/1800明确拒绝。窗口内API/Worker各60条真实采样、各1实例，区间已读日志4类采集/评估失败或拒绝码均0；末态4规则clear且fresh，历史仍8。
+
+清理后34个原业务关系指纹一致，原160条监控采样和8条告警历史子集也一致；动态项仅消费进度、采样追加及告警评估。PG p0=7176/p1=7228，总14404=原12569+1835，与Kafka committed/high一致、lag0；raw2/dedup3/DLQ0、临时公司/数据库0、恢复与完整性门禁open、HTTPS ready。两端fixture凭证已删除，Kafka合成消息按保留策略存在。采样器ccpanel-capacity-20261023040704.service实际inactive/dead、Result success/ExecMainStatus0，199帧/elapsed1980000ms自然结束，未停止/重开。
+
+冻结证据和报告在/opt/ccpanel/shared/capacity-integrity.HfanpA，工作站.local/capacity-alerts139-*。最终数据、负载、资源、原数据保留报告分列，不能互相替代；其他生产发布门槛仍见PRD及PROGRESS。
+
+步骤150已升级m4-retention-007/schema20并完成两个唯一事件、重复请求、同步/后台查询及策略API/页面的真实链路冒烟。该测试不是容量窗口；没有重跑或修改schema19冻结资源报告，也没有更改资源限额/副本。旧窗口资源门槛未通过，新版本不能据此宣称容量已获认可。清理后PG/Kafka committed/high为7180/7228、lag0，仅证明当次完整性；后续生产容量和高可用验收仍未完成。
+
+## 步骤167：schema22新版本完整窗口（运行中，未验收）
+
+m4-durability-011/schema22包含后续压力/DLQ持久采样，相比旧schema19窗口有新的运行开销，故启动一次新的固定配置窗口；不是重复旧配置直到绿色，也没有改Swap门槛、确认标准或资源限制。独立运行目录 `/opt/ccpanel/shared/capacity-integrity.BhntUa`，label `schema22-monitor-on-v1`，sampler `ccpanel-capacity-20261023095346.service`，原工作站生成器session26218。运行时只观察这些原进程，不能因轮询超时新建另一个窗口。
+
+沿用已固定的真实HTTPS生成器SHA256 `44d0c0fccdd995da38a7630b77fc70be7f1962a070c581840b17380a46798831`，计划1800个唯一事件、1EPS/约1KiB、每10秒趋势查询和原ID额外重发；目标30分钟。资源采样10秒/帧、有限1980秒，边界记录同一容器ID、配置、release及采样/保留true。开始前至少200MiB可用内存、磁盘至少20%可用，两个来源采样新鲜，4个告警/3个压力/2个DLQ固定规则齐全，确认策略及两道门禁/位点检查通过。没有停机、清缓存或关闭采样来改善测量。
+
+离线保留工具已补齐schema21/22：允许当前状态更新与历史追加，但四类原历史的精确行子集不能被改写/减少；压力/DLQ规则数量保持。已禁用收集的空新表只允许始终为空，并明确要求独立健康证明；本次启用采样的窗口在预检中强制要求规则齐全。主库真实预检通过34个原业务关系（含迁移登记表），原1448采样/61告警历史/684压力历史/8条DLQ历史指纹冻结，初始业务位点总和14420。工具代码CI39934802193通过，包括真实PG容量保留校验；CPU/Swap/容量标准没有更改。
+
+首次观察确认资源unit active/running、8帧有效；生成器一分钟时无错误，6次查询成功，存在普通在途/待可见记录，不能解释为最终积压或数据缺口。完整负载终态、冻结资源、精确ID/SQL、监控周期/异常码与原数据清理核对仍待完成，**目前无新容量通过结论**。最终起止时间以生成器最终报告和资源边界覆盖为准，不能用命令启动时刻替代。
+
+## 步骤169：窗口167安全提前终止（未通过，证据不完整）
+
+2026-10-23T10:13:51.956Z确认终止原生成器（session26218实际退出1）。运行中观察到可用内存最低194.12MiB，运维沿用本轮启动准入的200MiB安全余量作保守停止参考，未继续施压凑满30分钟；200MiB是本轮安全操作值，不是新增或替换PRD的通用SLO。采样器/应用版本与配置未变，未降低原Swap、延迟或确认标准。没有OOM不代表有足够恢复余量，也不将本次操作解释为已发生事件丢失。
+
+强制停止暴露生成器缺少安全终态导出的工具缺口：它只在正常结束时写完整event_id清单，本次没有该文件。最后一份周期进度为1140秒、1141生成/1140确认、114次查询成功、无已记录错误；这只是前缀快照，不能据此填造最终客户端集合、完整起止时间或最终p95。**本轮30分钟未完成、原客户端ID集合未被证明，不能标记完整数据或资源验收通过。**后续应先实现有界安全终止与持久证据，再在资源条件明确改变后评审新负载，不以重跑直到绿色补证。
+
+冻结aborted-samples.jsonl共122帧、均有效，范围是采样器setup至停止后首个覆盖边界，包含setup且不是完整负载窗口。该范围最低可用183.79MiB，SHA256 `6bb48408a27ce1b39933de8f590deb624fed43e5df623d397572bb7ef7cbe5fe`；它与最初触发观察194.12MiB是不同取样范围。aborted-final.json明确capacity_pass=false/full_workload_evidence_valid=false。原有限采样器随后受控提前停止，原文件145帧、末帧elapsed1440000ms，未达到1980000ms自然终点；单元回收后inactive/dead，默认ExecMainStatus=0和空时间字段不能当作自然成功结束证明。
+
+停止后只核对当时服务端保留集合：raw/去重/聚合任务/stored/processed/桶贡献各1164、DLQ0，三表event_id集合完全相同，服务端集合SHA256 `acf2835453c7b983cdf37b517bf140ba275530567a065ca7683b331126a2d506`。这不是原客户端清单；报告显式original_client_event_set_proven=false。重复回执23，PG与Kafka committed/high为7719/7888、lag0，总15607=原14420+1164+23，只能证明该服务器范围的消费一致性。
+
+在冻结并记录上述限制后清理合成公司、账号和两端凭证。原34业务关系及1448采样/61告警历史/684压力历史/8条DLQ历史前缀均完整一致；当前4/3/2状态数量保持。root schema22/raw2/dedup3/DLQ0/operators0、临时公司/恢复库0，位点未因清理改变。配置/容器边界与启动时完全相同，采样/保留均enabled，四容器running/restart0/OOMfalse、门禁open/HTTPS ready。清理后单次快照可用285MiB/Swap使用328MiB，不用其替代失败或不完整窗口。
+
+证据仍在capacity-integrity.BhntUa，aborted-final、服务端一致性、原数据保留、配置和位点报告分列；已下载冻结证据到工作站.local/capacity-schema22-167-*。没有伪造load-result.json、运行完整窗口报告CLI或重新启动生成器/采样器。已有schema19完整窗口的Swap失败结论继续有效，当前版本不具备新的容量认证。
+
+## 步骤170：负载工具提前终止与发送前证据
+
+新生成器先以排他创建的manifest占用全新输出命名空间，再进行请求；已有结果、进度或manifest会拒绝启动，不自动恢复旧负载。每个新ID都先写入临时文件、fsync并原子发布manifest，才允许该事件进入发送队列。清单只包含随机事件ID、确认ID子集、公司/项目、计划数、writer PID及生成器/落盘helper的SHA256，不写凭证、Cookie、用户属性或事件载荷。完整清单最大3600个ID，按每秒生成节奏持久化。
+
+正常结束和主动终止分别写completed/aborted及明确reason、计划数、确认子集；提前终止始终passed=false，即使恰好已生成所有事件，也不能成为完整窗口通过。已在途请求按原12/15秒超时处理，停止后不发起新批次/查询；控制文件最多读取1024字节，畸形/超大文件保守停止。可见延迟从event_time的创建时刻计算，包含新清单落盘耗时；接入HTTP计时不变，不排除额外开销来改善成绩。
+
+Windows操作控制器应对已确认存活的本轮写 `<output>.stop`，内容为 `{"reason":"resource_safety"}` 或 `{"reason":"operator_requested"}`。用同一helper原子发布，避免半写JSON被读到；不要复用旧路径或改写已有停止原因。例如：
+
+```powershell
+node --input-type=module -e "import {publishEvidence} from './scripts/load-evidence.mjs'; await publishEvidence('.local/NEW-RUN.json.stop',{reason:'resource_safety'});"
+```
+
+POSIX支持SIGINT/SIGTERM；Windows外部Stop-Process/信号API可能直接强杀，优先用上述控制文件。终止后仍须观察原进程/工具句柄的真实终态，文件存在或status字段不是进程终态证明。强杀无法写最终结果，但发送前已fsync的manifest覆盖所有可能已发送的ID；其status可能仍为running，不能据此称进程活着或完整完成。初始写入中断且尚无完整清单时，不应已有事件发送。验证范围是实际进程强杀恢复，不包括主机断电/文件系统或存储损坏；Windows未执行目录fsync，不作掉电保证。
+
+完整数据报告器显式拒绝aborted，并检查确认ID唯一且属于原ID集合/数量等于acknowledged；资源CLI和远程完整快照导出也在写报告前拒绝aborted。异常磁盘可能使最终导出失败，保留已完成落盘的原始前缀，不伪造终态。旧冻结证据可沿原格式读取，不回填或修改167缺失的原客户端集合。
+
+本项只修复未来测试的可核对性。它没有修复服务器资源余量，没有启动新VPS负载，也不让169提前终止的窗口转为通过。后续评估新条件时需绑定两个源文件hash及新工具版本，并将协议变化和本地落盘开销列入报告。
+
+170验证补充：[Actions39940730998](https://github.com/Explainfuture/ccPanel/actions/runs/39940730998)已真实通过Linux SIGINT/SIGTERM和强杀/控制文件测试，并包含217单测/15PG及既有检查。服务器只安装新的完整导出拒绝规则，应用和资源配置不变；Linux Python段也验证aborted拒绝且不写完整快照，没有启动新负载。167的旧清单缺口和未通过结论不被本工具修复覆盖。
+
+## 步骤183：容器 Swap 归属诊断（不改变门槛）
+
+现有采样只记录 cgroup memory.current，无法把主机 Swap 归属到容器；Docker stats 的内存显示也不能当成“驻留加已换出”的总占用。新帧增加 memory.swap.current 为 swapBytes。报告增加 containerSwapBytes：complete、startBytes、endBytes、peakObservedBytes；老帧缺失时是 null/complete=false，不回填零。部分缺失仅报告已观察峰值，不冒充完整峰值；非法数值仍 invalid_sample。Swap 是可升可降的占用 gauge，不能当作单调计数器计算活动或判断 reset。
+
+原主机 swapInPages/swapOutPages 差分、持续换页审查、资源通过条件完全不变；有占用不等于正在换页，没有新换页的短时快照也不能推翻过去完整窗口失败。此字段用于归属诊断，不代替主机活动计数。
+
+2026-10-23 对仍为 012 的 VPS 只读检查：初始可用内存约309MiB，Java 主进程 VmSwap 约162.5MiB，API/Worker cgroup Swap 为0。十秒有限采样实际完成两帧（未生成事件），Kafka cgroup Swap 两帧均185380864字节、PG 7499776、API/Worker0；主机换入/换出页差均0。此处与初始瞬时数值可能不同，保留各时刻读数，不拼接成同一快照。证据 /opt/ccpanel/shared/swap183/frames.jsonl，SHA256 ac5e3c620090fc40f6bb71e02f726acf9dff696c2739f1024a8571338e39efba，已下载。只证明采样字段能读取和该短时窗口现象，不是容量通过。
+
+本次不改 JVM/内存限额、不关 Swap、不清缓存或重启容器，未替换运行版本或启动负载；新采样器仅以 capacity-sample183.py 独立文件做有限验证，未来完整窗口需使用新源码归档并记录 hash。238 项测试和 typecheck通过，新增完整/缺失/部分字段、gauge下降及非法值覆盖。仍需针对 Kafka 的匿名内存/已换出部分进一步分析，不能从此次读数直接断言“病毒”或“内存泄漏”。
+
+## 步骤184：Kafka JVM 数字计数取证
+
+镜像为 Temurin OpenJDK 21.0.10 JRE，无 jcmd/jstat；没有为诊断安装 JDK、附加 JVM、触发 GC 或导出堆。新增 `scripts/kafka-memory-probe.py`（Linux root 操作员只读工具），通过 Docker 的实际 PID 读取 /proc/PID/root/tmp/hsperfdata_appuser/1，仅输出白名单数字：代/空间容量和 used、元空间、压缩类空间及线程数。不输出 JVM 参数、环境、完整 perfdata 或应用对象。固定目标 ccpanel-kafka-1，不适用其他布局时失败，不能补零。
+
+格式依据 [OpenJDK 21 perfMemory.hpp](https://github.com/openjdk/jdk21u/blob/master/src/hotspot/share/runtime/perfMemory.hpp)：只支持 PerfData 2.0，检查 magic/大小/可访问性、端序、结构范围及前后结构头一致。各数字为近同时读取，不是停机原子快照；该私有诊断格式不作为生产采样或容量通过门槛。堆 used 是占用而非强制完整 GC 后的存活量，不能由此认定泄漏、全部为活对象或计算必须配置的最小堆。
+
+2026-10-23 012 实测数字证据：空间 used 总计154815104字节（约148MiB），代 capacity 总计200294400（约191MiB）；老年代 used113345024/capacity133316608，metaspace used13471784，线程live80。此前183的Kafka Swap gauge与本次heap used不是同一时刻且不是同一统计维度，不能相减推导精确native占用。当前192MiB堆上限下，单凭这些数据不足以安全缩减堆，也没有增加堆/禁用Swap来美化资源结果。
+
+安全过滤后的 JSON 保存在双方：服务器 /opt/ccpanel/shared/swap183/kafka-perf184.json，SHA256 cc936e4ca370046678df28c29cb42245d22534781b4631e861a178b8aeb4c78f。两次只读探测均成功；第二次是上述冻结证据，第一次不拼入该快照。程序未改容器、配置或消费状态；没有压力生成器或新容量通过结论。后续要评估可重复的资源配置变更，仍须备份/固定release与配置，再进行独立完整窗口，保留此前失败证据。

@@ -1,0 +1,106 @@
+# 备份与恢复演练
+
+## 当前范围
+
+2026-10-24用户确认暂时没有独立目的地，先完成可配置方案。设计、只读预检命令与默认禁用模板见 [BACKUP-CONFIG.md](BACKUP-CONFIG.md) 和 [offhost.example.json](../infra/backup/offhost.example.json)；尚无执行该模板的传输/调度程序，没有启用自动离机备份。历史手动实测与下述未通过门槛继续保留。
+
+PG 自定义格式备份包含原始事件、去重、身份、报表、任务、配置和权限；恢复门禁与导入scope的操作数据按设计排除，不能让旧备份重开门禁。传输通过已校验主机指纹的 SSH；离机副本用 AES-256-GCM 加密，密钥独立保存，不能丢失或随备份公开。临时明文文件在验证后删除。
+
+Kafka 中已确认但尚未写入 PG 的事件不包含在 PG 备份中。本流程不替代 Kafka 多副本/灾备，也不承诺单机损毁零丢失。删除屏障、最新清单导出/导入与启动门禁已实现并完成首轮临时库演练，自动可靠异机同步及恢复库消费重放仍待验收。**当前脚本只验收临时数据库，禁止直接将旧备份切换为对外服务库**；恢复上线必须先应用最新清单并完成清理，不能只信任备份里当时已有的屏障。详细状态见 DELETION-RECOVERY.md。
+
+隐私删除启用后，API/Worker 回滚版本也必须识别屏障及可见性视图；回退到不支持隐私屏障的早期版本会绕过保护，不属于受支持回滚路径。
+
+## 操作流程
+
+共享快照源代码 `packages/server/src/backup-snapshot.ts` 是后续在线执行器原语，不替换下列安静窗口流程：只读REPEATABLE READ导出快照，按现有backup-fingerprint.sql范围生成精确文本指纹，持有导出事务直到回调完成。回调须给pg_dump传--snapshot并响应AbortSignal；正常返回前验证导出事务仍在线。超时/连接丢失不得发布成功，schema不符不进入回调。默认120秒，上限30分钟。步骤204在BEGIN之前以try方式取得169202610共享会话锁，与migrate和maintainPartitions现有独占锁冲突；忙时返回backup_managed_ddl_busy，不读取旧快照后排队等待。连接关闭释放锁，正常DML仍允许。外层仍须发布锁/版本绑定；绕过协议的人工DDL、发布文件变更不由此锁保护。长事务可能增加VACUUM保留压力，不能无限延长。
+
+指纹中的bigint hash保留PG文本，不经过JavaScript JSON number精度转换。该范围不包含recovery_gate/recovery_import_scopes的数据，也不覆盖序列值、角色、整机文件或Kafka；MVCC快照不能用来声称并发序列状态同样是历史时间点。恢复仍须可信最新清单和关闭门禁。
+
+步骤203的 `captureBackupArchive` 是受信任命令适配器的输出捕获原语，不接受shell表达式。仅支持已验证POSIX私有目录（当前有效用户拥有、无组/其他权限、realpath匹配），以0600/O_EXCL随机临时文件流式写入，按实际字节限额并计算SHA256。原生进程超时或AbortSignal会终止独立进程组并等待实际close；stderr不保存/回显。空输出、非零退出、超限和写入失败均不发布归档，并清理已知临时文件。Windows ACL未验证则拒绝写入。
+
+自动化流式加密入口：`node scripts/encrypt-backup.mjs encrypt-stream INPUT EXISTING_KEY_FILE`。stdout只有CCPBK001密文字节，不含JSON；必须经captureBackupArchive等有界捕获处理，不能直接当完整备份发布。POSIX要求输入和已有32字节密钥均为当前用户拥有的私有普通文件，NOFOLLOW/NONBLOCK打开；拒绝把密钥本身作为输入，源文件长度/时间戳变化则以失败结束。密钥使用后内存清零。自动模式不创建密钥，Windows ACL未支持则拒绝。原有手动encrypt/decrypt命令及其首次生成密钥行为保留，不能把旧手动模式用于自动密钥供应。
+
+认证解密仍使用现有decrypt文件模式，GCM验证通过后才发布目标文件；没有提供边解密边恢复的stdout模式，避免未经完整认证的明文进入数据库。步骤205的真实PG验收分别流式复核原始/密文hash，并认证解密后核对原始hash，再从解密文件恢复；这仍是CI本地副本往返，不证明异机存储传输或生产RPO/RTO。
+
+### 显式单次候选捕获（步骤206）
+
+```sh
+pnpm backup:capture /private/work/run-unique /private/keys/backup.key 22
+```
+
+仅支持POSIX，需Node22、项目依赖及匹配服务器版本的pg_dump。先准备当前用户拥有、权限0700且无符号链接的工作父目录，候选run-unique必须不存在；密钥预先生成、32字节/0600，放在候选目录之外。命令从独立环境变量CCPANEL_BACKUP_DATABASE_URL读取显式PostgreSQL URI，不隐式使用应用DATABASE_URL；凭证不进入pg_dump参数或日志。仅支持URI中的sslmode参数，其他选项拒绝；实际TLS/源身份需操作员核实。
+
+默认CCPANEL_BACKUP_MAX_BYTES=268435456、CCPANEL_BACKUP_TIMEOUT_MS=120000，可用正整数配置（超时上限30分钟）。开始前检查至少两倍原始字节上限加1MiB元数据的可用空间，不能预留或保证其他进程不占用磁盘；后续I/O失败仍显式失败。可选CCPANEL_BACKUP_PG_CONTAINER指定同一来源PG的本机Docker容器，使用容器内pg_dump/本地socket，不向该容器传递URI密码；若socket需要认证则该适配器会失败。它不验证容器与URI的实际同源性，不是SSH/离机传输。
+
+捕获组合共享快照/受管DDL租约、原始归档限额、流式加密，源会话正常结束后才发布0600 capture.json。候选目录排他创建，文件和目录fsync；清单记录schema/database、精确文本指纹、密文文件名/大小/hash和原始大小/hash，不含密钥引用或连接凭证。清单持久化后移除工作明文并再次sync目录，正常目录仅capture.json和database.dump.enc。
+
+成功产出候选仍退出2/status=captured_unverified，recoveryVerified/offhostVerified/latestStateVerified及source.releaseVerified均false。捕获不运行恢复、不确认删除/事故状态，不发布verified manifest或成功索引；不能按退出0成功备份使用。错误退出1，已创建的私有不完整目录保留待查，重试必须选择新目录，不覆盖未知文件。磁盘/源故障或后续manifest/清理失败时，文件存在不表示成功；不要自动清空失败目录。
+
+CI第17套验收从真实CLI产出候选、验证无明文残留/排他输出/权限/清单，再独立认证解密并实际隔离PG恢复；核验通过也不回写候选的验证标记。当前命令没有接入offhost配置、可信最新状态、独立目的地或调度，生产恢复门禁规则继续适用。
+
+### VPS隔离候选实测（步骤207）
+
+`capture-candidate-vps-remote.sh` 只允许精确013/schema22预览，部署锁、无活动容量测试、HTTPS ready及至少200MiB可用内存；有计划暂停主API/Worker后，创建两个随机恢复库，根库44个public关系冻结前后核对。新源库仅迁移/空v2初始化及合成公司夹具，不导出根库数据。测试check脚本有独立VPS模式，要求临时库名、私网172地址、ccpanel角色、固定容器和Node22.22.3；不设置GITHUB_ACTIONS伪装CI。
+
+宿主原先没有Node，现只在 `/opt/ccpanel/shared/tools207/node` 放置现有API容器的同字节可执行文件。版本v22.22.3、SHA256 e6ec2c188d83d813f81f2de8aea084d74dce603ac1abedd0a30ad941b10087b2，源镜像ID e21fc383b50d5347dc7a9f1cae45b8f4e2f0d39f7ade28e4eef7d2934522b752；与容器内binary直接比较。没有更改系统PATH/服务。独立操作目录只读引用013 node_modules，CLI/check bundle及crypto脚本另放shared目录，不覆盖不可变release。
+
+H74NK9首轮普通宿主执行通过（密文121496字节）；补充systemd一次性控制组后以全新1RpHZ5再通过（密文121495字节）。最终控制组MemoryMax192MiB、RuntimeMax180秒、KillMode=control-group，Node堆32MiB；控制器先创建/持有两个临时库的清理责任，服务异常也先停组再处理已知库。正常测试已证实服务结束后cgroup不存在、unit not-found/inactive；这不是强制OOM/超时或宿主故障演练。
+
+最终实际CLI退出2，认证解密恢复43关系/公司夹具一致；候选未验证状态不变。临时数据库、测试密钥和工作文件均清理，env/清单文件不存在，源库44关系冻结指纹一致，原服务013/HTTPS ready。主库raw2/dedup3/DLQ0、总位点15618、临时DB0。安全结果双方保存，最终SHA256240c3f8a65a5060c144efd1f08f66908a15517874eef7809388336fa8e943af9；独立工具归档b808b7f2ef55a4abd616a7f2a883a66b2fae94eb8995f7f189e650fa6cc827be。没有上传正式离机密钥，只有测试脚本现场生成的合成夹具密钥。此为VPS隔离功能验收，不是根库在线备份、离机目的地、容量、无中断或HA证明。
+
+正常完成须文件fsync、排他hard-link发布、移除临时名及目录fsync；已有文件/竞争发布者绝不覆盖。回执仅为captured_unverified/bytes/hash，尚需共享快照回调整体成功、加密、目的地往返及真实恢复核验后，外层才能发布verified manifest。hard-link已发生但后续失败时返回archive_publish_uncertain，保留可能存在的不可变文件，不能据其存在登记成功或盲目重写。调用方须保留证据再处理。内核不可中断I/O、宿主掉电、恶意同UID修改私有目录和远程docker exec内部进程的异常终止不由此原语验收；CI的取消用真实本地Node写进程，PG导出成功路径用服务容器客户端。
+
+1. 将 `scripts/backup-fingerprint.sql` 放在当前发布目录的 scripts/ 中，以 root 执行 `bash scripts/backup-remote.sh`。输出受限备份目录，不输出凭证。该演练要求安静窗口，前后指纹不同则停止并重试，不宣称完成对账；pg_dump 本身仍使用一致性快照。
+2. 用校验过主机密钥的 SFTP 下载 database.dump、fingerprint.jsonl、completed-at.txt 到受限的离机目录。
+3. 在备份机器运行 `node scripts/encrypt-backup.mjs encrypt INPUT OUTPUT KEY_FILE`。密钥首次生成后复用，输出不得已存在；使用 GCM 验证头部和内容，篡改时不保留解密结果。
+4. 用同一工具的 decrypt 模式还原到临时受限文件，回传到 `/opt/ccpanel/shared/restore/演练编号/database.dump`，并附 fingerprint.jsonl。
+5. 设置 `CCPANEL_RESTORE_FILE`，执行 `scripts/restore-check-remote.sh`。脚本只创建并删除以 ccpanel_restore_ 开头的随机临时数据库，不覆盖运行库。pg_restore 单事务/遇错退出，再按对应版本 backup-fingerprint.sql 的明确范围比较 public 关系行数/内容指纹；recovery_gate 与 recovery_import_scopes 不在当前指纹范围，恢复上线还要独立验证最新清单和门禁。
+6. 验证成功后删除两端临时明文 dump，保留加密离机副本、密钥和受限验收记录。加密输出与密钥不得提交 Git。
+
+## 2026-10-23 实测
+
+- 源：m4-query-jobs-001 / PostgreSQL 17.7；备份完成 UTC 2026-10-22 17:19:41。
+- 离机目标：开发者 Windows 工作站，已下载、加密保存、解密后回传，未使用源主机原始 dump 恢复。
+- 原始备份 49703 字节，加密信封 49739 字节；完整业务表行数/内容指纹一致。样本缺口为 0，不将其解释为生产 RPO=0。
+- 临时 PG 数据库的创建、导入与对账共 4 秒；清理后核对时距备份完成 105 秒。后者包含手动传输/操作等待，不是自动灾难恢复承诺。
+- 演练数据库及两端临时明文已清理；离机加密文件位于本机 `.local/backups/`，密钥位于 `.local/backup-keys/`，均被 Git 忽略。
+
+当前尚无持续在线的自动异机目的地，因此备份间隔/RPO 未设定，整机重建和切换流量的 RTO 未测量。该项只证明这份离机 PG 副本可读且数据一致，不能据此判定所有试运行门槛通过。定时备份、保留期、异地冗余与删除清单恢复仍需补齐。
+
+后续隐私恢复演练已覆盖 schema6 源库开放门禁不进入备份、最新删除清单清理旧快照、隔离 Kafka/历史 DLQ 重放不复活数据；操作和边界见 DELETION-RECOVERY.md。该受控演练没有补足持续异机同步、自动保留或整机切流测试。
+
+2026-10-23升级schema10前又完成一份schema8源备份的工作站加密、独立解密回传及临时PG全表恢复核对，耗时3秒；原始65963字节，密文65999字节，明文已清理，详细证据见PROGRESS步骤61。当前运行m4-integrity-001/schema10。恢复时还必须核对PG独立消费进度和Kafka来源范围，不能以Kafka当前提交位点代替旧备份后缺失的工作；一次性upgrade-integrity-preview脚本只允许可信现行schema8升级，禁止用于旧备份。进度或保留缺口会持久暂停，不因重启或普通bootstrap自动清除，且不得回退至不维护该进度的旧Worker。最新事故状态跨旧备份的自动同步与离线恢复仍待实现。
+
+步骤132更新：当前m4-history-005/schema18。本次升级前schema17备份20261023T031929Z-b8db5122，明文93327字节/SHA256 2c8c85f5fc75a81d6f6745c1e0181315b39da2b7fd6565aabc52a580429c6ce2，密文93363字节/SHA256 a26e8dd1137a1d1c1657f54ee59f79e7dbef5f993dc41fea0f413211fc9549d4。工作站解密逐字节一致，回传副本隔离PG恢复2秒，全部公共关系指纹一致；临时DB与两端明文/源ledger清理，保留分离密钥的加密dump和ledger。证据product-upgrade.uG77GL，仅证明此份副本，尚无自动异机同步/RPO/整机RTO。schema18监控采集会持续变更表，常规备份若要求整库前后完全静止须先受控暂停写入；不能移除一致性核对来伪装演练通过。
+
+步骤138更新：当前m4-alerts-006/schema19。schema18源备份20261023T035648Z-7e351f55包含140条监控记录，明文107710字节/SHA256 569fde2482781da246bcf4c8e8e8b8dbd1dfc5d4fda275ea421dd0a19f0b4812，密文107746字节/SHA256 28126898966812af4612b26758a10f5a916243b51366f74ed202d6d16abbddcd。工作站解密逐字节一致，回传隔离PG恢复3秒，全部公共关系指纹一致；product-upgrade.t0VZhz保存原列核对及验证标记。暂停采集直到18→19核对完成，随后受控开启；备份/恢复临时DB及两端明文/源ledger清理，保留加密dump/ledger与分离密钥。持续异机同步/RPO/整机RTO仍未完成。
+
+步骤150更新：当前m4-retention-007/schema20。schema19源新备份20261023T054105Z-f74f2190包含541条采样及8条告警历史，明文150583字节/SHA256 ca28fa9e3e003d815ff83f40c77ef04ff1cf0923bfb4b19c5ca52adc80b897eb，密文150619字节/SHA256 5d9137eedc8c96443dcecebf10469529ad94b2e15c69f6217c6ca7e388738c1d。工作站解密逐字节相同，解密副本回传临时PG单事务恢复2秒，全部公共关系指纹一致。product-upgrade.pCxanJ包含该份新证明与19→20原字段对账；两个原项目保持30天/version1/floor空。停写对账后分别恢复清理/采集，无旧DB回滚或bootstrap。
+
+备份密文与源ledger密文两端保留，密钥仅工作站分离保存；临时库、两端dump/解密副本/明文源ledger已清除。此备份是schema19默认策略源，不能据此宣称已覆盖自定义保留策略的旧快照恢复；最新保留策略/floor跨旧备份同步和防复活需继续专项完善。持续异机自动同步、明确RPO及整机切流RTO仍未完成。
+
+步骤151源码新增完整v2恢复清单，尚未部署。schema20导出同一只读快照中的删除图与全部项目retention条目（公司/项目、raw_days/version/floor/effective_from），8MiB/各清单10000项上限、1小时新鲜度保持。projects仍是删除图范围；retention才是完整项目清单，包括没有删除屏障的项目。schema20导入拒绝仅有删除信息的v1；v1只用于真正pre20源/目标兼容验收。
+
+恢复仍必须使用最新可信原源导出，不能从刚恢复的旧备份自导出以伪造“最新”。导入获得离线独占租约后关闭门禁，检查目标项目清单与源完整匹配；缺元数据须人工恢复正确元数据，不自动创建公司/项目或跳过策略。版本比目标旧或同版本天数冲突拒绝。每个策略、floor、epoch递增、旧任务结果清除、无业务载荷审计及阶段标记同事务；失败门禁保持关闭，已完成项目可按同文件hash幂等续跑。删除屏障仍按原流程恢复和清理，全部通过才开门禁。
+
+恢复floor取源effective_from、源当前滚动边界与目标已持久floor的较晚值；不将备份中已被替换的短保留期继续滚动到恢复当天。例如备份raw7/version2，最新源一周前延长raw30/version3并保留14天前floor，则10天前合法事件仍应可见；将旧7天边界滚到现在会错误丢弃它。逻辑过期不要求导入时无界物理删除，原有分批清理在门禁开放后继续。
+
+20→20准备流程改用SHA校验归档中的新CLI导出，并检查v2格式，避免旧线上schema20 CLI仍只输出v1。此阶段仅源码/CI，VPS仍150版本；后续必须隔离验证和可信升级后才能依赖新版CLI。v2不是远端持久同步或原源真实性的自动证明，最新删除/事故/策略的持续异机同步仍是独立缺口。
+
+步骤152已完成上述VPS验证并部署m4-recovery-008/schema20。隔离CLI全部专项通过；两个独立临时PG库的实际pg_dump/restore指纹相同，再导入原源缩短策略后的新v2，目标A可见2→1、全部raw3不删、B可见1、旧缓存清除，且导入前门禁关闭。原源与恢复目标分离，未从恢复库自导出清单；证据retention-restore.VpNAyA，临时库与明文已清理。
+
+实际20→20升级证据product-upgrade.MFFRNm，候选归档SHA c177b4d6bfe1981732d018e255ee92f7d4dc2878abd308d16f5d7b46acff719e。新schema20源备份20261023T061244Z-a3d0780a：明文161739字节/SHA dbc669b2118a36e6d97854185186cebaabc05863a8b812d91c372f38739f8a50，密文161775字节/SHA a76a6e23b627ec7ce17d25c19a2fe85ae7cd32f748e3d131074158554a8c355b。离机解密逐字节相同、回传副本隔离恢复3秒且公共关系指纹一致。准备流程确实使用目标CLI从旧运行版本导出v2，含两个项目策略。
+
+升级原字段对账完全一致，采集/清理单独恢复。已部署CLI另导出v2（两个策略、一个删除图项目），工作站加密/解密逐字节一致，明文SHA 800e0c828339a35d9de167f6325d74c4478f8af00b00e5d66dcf1a1db480dc5f。dump/源清单/最新清单密文两端保留、密钥工作站分离，临时明文全部清理。手动导出/复制不等于持续同步；1小时新鲜度与可信原源要求仍生效，尚无自动异机投递/RPO或整机切流认证。
+
+步骤157的源码已支持20→21/21→21可信升级，并在VPS临时数据库通过实际旧schema迁移/失败回滚/原字段保留。source>=20仍用SHA核验的目标归档CLI输出完整v2，不能用恢复目标冒充新原源；新压力持久表不改变v2清单的原源/新鲜度/完整项目约束。prepare/apply仍要求采集/物理清理暂停、新离机备份和实际隔离恢复证明，缺证明不执行apply。启用collection/retention前继续匹配release/build/DB和原字段对账。37个主机保护测试只是mock控制流，本轮四套VPS独立PG验证也不是主库快照恢复或真实上线。线上仍m4-recovery-008/schema20，schema21上线须另做完整新备份/恢复和受控对账；持续异机最新状态同步、RPO/RTO及整机切流缺口不变。
+
+步骤158完成schema20原源的新备份及实际20→21上线。候选m4-pressure-009归档SHA 2b54556a978d8d9b12a2df60e3ee509d84b726fce0242470a97e59d9d70849f2，证据product-upgrade.lfSdJw。备份20261023T074259Z-53fee244明文189342字节/SHA b047dd7621b1dd5550eab02cb659c9f074257cbdd7ed536fc63e89b35eb07f71，GCM189378字节/SHA cf9ecf4a02dbb9b2d7a676aeb8ee7ec9a61d7f91ffc18c9ade5b1cef8c4de24c，fingerprint SHA 9ff56449af62b6b42192072c39baf4d7853b9a3a0be6bbcf630933f2ae260895。工作站往返逐字节相同，上传解密副本真实pg_restore到独立临时库，3秒/所有公共关系一致，自动删库；之后apply再次验hash和原数据指纹才迁移。
+
+源v2清单完整两个项目，明文SHA 948a150a933bbe73116bb0908904630ca8a62e31341208a427ea6573c8971593，GCM SHA 8a010c8020b977dcb3b8e5dff7e86613303d0fb46877dc2831c1662c405ab273，亦在工作站解密往返一致。dump与源ledger密文两端保留，密钥不上传；临时明文和发布验收账号/会话/数据均清理。当前schema21即时信号/压力历史运行，原33业务关系/993采样/22历史保留；这是一次受控备份恢复/升级与冒烟证据，仍不等于自动异机同步、latest-state真实性自动证明、整机切流或生产RPO/RTO达标。
+
+步骤162仅将工具源码扩展到明确21→22/22→22及22采集/保留启用。归档/helper SHA、采集/清理暂停、新离机备份hash与实际恢复证明、原字段对账和恢复/消费门禁仍必需；首次22新DLQ两表必须0，异常停服务；同版22更新则保留已有两表。35项预停止、12 prepare、20 activation及5 apply模拟主机保护通过CI和VPS Linux，含假备份文件和synthetic证明，不能冒充新实际备份/恢复。线上共享工具未替换，当前仍009/21。发布22前必须从真实21原源重新备份、工作站加密解密、实际临时库恢复与原字段对账，不得重复使用158旧备份证明或从恢复目标自导出清单。v2原源与完整策略清单、1小时新鲜度以及自动最新状态异机同步缺口均保持不变。
+
+步骤171恢复范围补充：本次42个备份覆盖关系的指纹一致，排除两类操作控制表；真实回传解密副本隔离恢复5秒。旧日志即使输出“all public”也必须以对应版本指纹SQL为准，不能把格式化文字当作全部操作状态恢复证明。该结果不覆盖自动异机同步或整机RPO/RTO，详见PROGRESS步骤171。
+
+步骤193升级前最新备份已完成工作站AES256-GCM往返一致验证，返回解密dump实际隔离恢复3秒通过，指纹范围见backup-fingerprint.sql（排除恢复控制表），不能沿用工具旧输出“all public”字样扩展范围。删除/保留v2清单也已加密往返一致，密钥未上传；两端临时明文校验后清理，密文保留。备份路径20261023T122724Z-177a4741、发布/哈希/字段对账见PROGRESS步骤193。此项不等于持续离机自动备份、最新删除/事故/策略同步或整机RPO/RTO认证。

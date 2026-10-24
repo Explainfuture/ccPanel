@@ -1,0 +1,73 @@
+name: checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: test "$(cat dist/schema-version.txt)" = 22
+      - run: bash -n scripts/upgrade-product-preview.sh scripts/enable-retention-preview.sh scripts/validate-provision-reports-remote.sh scripts/enable-operational-collection-preview.sh
+      - run: bash -n scripts/dlq-ack-failure-remote.sh scripts/capacity-finalize-remote.sh && node --check scripts/dlq-ack-failure-check.mjs
+      - run: bash -n scripts/pg-transaction-retry-remote.sh && node --check scripts/pg-transaction-retry-check.mjs
+      - run: bash -n scripts/worker-commit-kill-remote.sh && node --check scripts/worker-commit-kill-check.mjs
+      - run: bash -n scripts/checkpoint-window-remote.sh && node --check scripts/checkpoint-window-check.mjs
+      - run: bash -n scripts/retained-gap-window-remote.sh && node --check scripts/retained-gap-window-check.mjs
+      - run: bash -n scripts/pressure-sdk-window-remote.sh && node --check scripts/pressure-sdk-window-check.mjs
+      - run: bash -n scripts/capture-candidate-vps-remote.sh
+      - run: node --check scripts/browser-sdk-native-receiver.mjs && node --check scripts/browser-sdk-native-bfcache.cjs && node --check scripts/browser-sdk-native-bfcache-consent.cjs
+      - run: python3 scripts/check-upgrade-guards.py
+      - run: python3 scripts/check-retired-drills.py
+      - run: python3 scripts/check-schema21-upgrade.py
+      - run: python3 scripts/check-schema21-activation.py
+      - run: python3 scripts/check-schema22-postmigration.py
+      - run: python3 scripts/check-operational-collection-env.py
+      - run: python3 scripts/check-capacity-preservation.py
+      - run: pnpm --dir packages/sdk-browser pack --pack-destination ../../artifacts
+      - run: pnpm --dir packages/sdk-node pack --pack-destination ../../artifacts
+      - run: python3 scripts/check-packed-sdks.py artifacts
+      - run: node scripts/node-outbox-crash-check.mjs
+      - run: node scripts/node-sdk-real-timeout-check.mjs
+      - run: node scripts/check-public-load-accounting.mjs
+      - run: python3 scripts/check-web-asset-retention.py
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17.7-bookworm
+        env:
+          POSTGRES_USER: ccpanel_ci
+          POSTGRES_PASSWORD: isolated-ci-fixture-only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ccpanel_ci -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/postgres-ci-check.mjs
+        env:
+          CCPANEL_PG_CONTAINER: ${{ job.services.postgres.id }}
+          CCPANEL_PG_TEST_URL: postgresql://ccpanel_ci:isolated-ci-fixture-only@127.0.0.1:5432/postgres

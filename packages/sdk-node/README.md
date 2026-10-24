@@ -1,0 +1,63 @@
+# @ccpanel/sdk-node（开发预览）
+
+当前提供 ESM 包，运行环境 Node.js 22.12+。从仓库先构建，再通过 pnpm 打包安装；不需要 DOM 类型库。共享类型使用 `.js` 相对声明路径，支持 TypeScript NodeNext 的严格声明检查。
+
+```ts
+import { createNodeAnalytics } from '@ccpanel/sdk-node';
+
+type Events = { worker_started: { name: string } };
+const analytics = createNodeAnalytics<Events>({
+  endpoint: 'https://your-analytics.example/v1/batch',
+  projectId: process.env.ANALYTICS_PROJECT_ID!,
+  writeKey: process.env.ANALYTICS_WRITE_KEY!,
+  consent: true,
+  outboxPath: './runtime/analytics-outbox.json',
+});
+await analytics.track('worker_started', { name: 'billing' });
+// 在应用正常停服流程中等待关闭。
+await analytics.shutdown();
+```
+
+`track` 返回本地入队状态，不能当作服务器接收或数据库可查询证明。配置 `outboxPath` 才使用持久文件队列；省略时是有界内存队列，进程退出后不能恢复。一个队列文件只允许一个活进程写入，不能跨主机共享。关闭等待已排队写入并释放锁；损坏文件/不明锁保持拒绝，不自动覆盖源文件。实际进程崩溃与认领边界见仓库 `docs/SDK-PERFORMANCE.md`。
+
+多用户服务端共用实例时，使用逐事件身份接口：
+
+```ts
+type BusinessEvents = { order_paid: { amount: number } };
+const shared = createNodeAnalytics<BusinessEvents>({
+  endpoint: 'https://your-analytics.example/v1/batch',
+  projectId: process.env.ANALYTICS_PROJECT_ID!,
+  writeKey: process.env.ANALYTICS_WRITE_KEY!,
+  consent: true,
+  outboxPath: './runtime/business-outbox.json',
+});
+await Promise.all([
+  shared.trackFor('opaque-user-A', 'order_paid', { amount: 10 }),
+  shared.trackFor('opaque-user-B', 'order_paid', { amount: 20 }),
+]);
+await shared.shutdown();
+```
+
+每次调用在首次异步等待前冻结身份、属性与新事件ID，不切换实例身份，重试/文件恢复保留原快照。`trackFor`不自动附加服务器实例的匿名ID，也不自动创建匿名关联；浏览器关联继续通过其`identify`协议建立。已有`track/identify/reset`仍是有状态单身份语义，不要用它们在并发请求之间切换用户。
+
+传入稳定、非空、最多256字符的业务用户ID，不使用姓名或电子邮件代替。服务端须从自身已验证的业务上下文取得用户ID；该接口不负责业务登录鉴权。它沿用实例的项目/凭证，不是跨公司切换入口。授权撤回、属性隐私过滤和运行时事件校验仍然有效，泛型仍约束事件名及必填属性。
+
+SDK和整个平台尚未通过完整PRD发布门槛；ESM类型/包导入验收不等于生产容量、真实设备或全部故障模型通过。
+
+业务时间支持 `track(name, properties, { event_time })` 及 `trackFor(userId, name, properties, { event_time })`，例如 `shared.trackFor('opaque-user-A', 'order_paid', { amount: 10 }, { event_time: new Date(paidAt).toISOString() })`。必须是带 Z 的 UTC 字符串，校验过去七天/未来五分钟范围；不传使用调用时刻。无效值返回 rejected/invalid_event_time 并触发 onError。文件恢复、网络重试保留原 ID、身份与时间；服务端接收时再次校验，不提供绕过有效期的历史导入。时间选项属于独立参数，不会被 properties 的隐私过滤或白名单误删。
+
+Node 同样通过 `getQueueStatus().counters` 获取实例内的 expired（事件数）、rejected_overflow / rejected_pending_overflow（拒绝次数）、storage_error（操作失败次数，不等于数据丢失）。与 Browser 一致，返回快照、饱和计数且不持久化；重开文件队列不会恢复上一实例的诊断计数。事件 ID、文件队列内容和确认规则保持不变。
+
+`flushInterval` 沿用 Browser 的整数校验范围 100～2147483647ms；无效值在初始化创建定时器前抛出 invalid_flush_interval，防止 Node 将溢出/Infinity 延迟转换为短周期循环。
+
+Node 复用按需调度：空队列不周期读取 outbox，新增事件、恢复待发及错误重试仍按已冻结的 flushInterval 调度；凭证暂停/撤回/destroy 会取消。存储状态未知保留恢复探测，不能把读取失败当作队列为空。
+
+Node 沿用 endpoint 边界：拒绝 URL 用户名密码、查询串和片段；复制初始化配置并固定实例目标/项目，密钥轮换走 updateWriteKey。该行为避免目的地与已建立的本地队列身份不一致。
+
+`shutdown()` 开始后立即拒绝新的 `track/trackFor`（rejected/shutdown），重复调用共享同一个退出结果。发送及文件关闭总等待预算为10秒；超时reject `Error('shutdown_timeout')` 并调用onError，停止定时/新采集。它不伪造确认、不清除未确认事件，也不会为超时另起发送。底层未结束的原生I/O或在途发送不能被该JS截止时间强制取消，文件锁只在真实关闭完成后释放；原操作稍后完成仍按真实结果收尾，已返回的超时不变为成功。调用方应处理reject，并自行决定进程最终退出策略；该预算不是对阻塞事件循环/内核I/O的强制杀进程保证。
+
+Node `flush()` 另有10秒整体调用截止时间（含慢存储），超时reject flush_timeout并回调；网络AbortSignal仍保留。超时不取消底层原生I/O或释放并发槽：同一操作未结束时所有flush调用共享同一超时Promise，不另发批次；操作实际结束后才能开始新一轮。迟到确认仍按原ID和真实回执处理，不将已经返回的超时改记成功。初始化/定时/换钥等内部触发会处理该reject，避免未处理Promise异常。shutdown使用原始底层操作收尾，自己的10秒截止与文件锁规则不变。JS定时截止无法抢占阻塞事件循环或内核I/O，getQueueStatus等其他存储API也不因此获得全局截止。
+
+可运行 `pnpm build` 后的 `node scripts/node-sdk-real-timeout-check.mjs` 验证真实Node子进程/本机HTTP无响应场景：不替换fetch或时钟，确认整体flush约10秒reject、无并发重发、原ID持久保留、shutdown收尾释放锁且子进程自然退出。测试有25秒父进程看门狗，若需强制终止则失败；9000～16000ms是测试调度容差，不改变SDK10000ms常量。该测试不是内核I/O永久挂起、事件循环阻塞或强制退出保证。
+
+真实超时验收还包含第二个独立恢复进程：第一个子进程退出且释放锁后，按原outbox的next_attempt_at等待（真实时钟），接收端改为正常202。新进程自动读取原事件，无新track；确认两次请求完整事件相同，普通202后文件rows为空、锁释放且自然退出。输出initial_requests/recovery_requests分别计数，不把计划中的跨进程重试当成超时后的并发重发。本机接收端只验证SDK恢复与确认，未接Kafka/PG。
