@@ -49,7 +49,7 @@ pnpm backup:check infra/backup/offhost.example.json
 
 完整快照流：源PG一致性快照 → dump及同一快照的范围指纹/manifest → 经固定主机密钥SSH拉取 → 协调器逐文件加密 → 解密到私有临时文件并核对hash → 上传不可变对象 → 从目的地重新下载并认证解密 → 隔离PG实际恢复与范围对账 → 原子发布verified manifest。备份ID唯一，既有对象不得覆盖；中断只能留下incomplete，不能更新最近成功时间。
 
-当前backup-remote.sh要求安静窗口的前后指纹相同，监控采集开启时不适合直接挂定时器。步骤202新增withBackupSnapshot共享PG快照原语，协调只读REPEATABLE READ事务的指纹与回调中的pg_dump --snapshot；步骤203增加captureBackupArchive流式有界落盘原语，输出仍为captured_unverified。尚未接入实际远程备份执行器或替换旧脚本。后续执行器仍须迁移/DDL互斥、manifest与加密传输/验真，不能直接移除原脚本对账条件。固定schema/release及工具hash写入manifest。恢复控制表按既有规则不靠旧dump重开；备份指纹覆盖关系沿明确SQL清单，不能称所有public表全覆盖。
+当前backup-remote.sh要求安静窗口的前后指纹相同，监控采集开启时不适合直接挂定时器。步骤202新增withBackupSnapshot共享PG快照原语，协调只读REPEATABLE READ事务的指纹与回调中的pg_dump --snapshot；步骤203增加captureBackupArchive流式有界落盘原语，输出仍为captured_unverified。步骤204让快照在BEGIN前非阻塞取得现有迁移/分区DDL锁的共享会话租约；已有受管DDL在执行则拒绝备份，备份期间分区维护退后，结束释放。尚未接入实际远程备份执行器或替换旧脚本。后续执行器仍须外层发布锁/版本绑定、manifest与加密传输/验真，不能直接移除原脚本对账条件。固定schema/release及工具hash写入manifest。恢复控制表按既有规则不靠旧dump重开；备份指纹覆盖关系沿明确SQL清单，不能称所有public表全覆盖。
 
 最新状态流：从原源导出完整v2清单，包含删除屏障、事故与项目保留策略/版本，持续加密保存；这条流与full snapshot独立更新。每份记录source标识、生成时间、清单版本、文件hash、前一份hash、所有项目覆盖范围和备份关联ID。不能从恢复目标自导出充当可信最新源；发现缺项目、策略回退、序列缺口或新鲜度不足，则恢复门禁保持关闭。原源损毁且最新状态无法可信取得时，必须报告无法证明可恢复，不能拿旧dump中的状态替代。
 

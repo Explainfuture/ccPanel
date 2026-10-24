@@ -10,6 +10,8 @@ import {Readable} from 'node:stream';
 import pg from 'pg';
 import {withBackupSnapshot,readBackupFingerprints} from '../packages/server/src/backup-snapshot';
 import {captureBackupArchive} from '../packages/server/src/backup-archive';
+import {maintainPartitions} from '../packages/server/src/partitions';
+import {pool} from '../packages/server/src/db';
 assert.equal(process.env.GITHUB_ACTIONS,'true');
 const source=new URL(process.env.DATABASE_URL!);
 assert.ok(['127.0.0.1','localhost'].includes(source.hostname));assert.equal(source.username,'ccpanel_ci');
@@ -45,10 +47,22 @@ try{
   assert.equal((await writer.query('SELECT count(*)::int AS n FROM tenants')).rows[0].n,0);
   const kept=randomUUID(),deleted=randomUUID(),later=randomUUID();
   await writer.query("INSERT INTO tenants(id,name) VALUES($1,'before'),($2,'deleted-after-snapshot')",[kept,deleted]);
+  await writer.query('BEGIN');await writer.query('SELECT pg_advisory_xact_lock(169202610)');
+  let busyCallback=false;
+  try{await assert.rejects(withBackupSnapshot(source.href,{expectedSchema:22},async()=>{busyCallback=true;}),/backup_managed_ddl_busy/);assert.equal(busyCallback,false);}
+  finally{await writer.query('ROLLBACK');}
   await admin.query(`CREATE DATABASE ${restored}`);created=true;
   let expired='';
   const result=await withBackupSnapshot(source.href,{expectedSchema:22},async snapshot=>{
     expired=snapshot.snapshotId;assert.equal(snapshot.sourceDatabase,source.pathname.slice(1));
+    const leases=(await writer.query("SELECT pid FROM pg_locks WHERE locktype='advisory' AND database=(SELECT oid FROM pg_database WHERE datname=current_database()) AND classid=0 AND objid=169202610 AND objsubid=1 AND mode='ShareLock' AND granted")).rows;
+    assert.equal(leases.length,1,'snapshot must own actual shared managed-DDL lease');
+    await writer.query('BEGIN');
+    try{assert.equal((await writer.query('SELECT pg_try_advisory_xact_lock(169202610) AS held')).rows[0].held,false,'migration exclusive key must conflict');}
+    finally{await writer.query('ROLLBACK');}
+    const maintenance=await pool.connect();
+    try{assert.equal(await maintainPartitions(maintenance),'busy','actual partition maintenance must defer while snapshot holds lease');}
+    finally{maintenance.release();}
     // Committed writes in another actual session, after snapshot creation.
     await writer.query('BEGIN');
     await writer.query("UPDATE tenants SET name='after' WHERE id=$1",[kept]);
@@ -76,10 +90,16 @@ try{
   let callbackCleaned=false;
   await assert.rejects(withBackupSnapshot(source.href,{expectedSchema:22,timeoutMs:1000},async snapshot=>new Promise((_resolve,reject)=>snapshot.signal.addEventListener('abort',()=>{setTimeout(()=>{callbackCleaned=true;reject(Error('aborted'));},150);},{once:true}))),/backup_snapshot_timeout/);
   assert.equal(callbackCleaned,true,'timeout must wait for actual callback cleanup before releasing ownership');
+  await writer.query('BEGIN');
+  try{assert.equal((await writer.query('SELECT pg_try_advisory_xact_lock(169202610) AS held')).rows[0].held,true,'all success/failure exporter leases must be released');}
+  finally{await writer.query('ROLLBACK');}
+  const maintenance=await pool.connect();
+  try{assert.equal(await maintainPartitions(maintenance),'completed','maintenance must resume after snapshot cleanup');}
+  finally{maintenance.release();}
   assert.equal((await admin.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE application_name='ccpanel_backup_snapshot'")).rows[0].n,0);
-  console.log(JSON.stringify({passed:true,shared_pg_snapshot:true,concurrent_insert_update_delete_committed:true,live_fingerprint_differs:true,existing_operator_sql_matches:true,actual_pg_dump_restore:true,restored_fingerprints_exact:true,recovery_gate_rows:0,expired_snapshot_rejected:true,schema_mismatch_rejected:true,timeout_aborted_callback:true,timeout_waited_for_callback_cleanup:true,exporter_sessions_remaining:0,...result}));
+  console.log(JSON.stringify({passed:true,shared_pg_snapshot:true,managed_ddl_shared_lease:true,ddl_busy_refused_before_callback:true,migration_exclusive_key_blocked:true,actual_partition_maintenance_deferred:true,maintenance_resumed_after_cleanup:true,lease_released_after_failures:true,concurrent_insert_update_delete_committed:true,live_fingerprint_differs:true,existing_operator_sql_matches:true,actual_pg_dump_restore:true,restored_fingerprints_exact:true,recovery_gate_rows:0,expired_snapshot_rejected:true,schema_mismatch_rejected:true,timeout_aborted_callback:true,timeout_waited_for_callback_cleanup:true,exporter_sessions_remaining:0,...result}));
 }finally{
-  if(restoreConnected)await restoreDb.end();await writer.end();
+  if(restoreConnected)await restoreDb.end();await writer.end();await pool.end();
   if(created)await admin.query(`DROP DATABASE ${restored} WITH (FORCE)`);await admin.end();
   if(archiveCreated)await unlink(archivePath);await rmdir(archiveDirectory);
 }

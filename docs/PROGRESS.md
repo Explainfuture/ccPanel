@@ -1623,3 +1623,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - typecheck通过；Windows本机2项拒绝路径通过、9项POSIX测试明确跳过，Linux真实写入及PG衔接待CI。无VPS改动，无调度/加密传输/最新状态执行器或自动备份完成声明。
 - 流式接入时发现202原语在发出超时取消后可能先于回调清理返回，补充等待回调实际settled再释放调用所有权；PG测试让abort后的清理延迟150ms，要求失败返回前确已完成。取消时间点有界，真实资源关闭可能晚于该时间点，不承诺无视内核I/O强制准时返回。
 - 初轮Actions39995868959与含取消修复的Actions39996006938 verify/postgres均success。最终Linux归档测试10通过/Windows专属1跳过；全套69文件、288测试通过/1跳过，16套实际PG通过。实际流式归档122310字节，独立文件hash一致、恢复输入流式、43关系/既有SQL一致、门禁数据0、超时确实等待回调清理且导出连接0。只证明CI隔离路径，不等同VPS自动备份、加密传输/目的地或HA验收。
+
+### 步骤204：共享快照与受管DDL协调
+
+- 核对现有migrate与maintainPartitions均持169202610独占事务锁；备份在BEGIN前try取得同键共享会话租约。已有DDL时直接backup_managed_ddl_busy，不创建旧MVCC快照后等待；连接关闭释放锁，正常数据写入不被阻止。未改迁移/Worker业务源码或VPS构建。
+- 第16套真实PG验收补充：DDL独占时不进入备份回调；快照实际pg_locks共享租约1条、迁移独占try失败、真实maintainPartitions返回busy；并发DML/流式dump+restore/独立SQL核对继续运行；成功/schema拒绝/超时清理后独占锁可重新取得，分区维护恢复completed。
+- typecheck与diff检查通过，实际PG互斥/恢复路径待CI。不保护绕过协议的人工DDL、发布文件替换或真实离机目的地，外层发布锁/版本绑定仍必需。执行器/可信最新状态自动同步及容量/HA门槛保持。

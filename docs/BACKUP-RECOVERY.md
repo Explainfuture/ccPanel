@@ -12,7 +12,7 @@ Kafka 中已确认但尚未写入 PG 的事件不包含在 PG 备份中。本流
 
 ## 操作流程
 
-共享快照源代码 `packages/server/src/backup-snapshot.ts` 是后续在线执行器原语，不替换下列安静窗口流程：只读REPEATABLE READ导出快照，按现有backup-fingerprint.sql范围生成精确文本指纹，持有导出事务直到回调完成。回调须给pg_dump传--snapshot并响应AbortSignal；正常返回前验证导出事务仍在线。超时/连接丢失不得发布成功，schema不符不进入回调。默认120秒，上限30分钟；迁移/DDL互斥仍须由外层部署锁保证。长事务可能增加VACUUM保留压力，不能无限延长。
+共享快照源代码 `packages/server/src/backup-snapshot.ts` 是后续在线执行器原语，不替换下列安静窗口流程：只读REPEATABLE READ导出快照，按现有backup-fingerprint.sql范围生成精确文本指纹，持有导出事务直到回调完成。回调须给pg_dump传--snapshot并响应AbortSignal；正常返回前验证导出事务仍在线。超时/连接丢失不得发布成功，schema不符不进入回调。默认120秒，上限30分钟。步骤204在BEGIN之前以try方式取得169202610共享会话锁，与migrate和maintainPartitions现有独占锁冲突；忙时返回backup_managed_ddl_busy，不读取旧快照后排队等待。连接关闭释放锁，正常DML仍允许。外层仍须发布锁/版本绑定；绕过协议的人工DDL、发布文件变更不由此锁保护。长事务可能增加VACUUM保留压力，不能无限延长。
 
 指纹中的bigint hash保留PG文本，不经过JavaScript JSON number精度转换。该范围不包含recovery_gate/recovery_import_scopes的数据，也不覆盖序列值、角色、整机文件或Kafka；MVCC快照不能用来声称并发序列状态同样是历史时间点。恢复仍须可信最新清单和关闭门禁。
 

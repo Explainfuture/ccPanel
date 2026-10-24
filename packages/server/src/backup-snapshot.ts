@@ -40,7 +40,12 @@ export async function withBackupSnapshot<T>(connectionString:string,options:{exp
   let pending:Promise<T>|undefined;
   try{
     const operation=async()=>{
-      await db.connect();await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      await db.connect();
+      // migrate() and maintainPartitions() take exclusive key 169202610.
+      // Take a session shared lease BEFORE any repeatable-read snapshot: waiting
+      // inside the transaction could otherwise retain pre-migration catalogs.
+      if(!(await db.query('SELECT pg_try_advisory_lock_shared(169202610) AS held')).rows[0].held)throw new BackupSnapshotError('backup_managed_ddl_busy');
+      await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
       await db.query("SELECT set_config('idle_in_transaction_session_timeout',$1,true)",[String(timeout)]);
       const version=(await db.query('SELECT max(version) AS version FROM schema_migrations')).rows[0]?.version;
       if(version!==options.expectedSchema)throw new BackupSnapshotError('backup_schema_mismatch');
