@@ -7,6 +7,10 @@ const receipts=[];let held;
 const server=createServer(async(req,res)=>{
   const url=new URL(req.url,'http://127.0.0.1:5196');
   const reply=(status,body,type='application/json')=>{res.writeHead(status,{'content-type':type,'cache-control':'no-store'});res.end(typeof body==='string'?body:JSON.stringify(body));};
+  if(req.method==='GET'&&['/bf-start','/bf-next'].includes(url.pathname)){
+    res.writeHead(200,{'content-type':'text/html','cache-control':'private,max-age=60'});
+    return res.end('<!doctype html><title>SDK BFCache fixture</title><p>Synthetic history navigation</p><a href="/bf-next">Next</a><a href="/bf-start">Start</a>');
+  }
   if(req.method==='GET'&&url.pathname==='/')return reply(200,'<!doctype html><title>SDK isolated receiver</title><p>Synthetic SDK check</p>','text/html');
   if(req.method==='GET'&&url.pathname==='/sdk.js')return reply(200,sdk.toString(),'text/javascript');
   if(req.method==='GET'&&url.pathname==='/receipts')return reply(200,{receipts:receipts.filter(r=>r.project===url.searchParams.get('project'))});

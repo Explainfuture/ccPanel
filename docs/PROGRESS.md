@@ -1653,3 +1653,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 实际CLI退出2/未验证，排他/无明文/schema失败、密文/认证明文hash和实际恢复43关系一致；成功后临时文件/密钥/库全清，unit已收集、cgroup无，暂停期根库44关系指纹同，013/ready，root2/3/DLQ0/总位点15618/临时DB0。安全结果已下载，最终SHA240c3f8a65a5060c144efd1f08f66908a15517874eef7809388336fa8e943af9。
 - 本次有预览暂停；未测强制OOM/超时、根库在线备份、异机同步或容量/HA。typecheck及VPS shell语法通过，CI将回归原有17套实际PG路径和新增控制器语法。
 - Actions40081750971 verify/postgres全部success：294通过/3平台跳过、17套PG；CLI日志明确surface=ci，密文122317字节/43关系恢复一致。VPS日志surface=isolated_vps，最终121495字节，两种来源与两轮夹具分别保存。CI不执行远程SSH/宿主cgroup故障，VPS功能实测也不扩大为容量通过。
+
+### 步骤208：Chrome原生BFCache双轮恢复
+
+- 新增可缓存合成页面、原生历史恢复脚本和专用Chrome启动配置；移除自动化默认禁用BFCache/背景节流开关，无fetch/IndexedDB/生命周期事件替换。SDK实际构建449f14f4719751a13ef1a666ff141511dd223ddc93b246968d87bf2688c4b661，产品源码未改。
+- 首轮单次通过后强化双轮新上下文复核：Chrome155.0.8059.85同文档/同SDK两次trusted persisted pagehide/pageshow；真实IDB退出202保留，恢复不显式flush/重建，由可见事件自动取得202清队列0。四HTTP严格no-cors/cors/no-cors/cors，两对完整载荷相同、新操作ID不同、pageerror0。冻结安全JSON纳入docs/evidence。
+- 结果后CDP清专用origin，浏览器/接收端均关闭、5196无监听。仅本机原生BFCache窗口，未扩大为A05/A07全组合/设备矩阵/KafkaPG/容量；VPS不变。CI新增语法检查，实际浏览器测试不在CI伪装执行。

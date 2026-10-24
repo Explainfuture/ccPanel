@@ -1,0 +1,77 @@
+{
+  "passed": true,
+  "browser": "155.0.8059.85",
+  "native_bfcache": true,
+  "restore_cycles": 2,
+  "same_document_instance": true,
+  "trusted_persisted_pageshow": true,
+  "real_indexeddb": true,
+  "exit_ack_retained": true,
+  "automatic_recovery_without_flush": true,
+  "queue_after_ack": 0,
+  "modes": [
+    "no-cors",
+    "cors",
+    "no-cors",
+    "cors"
+  ],
+  "exact_payload_retry": true,
+  "new_operation_new_id": true,
+  "unhandled_page_errors": 0,
+  "lifecycle": [
+    {
+      "type": "pagehide",
+      "trusted": true,
+      "persisted": true,
+      "visibility": "visible"
+    },
+    {
+      "type": "visibilitychange",
+      "trusted": true,
+      "persisted": null,
+      "visibility": "hidden"
+    },
+    {
+      "type": "visibilitychange",
+      "trusted": true,
+      "persisted": null,
+      "visibility": "visible"
+    },
+    {
+      "type": "pageshow",
+      "trusted": true,
+      "persisted": true,
+      "visibility": "visible"
+    },
+    {
+      "type": "pagehide",
+      "trusted": true,
+      "persisted": true,
+      "visibility": "visible"
+    },
+    {
+      "type": "visibilitychange",
+      "trusted": true,
+      "persisted": null,
+      "visibility": "hidden"
+    },
+    {
+      "type": "visibilitychange",
+      "trusted": true,
+      "persisted": null,
+      "visibility": "visible"
+    },
+    {
+      "type": "pageshow",
+      "trusted": true,
+      "persisted": true,
+      "visibility": "visible"
+    }
+  ],
+  "transport": "real loopback HTTP",
+  "kafka_pg": false,
+  "full_device_matrix": false,
+  "date": "2026-10-24",
+  "sdkSha256": "449f14f4719751a13ef1a666ff141511dd223ddc93b246968d87bf2688c4b661",
+  "scope": "Installed Chrome on Windows; CLI native navigation with explicit BFCache-compatible test launch configuration"
+}

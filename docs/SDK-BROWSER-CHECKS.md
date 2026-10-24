@@ -89,6 +89,8 @@ npx --yes --package @playwright/cli playwright-cli -s=firefox186 close
 
 该表不是PRD支持矩阵完成表；真实桌面稳定版本矩阵、Android/iOS、系统关闭/强杀、BFCache及完整A05仍缺证据。VPS及容量配置不变。
 
+上述186时缺失的本机Chrome BFCache证据由步骤208补充如下；其他引擎/版本/真实移动设备缺口不被扩大通过。
+
 ## 原生 IndexedDB 失效与重建（步骤 187）
 
 在步骤177本机接收端启动后，用专用Chrome测试会话执行 `scripts/browser-sdk-native-idb-recovery.cjs`。该脚本仅对 http://127.0.0.1:5196 使用CDP Storage.clearDataForOrigin（indexeddb），使已打开的原生SDK数据库连接关闭，再track触发真实存储错误；不替换indexedDB/fetch/navigator，不拦截网络。
@@ -100,3 +102,23 @@ npx --yes --package @playwright/cli playwright-cli -s=firefox186 close
 测试结束恢复配额、清除测试origin IndexedDB/localStorage、关闭专用浏览器及接收端。自动审批拒绝了递归删除 .local/quota187-profile（返回blocked by policy），未改用其他工具绕过；清理后的测试浏览器配置目录保留在Git忽略范围，未提交。脚本finally始终尝试清库和destroy；只允许在专用测试origin运行，不能用于真实公司网站。
 
 此场景不验证存储被清除前的旧事件可恢复（删除的数据本就可能丢失），只验证清除后新track的显式降级与同ID恢复；不等于磁盘配额、全A09、设备矩阵或VPS容量通过。
+
+## 原生BFCache连续返回与同实例恢复（步骤208）
+
+使用已安装Chrome155.0.8059.85、Windows、真实IndexedDB和loopback HTTP接收端，SDK构建SHA256为449f14f4719751a13ef1a666ff141511dd223ddc93b246968d87bf2688c4b661。产品SDK源码未改。安全结果见 [冻结JSON](evidence/bfcache-chrome155-208.json)，配置见 [专用启动配置](../infra/browser-native-bfcache.config.json)。
+
+Playwright默认禁用BFCache；该专用配置仅移除disable-back-forward-cache及三个背景节流相关自动化开关，不强制伪造缓存或派发生命周期事件。新增/bf-start、/bf-next为合成静态可缓存页面，API/SDK/回执路由仍no-store；不能把此夹具header条件扩展成所有业务网站都能进BFCache。
+
+```powershell
+node scripts/browser-sdk-native-receiver.mjs
+# 另一终端；测试结束后先close浏览器，再Ctrl+C停止接收端
+npx --yes --package @playwright/cli playwright-cli -s=bfcache208 open http://127.0.0.1:5196/bf-start --config=infra/browser-native-bfcache.config.json
+npx --yes --package @playwright/cli playwright-cli -s=bfcache208 run-code --filename scripts/browser-sdk-native-bfcache.cjs
+npx --yes --package @playwright/cli playwright-cli -s=bfcache208 close
+```
+
+首轮单次返回通过后，强化为同一文档/同一SDK实例连续两次真实导航和goBack，重新开专用上下文复核通过：两次trusted pagehide.persisted=true及pageshow.persisted=true，文档随机标记保持；每次退出原生beacon得到202但真实IDB原记录保留，恢复仅由原生visibilitychange自动触发普通fetch，没有显式flush/重建SDK。配置发送周期60秒，要求10秒内恢复；不是靠等周期发送。四次实际HTTP模式严格为no-cors/cors/no-cors/cors，两对完整载荷分别一致，新操作ID不同，最终队列0、未处理pageerror0。
+
+若没有观察到同文档/可信persisted pageshow，脚本返回passed=false/precondition且不认定SDK丢失，不能把CLI退出0当验收通过。这里实测结果确实passed=true。finally仅在结果采集后destroy SDK，用CDP清除专用origin的IDB/localStorage；CDP未用于制造BFCache恢复。浏览器与接收端已关闭，5196端口确认无监听。
+
+CI只做新脚本语法及既有回归，不宣称在CI执行了本机Chrome原生用例。该证据仅补A07中这个单机BFCache窗口，未覆盖并发多标签/崩溃租约所有组合、其他引擎、当前/上一稳定版完整矩阵、Android/iOS、OS强杀、Kafka/PG或容量。首个控制台404来自夹具未提供favicon，不是pageerror；原生用例未观察到JS未处理异常。
