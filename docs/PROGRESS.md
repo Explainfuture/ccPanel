@@ -1659,3 +1659,4 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 新增可缓存合成页面、原生历史恢复脚本和专用Chrome启动配置；移除自动化默认禁用BFCache/背景节流开关，无fetch/IndexedDB/生命周期事件替换。SDK实际构建449f14f4719751a13ef1a666ff141511dd223ddc93b246968d87bf2688c4b661，产品源码未改。
 - 首轮单次通过后强化双轮新上下文复核：Chrome155.0.8059.85同文档/同SDK两次trusted persisted pagehide/pageshow；真实IDB退出202保留，恢复不显式flush/重建，由可见事件自动取得202清队列0。四HTTP严格no-cors/cors/no-cors/cors，两对完整载荷相同、新操作ID不同、pageerror0。冻结安全JSON纳入docs/evidence。
 - 结果后CDP清专用origin，浏览器/接收端均关闭、5196无监听。仅本机原生BFCache窗口，未扩大为A05/A07全组合/设备矩阵/KafkaPG/容量；VPS不变。CI新增语法检查，实际浏览器测试不在CI伪装执行。
+- Actions40082535786 verify/postgres全部success，294测试通过/3平台跳过、既有17套PG及新脚本语法检查通过。原生双轮Chrome结果仍单独以冻结JSON记录，不把CI绿色当成本机浏览器/全矩阵通过证明。
