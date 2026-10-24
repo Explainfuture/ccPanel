@@ -8,6 +8,7 @@ import {tmpdir} from 'node:os';
 import {join,dirname,isAbsolute} from 'node:path';
 import pg from 'pg';
 import {readBackupFingerprints} from '../packages/server/src/backup-snapshot';
+import {inspectBackupCandidate} from '../packages/server/src/backup-candidate';
 const vps=process.env.CCPANEL_ISOLATED_CAPTURE_VPS==='true';
 const source=new URL(process.env.DATABASE_URL!);assert.match(source.pathname,/^\/ccpanel_restore_[0-9]{14}_[a-f0-9]{8}$/);
 const container=process.env.CCPANEL_PG_CONTAINER!;
@@ -50,6 +51,12 @@ try{
   const cipher=join(candidate,manifest.archive.file);assert.equal(manifest.archive.file,'database.dump.enc');assert.equal(manifest.archive.format,'CCPBK001');
   const hash=createHash('sha256');for await(const chunk of createReadStream(cipher))hash.update(chunk);assert.equal(hash.digest('hex'),manifest.archive.sha256);assert.equal(receipt.sha256,manifest.archive.sha256);assert.equal((await stat(cipher)).size,manifest.archive.bytes);
   assert.equal((await stat(candidate)).mode&0o777,0o700);assert.equal((await stat(cipher)).mode&0o777,0o600);assert.equal((await stat(join(candidate,'capture.json'))).mode&0o777,0o600);
+  const inspected=await inspectBackupCandidate({directory:candidate,expectedSchema:22,maxBytes:8388644,timeoutMs:30000});
+  assert.equal(inspected.cipherIntegrityChecked,true);assert.equal(inspected.sha256,manifest.archive.sha256);assert.equal(inspected.sourceAuthenticated,false);assert.equal(inspected.recoveryVerified,false);
+  if(!vps){
+    const inspection=await run(process.execPath,[join(dirname(process.env.CCPANEL_CAPTURE_CLI!),'inspect-backup.mjs'),candidate,'22']);
+    assert.equal(inspection.code,2);assert.deepEqual(JSON.parse(inspection.stdout),inspected);
+  }
   const again=await capture();assert.equal(again.code,1);assert.equal(await readFile(join(candidate,'capture.json'),'utf8'),rawManifest);
   const badOutput=join(directory,'schema-mismatch');const mismatch=await capture(badOutput,'999');assert.equal(mismatch.code,1);assert.deepEqual(await readdir(badOutput),[]);await rmdir(badOutput);
   const decrypted=await run(process.execPath,[cryptoScript,'decrypt',cipher,plain,key]);assert.equal(decrypted.code,0);authenticated=true;
@@ -60,7 +67,7 @@ try{
   if(!restoredConnected){await restored.connect();restoredConnected=true;}assert.deepEqual(await readBackupFingerprints(restored),manifest.fingerprints);assert.deepEqual((await restored.query('SELECT id::text,name FROM tenants')).rows,[{id:tenant,name:'CANDIDATE CLI FIXTURE'}]);assert.equal((await restored.query('SELECT count(*)::int AS n FROM recovery_gate')).rows[0].n,0);
   // Independent CI verification does not silently edit candidate state flags.
   assert.equal(await readFile(join(candidate,'capture.json'),'utf8'),rawManifest);
-  console.log(JSON.stringify({passed:true,surface:vps?'isolated_vps':'ci',actual_candidate_cli:true,cli_exit:2,status:'captured_unverified',exclusive_output_preserved:true,schema_mismatch_has_no_manifest:true,plaintext_removed_after_capture:true,cipher_hash_matches:true,authenticated_plaintext_hash_matches:true,actual_pg_restore:true,fingerprints_match:true,candidate_flags_remain_unverified:true,bytes:manifest.archive.bytes,relations:manifest.fingerprints.length}));
+  console.log(JSON.stringify({passed:true,surface:vps?'isolated_vps':'ci',actual_candidate_cli:true,cli_exit:2,status:'captured_unverified',read_only_candidate_inspection:true,exclusive_output_preserved:true,schema_mismatch_has_no_manifest:true,plaintext_removed_after_capture:true,cipher_hash_matches:true,authenticated_plaintext_hash_matches:true,actual_pg_restore:true,fingerprints_match:true,candidate_flags_remain_unverified:true,bytes:manifest.archive.bytes,relations:manifest.fingerprints.length}));
 }finally{
   if(restoredConnected)await restored.end();await db.end();if(targetCreated)await admin.query(`DROP DATABASE ${targetName} WITH (FORCE)`);await admin.end();
   if(authenticated)await unlink(plain);if(captured){await unlink(join(candidate,'capture.json'));await unlink(join(candidate,'database.dump.enc'));await rmdir(candidate);}await unlink(key);await rmdir(directory);

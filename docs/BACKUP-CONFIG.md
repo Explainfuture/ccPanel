@@ -47,6 +47,14 @@ pnpm backup:check infra/backup/offhost.example.json
 
 ## 两条数据流
 
+### 候选集合只读检查（步骤210）
+
+`pnpm backup:inspect /absolute/private/candidate 22`检查单份候选，不读取加密密钥、不写文件、不联网。要求POSIX受限自有目录和普通文件，拒绝符号链接、额外文件（包括残留工作明文）、缺文件、过大清单、非法/提升状态字段、错误schema和不符合现有范围的关系指纹。指纹中的PG bigint保持文本，不经JavaScript浮点数。
+
+检查器按64KiB分块读取密文，在调用者上限内核对CCPBK001头、字节数及SHA256；核对读取前后文件元数据/路径inode，读取后再比较清单，使用有界运行时间和取消检查。默认CLI密文上限268435492字节，可用CCPANEL_BACKUP_MAX_BYTES调整；不能把它当作磁盘空间预留或对阻塞内核I/O的强制中断。目录归可信协调器持有，调用者仍须任务锁，不能将检查结果当后续文件不会变化的保证。
+
+通过输出captured_unverified/cipherIntegrityChecked=true、退出2；错误仅固定码、退出1。Windows ACL未验证则拒绝。hash与清单一致不证明清单来自原源，也不证明AES-GCM认证、明文正确、最新状态完整或可恢复；sourceAuthenticated/recoveryVerified/offhostVerified/latestStateVerified仍false。不写verified manifest或成功水位，不开启调度。后续传输/恢复必须重新校验所用字节并完成认证解密、可信来源和实际恢复验证。
+
 完整快照流：源PG一致性快照 → dump及同一快照的范围指纹/manifest → 经固定主机密钥SSH拉取 → 协调器逐文件加密 → 解密到私有临时文件并核对hash → 上传不可变对象 → 从目的地重新下载并认证解密 → 隔离PG实际恢复与范围对账 → 原子发布verified manifest。备份ID唯一，既有对象不得覆盖；中断只能留下incomplete，不能更新最近成功时间。
 
 当前backup-remote.sh要求安静窗口的前后指纹相同，监控采集开启时不适合直接挂定时器。步骤202新增withBackupSnapshot共享PG快照原语，协调只读REPEATABLE READ事务的指纹与回调中的pg_dump --snapshot；步骤203增加captureBackupArchive流式有界落盘原语，输出仍为captured_unverified。步骤204让快照在BEGIN前非阻塞取得现有迁移/分区DDL锁的共享会话租约；已有受管DDL在执行则拒绝备份，备份期间分区维护退后，结束释放。尚未接入实际远程备份执行器或替换旧脚本。后续执行器仍须外层发布锁/版本绑定、manifest与加密传输/验真，不能直接移除原脚本对账条件。固定schema/release及工具hash写入manifest。恢复控制表按既有规则不靠旧dump重开；备份指纹覆盖关系沿明确SQL清单，不能称所有public表全覆盖。

@@ -1667,3 +1667,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 显式授权后新事件普通fetch确认，旧事件未重放；每场景HTTP严格no-cors/cors、最终队列0、新身份、pageerror0。撤回前已经收到的退出beacon仍算一次，未声称撤回删除服务端数据。冻结JSON见docs/evidence/bfcache-consent-chrome155-209.json。
 - SDK源码和VPS未改；复用208原生配置，仅新增测试及CI语法检查。浏览器/接收端已关闭、5196无监听。不是Kafka/PG、完整浏览器矩阵或容量验证。
 - Actions40083263436 verify/postgres全部success；既有测试与17套实际PG回归通过，新增原生脚本语法通过。实际BFCache授权测试仍为本机Chrome证据。
+
+### 步骤210：候选备份只读完整性检查
+
+- 新增严格清单解析、POSIX有界文件检查与backup:inspect命令；拒绝提升标记、额外/缺失文件、越界schema/大小/hash和不安全路径/权限，PG bigint指纹不经浮点数。读取前后元数据/路径检查及清单重读，64KiB分块hash，不加载整个归档。
+- 检查通过仍captured_unverified、退出2、来源/恢复/异机/最新状态false；不读密钥、不解密、不联网、不写成功水位。已有真实候选PG套件加入核心检查及Linux真实CLI，再独立认证解密/实际恢复；未启用目的地或调度、未改VPS。
+- 本机typecheck通过，3项结构/取消/Windows拒绝测试通过，3项POSIX专属测试跳过；真实Linux权限及PG链路待CI，不将Windows跳过视为通过。
