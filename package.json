@@ -15,6 +15,7 @@
     "db:migrate": "tsx packages/server/src/migrate.ts",
     "bootstrap": "tsx packages/server/src/bootstrap.ts",
     "backup:check": "tsx scripts/backup-config-check.ts",
+    "backup:capture": "tsx scripts/capture-backup.ts",
     "worker": "tsx apps/worker/src/main.ts"
   },
   "devDependencies": {

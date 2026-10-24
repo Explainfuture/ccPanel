@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
-import {mkdir,mkdtemp,rm} from 'node:fs/promises';
+import {mkdir,mkdtemp,rm,copyFile} from 'node:fs/promises';
 import path from 'node:path';
 import pg from 'pg';
 import {build} from 'esbuild';
@@ -26,10 +26,11 @@ function child(file,env,input='',args=[]){
   });
 }
 try{
-  const entries={migrate:'packages/server/src/migrate.ts','deletion-ledger':'packages/server/src/deletion-ledger.ts'};
-  const suites=['company-provision','report-edit','query-export','retention','partitions','capacity-proof','operational-history','operational-alerts','project-retention','schema-upgrade','retention-recovery','pressure-alerts','pressure-persistence','dlq-health','dlq-persistence','backup-snapshot'];
+  const entries={migrate:'packages/server/src/migrate.ts','deletion-ledger':'packages/server/src/deletion-ledger.ts','backup-capture-cli':'scripts/capture-backup.ts'};
+  const suites=['company-provision','report-edit','query-export','retention','partitions','capacity-proof','operational-history','operational-alerts','project-retention','schema-upgrade','retention-recovery','pressure-alerts','pressure-persistence','dlq-health','dlq-persistence','backup-snapshot','backup-capture'];
   for(const suite of suites)entries[suite]=`scripts/${suite}-check.ts`;
   for(const[name,entry]of Object.entries(entries))await build({entryPoints:[entry],outfile:path.join(dir,name+'.mjs'),bundle:true,platform:'node',target:'node22',format:'esm',packages:'external'});
+  await copyFile('scripts/encrypt-backup.mjs',path.join(dir,'encrypt-backup.mjs'));
   // Actual immutable schema19 source, not a reverse-edited schema20 fixture.
   const legacy=execFileSync('git',['show','1bd729e2bb44d1fbb75ef160bf6a2dab2bc263f3:packages/server/src/migrate.ts'],{encoding:'utf8',maxBuffer:1024*1024});
   assert.match(legacy,/export const schemaVersion=19;/);
@@ -43,7 +44,7 @@ try{
     const database='ccpanel_restore_'+new Date().toISOString().replace(/\D/g,'').slice(0,14)+'_'+randomBytes(4).toString('hex');
     assert.match(database,/^ccpanel_restore_[0-9]{14}_[a-f0-9]{8}$/);let created=false;
     const dburl=new URL(url);dburl.pathname='/'+database;
-    const env={...process.env,DATABASE_URL:dburl.href,PUBLIC_ORIGIN:'https://ci.ccpanel.invalid',RETENTION_ENABLED:'false'};
+    const env={...process.env,DATABASE_URL:dburl.href,PUBLIC_ORIGIN:'https://ci.ccpanel.invalid',RETENTION_ENABLED:'false',CCPANEL_CAPTURE_CLI:path.join(dir,'backup-capture-cli.mjs')};
     delete env.CCPANEL_PROGRESS_BOOTSTRAP_REASON;delete env.CCPANEL_RECOVERY_LEDGER;delete env.CCPANEL_OFFLINE_RESTORE;
     try{
       await admin.query(`CREATE DATABASE ${database}`);created=true;

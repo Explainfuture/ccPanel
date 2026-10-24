@@ -1638,3 +1638,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - typecheck/脚本语法及本机原有加密往返、Windows自动拒绝通过；3项POSIX新增加密测试明确跳过，待Linux CI验证兼容性、随机IV、篡改拒绝、已有密钥和空输入。未改VPS或启用备份调度/外部目的地。
 - 独立FileHandle探针复现destroy读取流后stat为EBADF，修正为读取结束后先核对源状态、写认证tag，最后统一销毁/关闭。此探针不绕过Windows自动化权限拒绝；实际POSIX加密仍由CI验证。
 - 首轮Actions40079955378失败，流式加密返回1且实际PG恢复未完成，保留失败不作通过证据。修复版Actions40080000604 verify/postgres全部success：新加密测试Linux3通过/Windows专属1跳过，全套291通过/2跳过；16套PG通过。实际明文122309字节、密文122345字节，密文独立hash与认证解密后原始hash均匹配，仅从解密副本恢复43关系/既有SQL一致，DDL/超时/连接清理继续通过。没有独立目的地往返或VPS部署声明。
+
+### 步骤206：可运行的单次候选捕获
+
+- 新增captureSnapshotCandidate与pnpm backup:capture，组合已有组件，显式源URI/匹配pg_dump或同源本机Docker客户端，已有私有密钥，排他私有目录/空间预检、共享快照/DDL租约、限额dump/加密、原子候选清单和成功捕获后的工作明文清理。没有开启offhost模板/SSH/调度或传输目的地。
+- capture.json含来源database/schema、原始/密文hash和精确文本指纹；无密钥路径/连接凭证。候选始终captured_unverified、恢复/异机/最新状态/发布来源验证均false，CLI退出2；异常退出1、私有不完整集合保留，重试不覆盖。没有将候选目录存在当备份完成。
+- 新增第17套实际PG CI：真实CLI产出，验证权限/文件集合/清单/hash、重复输出拒绝、schema不符无清单，再独立认证解密实际恢复并比较指纹和原事件夹具；即使独立验证也不悄悄更改候选状态。typecheck通过，本机3项拒绝/CLI测试通过、POSIX空间预检1项跳过；Linux实际流程待CI。

@@ -22,6 +22,22 @@ Kafka 中已确认但尚未写入 PG 的事件不包含在 PG 备份中。本流
 
 认证解密仍使用现有decrypt文件模式，GCM验证通过后才发布目标文件；没有提供边解密边恢复的stdout模式，避免未经完整认证的明文进入数据库。步骤205的真实PG验收分别流式复核原始/密文hash，并认证解密后核对原始hash，再从解密文件恢复；这仍是CI本地副本往返，不证明异机存储传输或生产RPO/RTO。
 
+### 显式单次候选捕获（步骤206）
+
+```sh
+pnpm backup:capture /private/work/run-unique /private/keys/backup.key 22
+```
+
+仅支持POSIX，需Node22、项目依赖及匹配服务器版本的pg_dump。先准备当前用户拥有、权限0700且无符号链接的工作父目录，候选run-unique必须不存在；密钥预先生成、32字节/0600，放在候选目录之外。命令从独立环境变量CCPANEL_BACKUP_DATABASE_URL读取显式PostgreSQL URI，不隐式使用应用DATABASE_URL；凭证不进入pg_dump参数或日志。仅支持URI中的sslmode参数，其他选项拒绝；实际TLS/源身份需操作员核实。
+
+默认CCPANEL_BACKUP_MAX_BYTES=268435456、CCPANEL_BACKUP_TIMEOUT_MS=120000，可用正整数配置（超时上限30分钟）。开始前检查至少两倍原始字节上限加1MiB元数据的可用空间，不能预留或保证其他进程不占用磁盘；后续I/O失败仍显式失败。可选CCPANEL_BACKUP_PG_CONTAINER指定同一来源PG的本机Docker容器，使用容器内pg_dump/本地socket，不向该容器传递URI密码；若socket需要认证则该适配器会失败。它不验证容器与URI的实际同源性，不是SSH/离机传输。
+
+捕获组合共享快照/受管DDL租约、原始归档限额、流式加密，源会话正常结束后才发布0600 capture.json。候选目录排他创建，文件和目录fsync；清单记录schema/database、精确文本指纹、密文文件名/大小/hash和原始大小/hash，不含密钥引用或连接凭证。清单持久化后移除工作明文并再次sync目录，正常目录仅capture.json和database.dump.enc。
+
+成功产出候选仍退出2/status=captured_unverified，recoveryVerified/offhostVerified/latestStateVerified及source.releaseVerified均false。捕获不运行恢复、不确认删除/事故状态，不发布verified manifest或成功索引；不能按退出0成功备份使用。错误退出1，已创建的私有不完整目录保留待查，重试必须选择新目录，不覆盖未知文件。磁盘/源故障或后续manifest/清理失败时，文件存在不表示成功；不要自动清空失败目录。
+
+CI第17套验收从真实CLI产出候选、验证无明文残留/排他输出/权限/清单，再独立认证解密并实际隔离PG恢复；核验通过也不回写候选的验证标记。当前命令没有接入offhost配置、可信最新状态、独立目的地或调度，生产恢复门禁规则继续适用。
+
 正常完成须文件fsync、排他hard-link发布、移除临时名及目录fsync；已有文件/竞争发布者绝不覆盖。回执仅为captured_unverified/bytes/hash，尚需共享快照回调整体成功、加密、目的地往返及真实恢复核验后，外层才能发布verified manifest。hard-link已发生但后续失败时返回archive_publish_uncertain，保留可能存在的不可变文件，不能据其存在登记成功或盲目重写。调用方须保留证据再处理。内核不可中断I/O、宿主掉电、恶意同UID修改私有目录和远程docker exec内部进程的异常终止不由此原语验收；CI的取消用真实本地Node写进程，PG导出成功路径用服务容器客户端。
 
 1. 将 `scripts/backup-fingerprint.sql` 放在当前发布目录的 scripts/ 中，以 root 执行 `bash scripts/backup-remote.sh`。输出受限备份目录，不输出凭证。该演练要求安静窗口，前后指纹不同则停止并重试，不宣称完成对账；pg_dump 本身仍使用一致性快照。

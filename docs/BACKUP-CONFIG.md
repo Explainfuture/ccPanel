@@ -76,3 +76,5 @@ pnpm backup:check infra/backup/offhost.example.json
 步骤203补充CI证据：共享快照实际pg_dump改为有界流式文件捕获，独立复核文件hash后流式输入pg_restore，43关系仍一致；原生本地Node子进程的超限/失败/空输出/超时/取消/竞争输出检查在Linux通过。共享快照超时会等待回调实际清理。以上仍是执行器组件，不启用配置模板、传输目的地或调度。
 
 步骤205新增自动化专用encrypt-stream模式：只读已有受限32字节密钥，不生成新密钥，cipher stdout交给有界捕获原语；格式继续CCPBK001。PG验收改为先加密、认证解密并核对原始hash，再仅从解密副本流式恢复。此为CI本地加密往返，不冒充独立目的地上传/下载或可信最新状态同步。
+
+步骤206提供显式单次本地捕获命令backup:capture，组合上述组件生成独占候选目录与capture.json；详见BACKUP-RECOVERY。它不读取/启用offhost模板，不自动建SSH隧道、上传或调度。候选退出2并保留全部未验证标记，不能更新最近成功备份水位。源连接、客户端版本和Docker目标同源性仍由操作员核对，releaseVerified保持false。
