@@ -31,3 +31,11 @@ capacity-report现在返回cpuBreakdownPercent及containerPressureDeltas；可�
 固定PerfData字段另外读到Serial young/full collection pauses，确认实际收集器为Serial；没有读取VM参数/环境、附加JVM或触发GC。数字计数为young2605/full95，nmethodSize35423456/code23416056、老年代used105945536字节；used不是完整GC后的存活量，不能据此确定可削减的堆。官方4.1.2 [Docker launch](https://raw.githubusercontent.com/apache/kafka/4.1.2/docker/jvm/launch)先加入CDS参数，因而[run-class的空选项默认G1分支](https://raw.githubusercontent.com/apache/kafka/4.1.2/bin/kafka-run-class.sh)可能不应用；这解释了不能仅看通用脚本默认值判断运行时GC，但不声称已核查全部启动环境。未修改JVM/容器限额、Swap或安全服务，也未启动新的容量负载。
 
 随后20.007秒低业务活动观察（非受控空闲）绑定同一四容器ID/启动/重启与主机实例边界，五次MemAvailable读数313196/312828/312692/314060/313952KiB，累计换入8192字节、换出0。仅用于区分当前短时活动与换出占用，不用20秒替代30分钟或推翻旧完整窗口的持续Swap失败；原始swap-activity-short.json在同一受限目录。
+
+### 真实运行器的独立对照
+
+新增第19套PG验收对同一空临时库顺序运行两个新进程，各25秒：三runner默认同相2000ms与0/667/1333ms，相同max4/idle10秒、实际恢复共享租约和原任务体。包装仅观察原生pg两种connect重载、SQL执行和release；独立pg_stat_activity/pg_locks观察真实PID、连接数与租约。无SQL sleep或模拟客户端，源关系指纹/门禁/位点不变，结束后服务端会话和租约均释放。CI41484093516通过：527测试/9平台跳过、19套真实PG，稳定连接4→2，每类轮询12～13次且零错误；CI不读取Docker或/proc，不输出主机RAM收益。
+
+VPS采用未修改的013作为基础，单独执行新编译运行器，原API/Worker/Kafka一直运行。监督单元180秒/96MiB、独立清理及300/200MiB内存保护，固定PG容器IP/宿主postmaster身份，按服务端PID映射读取被测后端smaps_rollup，每秒至多一次。首轮0n1FbO在D-Bus接口拼写预检处失败、未预留DB；f0d6665修正后CG0sPm完成。冻结[安全证据](evidence/api-polling-vps-220.json)绑定原始私有proof hash，临时库删除、root2/3/DLQ0/位点15618，原服务ID/启动时间/运行状态一致，013 ready，未发布新API。
+
+实际稳定连接4→2；所选后端总私有RSS均值6483968→3260416字节，减少3223552字节（约3.07MiB）；PSS+SwapPss均值13530112→8665088字节，差4865024字节（约4.64MiB），含共享页分摊变化。该差量只属于被测后端，整组PG、生产API或主机净节省未验证。协调观测控制组自身记账CPU9.776秒、内存峰值96.0M、Swap峰值216.0K；没有扣除该开销制造整机收益。当前只支持小幅轻载连接整理，不能据此宣称持续Swap已修复或新的容量窗口已通过。

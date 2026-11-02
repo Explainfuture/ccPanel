@@ -1,0 +1,245 @@
+{
+  "version": 1,
+  "scope": "isolated_vps_empty_queue_polling_comparison",
+  "source_commit": "f0d6665a577b33943209b3d4ba99cbb6f8ae8884",
+  "unit": "ccpanel-polling220-015cb294f15f637f.service",
+  "fixture": "CG0sPm",
+  "production_release": "m4-sdk-013",
+  "node_version": "v22.22.3",
+  "parent_bundle_sha256": "4d855bfb7957ea5dcb019da3daca8ae524f5dea8ed22a158847bd733a241639b",
+  "child_bundle_sha256": "f7123475d0bf26cf14a5a82f4019056e8e387e20c74522be98b818eadcc9be81",
+  "raw_private_proof_sha256": "fb4c60b7f324f86a50a21e622f45e74ea8bcebee8fea78161781eae1776e4bd2",
+  "baseline": {
+    "mode": "baseline",
+    "surface": "isolated_vps_tooling",
+    "measurementStartedAt": 1793637777053,
+    "measurementFinishedAt": 1793637802055,
+    "measurementMs": 25002,
+    "poolMax": 4,
+    "idleTimeoutMs": 10000,
+    "initialPhasesMs": [
+      2000,
+      2000,
+      2000
+    ],
+    "ticks": {
+      "query": 12,
+      "deletion": 12,
+      "replay": 12
+    },
+    "failedTicks": {
+      "query": 0,
+      "deletion": 0,
+      "replay": 0
+    },
+    "checkoutObservations": {
+      "callbackCheckouts": 1,
+      "promiseCheckouts": 37,
+      "peakCheckedOut": 4,
+      "peakRequested": 4,
+      "maxPoolTotal": 4,
+      "maxPoolIdle": 3,
+      "maxWaiting": 0,
+      "connectErrors": 0,
+      "queryErrors": 0
+    },
+    "settledPool": {
+      "samples": 51,
+      "minTotal": 4,
+      "maxTotal": 4,
+      "minIdle": 0,
+      "maxIdle": 3
+    },
+    "finalPool": {
+      "total": 4,
+      "idle": 3,
+      "waiting": 0
+    },
+    "actualPgObservation": {
+      "samples": 236,
+      "settledSamples": 45,
+      "uniqueBackends": 4,
+      "settledMin": 4,
+      "settledMax": 4,
+      "settledSharedLeaseExactlyOne": true,
+      "serverSessionsGone": true,
+      "exclusiveRecoveryLockAvailable": true
+    },
+    "recoveryLeaseAcquired": true,
+    "recoveryLeaseReleased": true,
+    "allPoolClientsClosed": true,
+    "naturalExit": true,
+    "privateMemory": {
+      "measured": true,
+      "units": "bytes",
+      "minimumIntervalMs": 1000,
+      "settledSamples": 4,
+      "settledSkippedSamples": 0,
+      "stats": {
+        "privateRssBytes": {
+          "min": 6483968,
+          "max": 6483968,
+          "mean": 6483968
+        },
+        "pssBytes": {
+          "min": 13158400,
+          "max": 13158400,
+          "mean": 13158400
+        },
+        "swapPssBytes": {
+          "min": 371712,
+          "max": 371712,
+          "mean": 371712
+        },
+        "pssPlusSwapPssBytes": {
+          "min": 13530112,
+          "max": 13530112,
+          "mean": 13530112
+        }
+      }
+    }
+  },
+  "staggered": {
+    "mode": "staggered",
+    "surface": "isolated_vps_tooling",
+    "measurementStartedAt": 1793637802740,
+    "measurementFinishedAt": 1793637827743,
+    "measurementMs": 25003,
+    "poolMax": 4,
+    "idleTimeoutMs": 10000,
+    "initialPhasesMs": [
+      0,
+      667,
+      1333
+    ],
+    "ticks": {
+      "query": 13,
+      "deletion": 13,
+      "replay": 12
+    },
+    "failedTicks": {
+      "query": 0,
+      "deletion": 0,
+      "replay": 0
+    },
+    "checkoutObservations": {
+      "callbackCheckouts": 1,
+      "promiseCheckouts": 39,
+      "peakCheckedOut": 2,
+      "peakRequested": 2,
+      "maxPoolTotal": 2,
+      "maxPoolIdle": 1,
+      "maxWaiting": 0,
+      "connectErrors": 0,
+      "queryErrors": 0
+    },
+    "settledPool": {
+      "samples": 50,
+      "minTotal": 2,
+      "maxTotal": 2,
+      "minIdle": 1,
+      "maxIdle": 1
+    },
+    "finalPool": {
+      "total": 2,
+      "idle": 1,
+      "waiting": 0
+    },
+    "actualPgObservation": {
+      "samples": 239,
+      "settledSamples": 46,
+      "uniqueBackends": 2,
+      "settledMin": 2,
+      "settledMax": 2,
+      "settledSharedLeaseExactlyOne": true,
+      "serverSessionsGone": true,
+      "exclusiveRecoveryLockAvailable": true
+    },
+    "recoveryLeaseAcquired": true,
+    "recoveryLeaseReleased": true,
+    "allPoolClientsClosed": true,
+    "naturalExit": true,
+    "privateMemory": {
+      "measured": true,
+      "units": "bytes",
+      "minimumIntervalMs": 1000,
+      "settledSamples": 4,
+      "settledSkippedSamples": 0,
+      "stats": {
+        "privateRssBytes": {
+          "min": 3260416,
+          "max": 3260416,
+          "mean": 3260416
+        },
+        "pssBytes": {
+          "min": 8408064,
+          "max": 8408064,
+          "mean": 8408064
+        },
+        "swapPssBytes": {
+          "min": 257024,
+          "max": 257024,
+          "mean": 257024
+        },
+        "pssPlusSwapPssBytes": {
+          "min": 8665088,
+          "max": 8665088,
+          "mean": 8665088
+        }
+      }
+    }
+  },
+  "privateBackendMemoryComparison": {
+    "measured": true,
+    "units": "bytes",
+    "fixedContainerIpAndPostmasterVerified": true,
+    "privateRssMeanReductionBytes": 3223552,
+    "pssPlusSwapPssMeanReductionBytes": 4865024,
+    "sharedPssReallocationPossible": true,
+    "wholePostgresOrHostMemorySavingsVerified": false
+  },
+  "controller": {
+    "passed": true,
+    "isolated_empty_database_polling": true,
+    "production_services_modified": false,
+    "temporary_database_removed": true,
+    "https_ready": true,
+    "root_business_counts_checked": true,
+    "original_services_running_and_unchanged": true,
+    "capacity_verified": false
+  },
+  "cleanup": {
+    "passed": true,
+    "temporary_database_removed": true,
+    "original_services_running_and_unchanged": true,
+    "root_business_counts_checked": true,
+    "https_ready": true
+  },
+  "source_fingerprints_unchanged": true,
+  "natural_children_exit": true,
+  "observer_accounting": {
+    "runtime_limit_seconds": 180,
+    "memory_limit_bytes": 100663296,
+    "cpu_time_reported": "9.776s",
+    "memory_peak_reported": "96.0M",
+    "swap_peak_reported": "216.0K"
+  },
+  "first_attempt": {
+    "fixture": "0n1FbO",
+    "stage": "supervisor_preflight",
+    "error": "invalid D-Bus interface name",
+    "measurement_started": false,
+    "temporary_database_reserved": false,
+    "ready_checked": true
+  },
+  "limits": {
+    "empty_queues_only": true,
+    "sql_or_clock_mocked": false,
+    "production_api_deployed": false,
+    "whole_postgres_or_host_memory_savings_verified": false,
+    "full_capacity_verified": false,
+    "observer_overhead_in_environment": true,
+    "observer_memory_in_backend_totals": false,
+    "shared_pss_reallocation_possible": true
+  }
+}
