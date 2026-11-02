@@ -12,6 +12,7 @@ import type {AnalysisSpec} from './analysis-spec';
 import {ReportError,reportReference} from './report-spec';
 import {savedReportRun} from './reports';
 import {lockQuerySnapshot} from './query-snapshot';
+import {startApiPolling} from './api-polling';
 export {parseQuerySpec} from './analysis-spec';
 
 const validId = (id: string) =>
@@ -115,7 +116,7 @@ export function registerQueryJobs(app: Hono<Env>) {
 
 // One global runner, protected by a connection-held PG advisory lock. Read-only
 // jobs can be requeued safely after a process crash; no Redis or extra service.
-export function startQueryJobs() {
+export function startQueryJobs(initialDelayMs=2000) {
   let busy = false,
     stopped = false;
   const tick = async () => {
@@ -246,10 +247,9 @@ export function startQueryJobs() {
       busy = false;
     }
   };
-  const timer = setInterval(() => void tick(), 2000);
-  timer.unref();
+  const stopPolling = startApiPolling(() => void tick(), initialDelayMs);
   return () => {
     stopped = true;
-    clearInterval(timer);
+    stopPolling();
   };
 }

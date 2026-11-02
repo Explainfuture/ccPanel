@@ -62,12 +62,12 @@ const app=createApp({maxIntakeInFlight:Number(process.env.INGEST_MAX_INFLIGHT??1
 })});
 const server=serve({fetch:app.fetch,port:Number(process.env.PORT||3000),hostname:process.env.HOST||'127.0.0.1'});
 console.log(JSON.stringify({code:'api_ready'}));
-const stopJobs=startQueryJobs();
-const stopDeletions=startDeletions();
+const stopJobs=startQueryJobs(0);
+const stopDeletions=startDeletions(667);
 const stopReplay=startReplayJobs((raw,key)=>publishWithAdmission(admission,1,async()=>{
   const receipts=await producer.send({topic:eventsTopic,acks:-1,timeout:8000,messages:[{key,value:raw}]});
   const receipt=receipts[0];
   if(!receipt||receipt.baseOffset===undefined)throw new Error('missing_replay_receipt');
   return {topic:receipt.topicName,partition:receipt.partition,offset:receipt.baseOffset};
-}));
+}),1333);
 for(const signal of ['SIGTERM','SIGINT'] as const) process.once(signal,()=>{stopJobs();stopDeletions();stopReplay();clearInterval(probe);server.close(async()=>{stopIntakeMetrics();await stopOperationalCollection();await admin.disconnect();await producer.disconnect();await releaseRecoveryLease();await pool.end();process.exit(0);});});

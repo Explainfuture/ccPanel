@@ -8,6 +8,7 @@ import { digest } from './security';
 import { identityHash,lockProjectPrivacy } from './privacy';
 import { parseReplayRequest,readReplayPayload,replayCandidate,ReplayRejected } from './dlq-replay-policy';
 import { IngestionPaused } from './ingest-admission';
+import {startApiPolling} from './api-polling';
 
 const prefix='/api/tenants/:tenant/projects/:project/dlq/replays';
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -131,8 +132,8 @@ export async function replayTick(publish:ReplayPublisher){
     await db.query('COMMIT');
   }catch(e){await db.query('ROLLBACK');throw e;}finally{db.release();}
 }
-export function startReplayJobs(publish:ReplayPublisher){
+export function startReplayJobs(publish:ReplayPublisher,initialDelayMs=2000){
   let busy=false,stopped=false;
-  const timer=setInterval(()=>{if(busy||stopped)return;busy=true;void replayTick(publish).catch(()=>console.error(JSON.stringify({code:'replay_runner_error'}))).finally(()=>{busy=false;});},2000);
-  timer.unref();return()=>{stopped=true;clearInterval(timer);};
+  const stopPolling=startApiPolling(()=>{if(busy||stopped)return;busy=true;void replayTick(publish).catch(()=>console.error(JSON.stringify({code:'replay_runner_error'}))).finally(()=>{busy=false;});},initialDelayMs);
+  return()=>{stopped=true;stopPolling();};
 }

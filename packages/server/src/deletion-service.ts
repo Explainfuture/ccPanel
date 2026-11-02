@@ -4,6 +4,7 @@ import type { PoolClient } from "pg";
 import type { Env } from "../../../apps/api/src/app";
 import { pool, query } from "./db";
 import { storageSafeText } from '../../schema/src/index';
+import {startApiPolling} from './api-polling';
 import {
   identityHash,
   identityHashSql,
@@ -290,7 +291,7 @@ export async function deleteBatch(
   );
   return !redacted.rowCount;
 }
-export function startDeletions() {
+export function startDeletions(initialDelayMs=2000) {
   let busy = false,
     stopped = false;
   const tick = async () => {
@@ -366,10 +367,9 @@ export function startDeletions() {
       busy = false;
     }
   };
-  const timer = setInterval(() => void tick(), 2000);
-  timer.unref();
+  const stopPolling = startApiPolling(() => void tick(), initialDelayMs);
   return () => {
     stopped = true;
-    clearInterval(timer);
+    stopPolling();
   };
 }
