@@ -136,7 +136,10 @@ try{
       pending.set(event.event_id,Date.parse(event.event_time));backlog.push(event);if(n>0&&n%50===0)retryCopies.push(event);pump();
     }
     generationSeconds=(Date.now()-start)/1000;
-    await sleep(Math.max(0,start+seconds*1000-Date.now()));await checkStop();
+    // Native timers can wake slightly early. Recheck the actual deadline so a
+    // completed window never becomes shorter than its declared duration.
+    while(!abortReason&&Date.now()<start+seconds*1000){await sleep(Math.max(0,start+seconds*1000-Date.now()));await checkStop();}
+    await checkStop();
     const deadline=Date.now()+30000;
     while(!abortReason&&(pending.size||backlog.length||retryCopies.length||sending)&&Date.now()<deadline){await checkStop();if(abortReason)break;pump();await observe();await sleep(250);}
   }
