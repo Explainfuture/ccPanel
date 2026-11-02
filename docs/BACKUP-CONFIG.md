@@ -47,6 +47,16 @@ pnpm backup:check infra/backup/offhost.example.json
 
 ## 两条数据流
 
+### 候选认证解密入口（步骤212）
+
+`pnpm backup:decrypt-candidate /private/destination/id /private/key /private/work/authenticated.dump 22`显式验证已有候选并生成受限工作明文。现有32字节密钥必须为自有私有普通文件，拒绝最终路径符号链接、不自动创建密钥；输出父目录须已存在、私有且canonical，已有输出绝不覆盖。CLI沿用明文预算CCPANEL_BACKUP_MAX_BYTES，核心maxBytes为密文预算。
+
+先检查候选并固定密文/清单hash，再从同一密文文件句柄分块解密CCPBK001 AES256-GCM；认证完成前的明文仅写本次独占创建的0600临时文件。核对密文、明文字节数/hash、源复核与fsync后，重新读取实际落盘明文再核对，才排他hardlink发布输出并同步父目录。回执decrypted_unverified/authenticatedDecryption=true/plaintextReadbackChecked=true，退出2；认证成功不证明可信原源身份、完整关系范围、最新状态或可恢复，四个未验证标记仍false，不写verified manifest/成功水位。
+
+认证失败、明文不符、受控取消或普通I/O失败时，关闭持有句柄、清零本次密钥Buffer，并尝试仅清理本次创建且尚未发布的临时明文；wx碰撞文件和已有/竞争输出不删。清理失败明确decrypt_cleanup_failed；输出发布后错误为decrypt_publish_uncertain并保留输出，不能当成功。成功输出是敏感工作文件，由恢复控制器在核验/恢复后清除。进程强杀/断电、阻塞内核I/O或删除失败不保证明文自动消失，后续作业控制器仍须负责私有工作目录生命周期。
+
+该入口不执行pg_restore、不导入最新v2状态、不打开恢复门禁，也不替换历史手工encrypt-backup.mjs接口。CI从本地目的地副本通过此真实CLI解密，再独立hash和实际隔离PG恢复；不是独立目的地/源身份/最新状态/整机RPO或RTO验收。
+
 ### 本地目的地复制组件（步骤211）
 
 `pnpm backup:copy-local /private/work/candidate /private/destination backup-id 22`显式复制一份已有候选；目的地根目录须预先存在、POSIX私有且归当前用户持有。它不读取/启用offhost模板，不连接VPS/SFTP、不创建目的地根目录或定时器。CLI的CCPANEL_BACKUP_MAX_BYTES沿用明文预算，核心API的maxBytes为密文预算。

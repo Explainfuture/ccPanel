@@ -18,6 +18,7 @@
     "backup:capture": "tsx scripts/capture-backup.ts",
     "backup:inspect": "tsx scripts/inspect-backup.ts",
     "backup:copy-local": "tsx scripts/copy-backup-local.ts",
+    "backup:decrypt-candidate": "tsx scripts/decrypt-backup-candidate.ts",
     "worker": "tsx apps/worker/src/main.ts"
   },
   "devDependencies": {
