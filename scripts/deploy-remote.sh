@@ -9,15 +9,38 @@ release="/opt/ccpanel/releases/$CCPANEL_RELEASE"
 previous=$(readlink -f /opt/ccpanel/current)
 test ! -e "$release"
 test -f /opt/ccpanel/shared/release.tar.gz
+# Changed dependency metadata requires a separately completed private stage.
+# Verify before creating the release or stopping any running service.
+archive=/opt/ccpanel/shared/release.tar.gz
+changed_dependencies=false
+for metadata in package.json pnpm-lock.yaml pnpm-workspace.yaml; do
+  archive_metadata=$(tar -xOf "$archive" "$metadata" | sha256sum | cut -d' ' -f1)
+  previous_metadata=$(sha256sum "$previous/$metadata" | cut -d' ' -f1)
+  if [ "$archive_metadata" != "$previous_metadata" ]; then changed_dependencies=true;fi
+done
+if [ "$changed_dependencies" = true ]; then
+  : "${CCPANEL_DEPENDENCIES_DIR:?Changed dependency metadata requires a completed private stage}"
+  verifier=/opt/ccpanel/shared/verify-release-dependencies.py
+  test -f "$verifier";test ! -L "$verifier"
+  test "$(readlink -f "$verifier")" = "$verifier"
+  test "$(stat -c %u "$verifier")" = 0
+  verifier_mode=$(stat -c %a "$verifier");(( (8#$verifier_mode & 022) == 0 ))
+  verifier_sha=$(tar -xOf "$archive" scripts/verify-release-dependencies.py | sha256sum | cut -d' ' -f1)
+  test "$(sha256sum "$verifier" | cut -d' ' -f1)" = "$verifier_sha"
+  python3 "$verifier" verify "$CCPANEL_DEPENDENCIES_DIR" "$archive"
+fi
 mkdir -p "$release"
 # Parent operator shells may use umask 077 for private ledger files. The
 # unprivileged runtime must still traverse its code mount; secrets remain 600.
 chmod 755 "$release"
 tar -xzf /opt/ccpanel/shared/release.tar.gz -C "$release"
-# Dependencies are read-only to the containers. Install anew if the runtime lock changes.
-cp -al "$previous/node_modules" "$release/node_modules"
-if ! cmp -s "$previous/pnpm-lock.yaml" "$release/pnpm-lock.yaml"; then
-  docker run --rm -v "$release:/app" -w /app node:22.22.3-bookworm-slim sh -c 'npm install -g pnpm@12.3.4 --ignore-scripts --no-audit --no-fund && pnpm install --prod --frozen-lockfile'
+# Reuse an unchanged dependency tree without mutation. A changed tree is copied
+# independently; no installer ever runs against old hardlinked release files.
+if [ "$changed_dependencies" = true ]; then
+  cp -a "$CCPANEL_DEPENDENCIES_DIR/node_modules" "$release/node_modules"
+  python3 "$verifier" verify-copy "$CCPANEL_DEPENDENCIES_DIR" "$release" "$release/node_modules"
+else
+  cp -al "$previous/node_modules" "$release/node_modules"
 fi
 cp /opt/ccpanel/shared/runtime.env "$release/infra/.env"
 chmod 600 "$release/infra/.env"
