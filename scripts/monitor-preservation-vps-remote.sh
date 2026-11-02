@@ -7,6 +7,7 @@ set +x
 set -euo pipefail
 umask 077
 deadline=$((SECONDS+145))
+phase=controller_preflight
 test "$(id -u)" = 0
 test "${CCPANEL_EXPECTED_RELEASE:-}" = m4-polling-014
 : "${CCPANEL_MONITOR_CONTROLLER_UNIT:?Set the supervised monitor unit}"
@@ -89,8 +90,8 @@ image=$(timeout --signal=TERM --kill-after=2s 5s docker inspect --format '{{.Ima
 test "$(timeout --signal=TERM --kill-after=2s 5s docker image inspect node:22.22.3-bookworm-slim --format '{{.Id}}')" = "$image"
 network=$(timeout --signal=TERM --kill-after=2s 5s docker inspect --format '{{range $name,$value := .NetworkSettings.Networks}}{{$name}}{{end}}' ccpanel-api-1);test "$network" = ccpanel_default
 cd "$release/infra"
-watcher=;before_ok=false;after_ok=false
-pg(){ timeout --signal=TERM --kill-after=2s 7s docker compose exec -T postgres psql -X -q -U ccpanel -d ccpanel -At -v ON_ERROR_STOP=1 "$@"; }
+watcher=;before_ok=false;after_ok=false;baseline_ready=false
+pg(){ timeout --signal=TERM --kill-after=2s 7s docker exec -i ccpanel-postgres-1 psql -X -q -U ccpanel -d ccpanel -At -v ON_ERROR_STOP=1 "$@"; }
 fingerprints(){
   pg <<'SQL'
 BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
@@ -105,13 +106,18 @@ configuration(){
   readlink -f /opt/ccpanel/current || return 1
   sha256sum "$release/dist/api.mjs" "$release/dist/worker.mjs" "$release/dist/web/sdk/ccpanel.js" "$release/infra/compose.yaml" || return 1
   printf 'swappiness=';cat /proc/sys/vm/swappiness || return 1
-  local name identity
-  for name in api worker kafka postgres;do
-    timeout --signal=TERM --kill-after=2s 5s docker inspect --format '{{.Name}}|{{.Id}}|{{.Image}}|{{.State.StartedAt}}|{{.RestartCount}}|{{.State.OOMKilled}}|{{.State.Running}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.CpuPeriod}}|{{.HostConfig.CpuQuota}}' "ccpanel-$name-1" || return 1
-    identity=$(timeout --signal=TERM --kill-after=2s 5s docker inspect --format '{{.Id}}' "ccpanel-$name-1") || return 1
-    [[ "$identity" =~ ^[a-f0-9]{64}$ ]] || return 1
+  local name identity inspected index observed_name observed_image started restarts oom running memory memory_swap nano_cpus cpu_period cpu_quota extra
+  local -a names=(api worker kafka postgres) rows
+  inspected=$(timeout --signal=TERM --kill-after=2s 5s docker inspect --format '{{.Name}}|{{.Id}}|{{.Image}}|{{.State.StartedAt}}|{{.RestartCount}}|{{.State.OOMKilled}}|{{.State.Running}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.CpuPeriod}}|{{.HostConfig.CpuQuota}}' ccpanel-api-1 ccpanel-worker-1 ccpanel-kafka-1 ccpanel-postgres-1) || return 1
+  mapfile -t rows <<<"$inspected";test "${#rows[@]}" = 4 || return 1
+  for index in 0 1 2 3;do
+    name=${names[$index]}
+    IFS='|' read -r observed_name identity observed_image started restarts oom running memory memory_swap nano_cpus cpu_period cpu_quota extra <<<"${rows[$index]}"
+    test "$observed_name" = "/ccpanel-$name-1" && test -z "$extra" && test -n "$started" || return 1
+    [[ "$identity" =~ ^[a-f0-9]{64}$ && "$observed_image" =~ ^sha256:[a-f0-9]{64}$ ]] || return 1
+    test "$running|$oom|$restarts" = 'true|false|0' || return 1
+    printf '%s\n' "${rows[$index]}"
     printf '%s:' "$name";cat "/sys/fs/cgroup/system.slice/docker-$identity.scope/memory.max" "/sys/fs/cgroup/system.slice/docker-$identity.scope/memory.swap.max" "/sys/fs/cgroup/system.slice/docker-$identity.scope/cpu.max" || return 1
-    test "$(timeout --signal=TERM --kill-after=2s 5s docker inspect --format '{{.State.Running}}|{{.State.OOMKilled}}|{{.RestartCount}}' "ccpanel-$name-1")" = 'true|false|0' || return 1
   done
   for name in api worker;do
     timeout --signal=TERM --kill-after=2s 5s docker exec "ccpanel-$name-1" node -e "const v={collection:process.env.OPERATIONAL_COLLECTION_ENABLED==='true',retention:process.env.RETENTION_ENABLED==='true'};console.log(JSON.stringify(v));if(!v.collection||!v.retention)process.exitCode=1;" || return 1
@@ -127,21 +133,27 @@ sessions_gone(){
   return 1
 }
 finish(){
-  local status=$? unchanged=false ready=false sessions=false
+  local original_status=$?
+  local status=$original_status original_phase=$phase unchanged=false ready=false sessions=false comparison_status=not_performed_missing_baseline
   trap - EXIT INT TERM;set +e
   if [ -n "$watcher" ];then kill "$watcher" 2>/dev/null;wait "$watcher" 2>/dev/null;fi
   cleanup_owned >"$state/cleanup.log" 2>&1 || status=1
   if sessions_gone >"$state/sessions.log" 2>&1;then sessions=true;else status=1;fi
-  if configuration >"$state/configuration-after.txt" 2>"$state/configuration-after.log" && fingerprints >"$state/public-after.jsonl" 2>"$state/public-after.log" &&
-    cmp -s "$state/configuration-before.txt" "$state/configuration-after.txt" && cmp -s "$state/public-before.jsonl" "$state/public-after.jsonl";then unchanged=true
-  else status=1
+  if configuration >"$state/configuration-after.txt" 2>"$state/configuration-after.log" && fingerprints >"$state/public-after.jsonl" 2>"$state/public-after.log";then
+    if [ "$baseline_ready" = true ];then
+      if cmp -s "$state/configuration-before.txt" "$state/configuration-after.txt" && cmp -s "$state/public-before.jsonl" "$state/public-after.jsonl";then unchanged=true;comparison_status=matched
+      else status=1;comparison_status=mismatch
+      fi
+    else status=1
+    fi
+  else status=1;comparison_status=not_performed_final_observation_failed
   fi
   if curl --max-time 5 -fsS https://192.236.151.125/ready >/dev/null 2>&1;then ready=true;else status=1;fi
   if [ -f "$state/resource-guard.json" ] || [ "$before_ok" != true ] || [ "$after_ok" != true ];then status=1;fi
-  CCPANEL_MONITOR_STATUS="$status" python3 - "$state" "$before_ok" "$after_ok" "$unchanged" "$ready" "$sessions" "$CCPANEL_MONITOR_CAPTURE_SHA256" "$image" <<'PY' || status=1
+  CCPANEL_MONITOR_STATUS="$status" python3 - "$state" "$before_ok" "$after_ok" "$unchanged" "$ready" "$sessions" "$CCPANEL_MONITOR_CAPTURE_SHA256" "$image" "$original_status" "$original_phase" "$comparison_status" <<'PY' || status=1
 import json,os,pathlib,sys
 p=pathlib.Path(sys.argv[1]);passed=os.environ['CCPANEL_MONITOR_STATUS']=='0'
-result={'capture_controller_completed':passed,'actual_capture_exit_zero':[sys.argv[2]=='true',sys.argv[3]=='true'],'production_configuration_and_nonmonitor_rows_unchanged':sys.argv[4]=='true','https_ready':sys.argv[5]=='true','capture_pg_sessions_gone':sys.argv[6]=='true','helper_sha256':sys.argv[7],'node_image_id':sys.argv[8],'policy_verifier_run_on_vps':False,'actual_delete_cause_verified':False,'source_authenticated':False,'continuous_availability_verified':False,'capacity_verified':False,'latest_state_verified':False}
+result={'capture_controller_completed':passed,'actual_capture_exit_zero':[sys.argv[2]=='true',sys.argv[3]=='true'],'production_configuration_and_nonmonitor_rows_unchanged':sys.argv[4]=='true' if sys.argv[11] in ('matched','mismatch') else None,'comparison_status':sys.argv[11],'original_shell_exit':int(sys.argv[9]),'original_phase':sys.argv[10],'https_ready':sys.argv[5]=='true','capture_pg_sessions_gone':sys.argv[6]=='true','helper_sha256':sys.argv[7],'node_image_id':sys.argv[8],'policy_verifier_run_on_vps':False,'actual_delete_cause_verified':False,'source_authenticated':False,'continuous_availability_verified':False,'capacity_verified':False,'latest_state_verified':False}
 for name in ('before','after'):
     try:result[name]=json.loads((p/(name+'-integrity.json')).read_text())
     except (OSError,ValueError):result[name]=None
@@ -151,10 +163,12 @@ PY
   exit "$status"
 }
 trap finish EXIT;trap 'exit 143' TERM;trap 'exit 130' INT
+phase=ownership_setup
 printf '%s\n%s\n' "$unit" "$container" >"$state/owner.tmp";mv -- "$state/owner.tmp" "$state/owner"
 install -d -m 700 -o 1000 -g 1000 "$state/captures"
 install -m 644 "$CCPANEL_MONITOR_CAPTURE_FILE" "$state/capture.mjs"
 test "$(sha256sum "$state/capture.mjs" | cut -d' ' -f1)" = "$CCPANEL_MONITOR_CAPTURE_SHA256"
+phase=environment_parse
 timeout --signal=TERM --kill-after=2s 5s python3 - "$state/capture.env" >"$state/env-parse.log" 2>&1 <<'PY'
 import os,re,stat,sys,urllib.parse
 
@@ -194,11 +208,17 @@ def write_capture_env(source,output):
 try:write_capture_env('/opt/ccpanel/shared/runtime.env',sys.argv[1])
 except (OSError,ValueError,UnicodeError,TypeError):raise SystemExit('monitor_database_env_invalid')
 PY
-test "$(pg -c 'SELECT max(version) FROM schema_migrations')" = 22
+phase=schema_check
+schema=$(pg -c 'SELECT max(version) FROM schema_migrations')
+test "$schema" = 22
+phase=initial_capture_sessions
 sessions_gone
+phase=baseline_configuration
 configuration >"$state/configuration-before.txt" 2>"$state/configuration-before.log"
+phase=baseline_public_fingerprints
 fingerprints >"$state/public-before.jsonl" 2>"$state/public-before.log"
 test "$(wc -l <"$state/public-before.jsonl")" -gt 0
+baseline_ready=true
 (
   while true;do
     available=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null) || available=
@@ -215,17 +235,20 @@ test "$(wc -l <"$state/public-before.jsonl")" -gt 0
   done
 ) & watcher=$!
 capture(){
-  local phase=$1 reserve=$2 remaining limit
+  local capture_name=$1 reserve=$2 remaining limit
+  phase="${capture_name}_capture_budget"
   test ! -f "$state/resource-guard.json"
   remaining=$((deadline-SECONDS-reserve));test "$remaining" -ge 10
   limit=$remaining;if [ "$limit" -gt 90 ];then limit=90;fi
+  phase="${capture_name}_capture_container"
   timeout --signal=TERM --kill-after=3s "${limit}s" docker run --rm --pull never --name "$container" --label "ccpanel.monitor.unit=$unit" --label "ccpanel.monitor.state=$state" \
     --user 1000:1000 --network "$network" --read-only --cap-drop ALL --security-opt no-new-privileges --pids-limit 32 --memory 96m --memory-swap 128m --cpus 0.5 \
     --env-file "$state/capture.env" -e "CCPANEL_MONITOR_CAPTURE_TIMEOUT_MS=$(( (limit-5)*1000 ))" \
     -v "$state/capture.mjs:/tool/capture.mjs:ro" -v "$release/node_modules:/tool/node_modules:ro" -v "$state/captures:/capture-output" --workdir /tool --entrypoint /bin/sh "$image" \
-    -c 'test "$(node --version)" = v22.22.3 || exit 1; exec node /tool/capture.mjs "$@"' sh "$label" "/capture-output/$phase.jsonl" >"$state/$phase-receipt.json" 2>"$state/$phase.log"
+    -c 'test "$(node --version)" = v22.22.3 || exit 1; exec node /tool/capture.mjs "$@"' sh "$label" "/capture-output/$capture_name.jsonl" >"$state/$capture_name-receipt.json" 2>"$state/$capture_name.log"
   # Constant-memory artifact integrity only; do NOT run the policy verifier here.
-  python3 - "$state/captures/$phase.jsonl" "$state/$phase-receipt.json" >"$state/$phase-integrity.json" <<'PY'
+  phase="${capture_name}_capture_integrity"
+  python3 - "$state/captures/$capture_name.jsonl" "$state/$capture_name-receipt.json" >"$state/$capture_name-integrity.json" <<'PY'
 import hashlib,json,os,stat,sys
 p=sys.argv[1];s=os.lstat(p)
 if not stat.S_ISREG(s.st_mode) or s.st_uid!=1000 or stat.S_IMODE(s.st_mode)!=0o600 or s.st_nlink!=1 or not 1<=s.st_size<=32*1024*1024:raise SystemExit('monitor_capture_file_unsafe')
@@ -247,9 +270,12 @@ with open(p,'rb') as f:
 if footer.get('kind')!='footer' or footer.get('rows')!=r.get('rows') or footer.get('counts')!=r.get('counts') or footer.get('prefix_sha256')!=prefix.hexdigest() or r.get('prefixSha256')!=prefix.hexdigest() or r.get('sha256')!=complete.hexdigest():raise SystemExit('monitor_capture_integrity_mismatch')
 print(json.dumps({'capture_exit_zero':True,'bytes':s.st_size,'rows':r['rows'],'counts':r['counts'],'sha256':complete.hexdigest(),'prefix_sha256':prefix.hexdigest(),'footer_present':True,'policy_verified':False}))
 PY
+  phase="${capture_name}_capture_sessions"
   sessions_gone
   test ! -f "$state/resource-guard.json"
 }
 capture before 80;before_ok=true
+phase=between_captures
 sleep 35
 capture after 35;after_ok=true
+phase=completed
