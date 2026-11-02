@@ -1,10 +1,10 @@
 # 可配置离机备份方案
 
-状态：配置设计及只读配置预检已实现，默认禁用；传输执行器未实现。用户暂时没有独立目的地，先完成本方案；不安装定时器、不连接外部存储、不创建云资源，也不将现有工作站手动加密副本称为自动异机备份。配置模板见 infra/backup/offhost.example.json。字段是后续执行器的实现契约，当前没有读取该模板并执行传输的程序。
+状态：配置设计及只读配置预检已实现，默认禁用；已有显式本地候选复制组件，完整远程执行器未实现。用户暂时没有独立目的地，先完成本方案；不安装定时器、不连接外部存储、不创建云资源，也不将现有工作站手动加密副本称为自动异机备份。配置模板见 infra/backup/offhost.example.json。字段是后续执行器的实现契约，当前没有读取该模板并执行传输的程序。
 
 ## 部署与配置
 
-备份协调器部署在独立机器上，由它拉取源VPS数据，并在该机器加密、验真、上传目的地。加密密钥仅在协调器和独立密钥保管处，源VPS与对象存储都不得持有。目的地可以是协调器自己的受限磁盘，也可以经SFTP上传另一台机器。首个实现支持local与sftp两种adapter；S3兼容对象存储留到后续adapter，不假定Cloudflare或任何免费额度。
+备份协调器部署在独立机器上，由它拉取源VPS数据，并在该机器加密、验真、上传目的地。加密密钥仅在协调器和独立密钥保管处，源VPS与对象存储都不得持有。目的地可以是协调器自己的受限磁盘，也可以经SFTP上传另一台机器。适配器计划先支持local与sftp；当前已有local候选复制组件，SFTP尚未实现。S3兼容对象存储留到后续adapter，不假定Cloudflare或任何免费额度。
 
 模板enabled=false时，其余待填字段允许null；执行器必须直接报告disabled，不探测网络、生成密钥、创建目录或登记成功。启用前必须填写独立worker标识、源固定SSH身份和可信主机指纹、预期release/schema、密钥文件引用、目的地身份及保留策略。所有File字段只引用协调器上的受限文件，不嵌入密码、私钥或token。配置不得提交填充后的实际凭证路径或主机信息；机器上的配置用权限0600保存。
 
@@ -49,7 +49,7 @@ pnpm backup:check infra/backup/offhost.example.json
 
 ### 本地目的地复制组件（步骤211）
 
-`pnpm backup:copy-local /private/work/candidate /private/destination backup-id 22`显式复制一份已有候选；目的地根目录须预先存在、POSIX私有且归当前用户持有。它不读取/启用offhost模板，不连接VPS/SFTP、不创建目的地或定时器。CLI的CCPANEL_BACKUP_MAX_BYTES沿用明文预算，核心API的maxBytes为密文预算。
+`pnpm backup:copy-local /private/work/candidate /private/destination backup-id 22`显式复制一份已有候选；目的地根目录须预先存在、POSIX私有且归当前用户持有。它不读取/启用offhost模板，不连接VPS/SFTP、不创建目的地根目录或定时器。CLI的CCPANEL_BACKUP_MAX_BYTES沿用明文预算，核心API的maxBytes为密文预算。
 
 先检查源候选，排除源/目的地重叠、符号链接和不安全权限，检查目的地空间余量（并非预留）。安全ID下独占mkdir，受限文件wx创建，64KiB有界复制并fsync；源和目的地的密文/清单均重新读取比较hash。步骤210检查回执增加manifestSha256，以绑定复制前后的同一份清单。源复核一致后才以排他hardlink发布capture.json，随后同步目录并再检查目的地。复制不产生明文、不读取密钥。
 
