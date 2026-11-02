@@ -67,7 +67,7 @@ FILES = {'run':('run.json',16384), 'owner':('owner.json',4096), 'ready':('ready.
 UPLOAD = {'client_result','client_manifest','client_terminal','client_progress','client_stdout','client_stderr'}
 ENV_KEYS = {'DATABASE_URL','KAFKA_BROKERS','PUBLIC_ORIGIN','KAFKA_EVENTS_TOPIC','KAFKA_DLQ_TOPIC',
             'KAFKA_GROUP_ID','KAFKA_RF','KAFKA_MIN_ISR','INGEST_MAX_LAG_MESSAGES','INGEST_MAX_LAG_AGE_MS',
-            'INGEST_MAX_PROBE_AGE_MS','INGEST_MAX_DISK_AGE_MS','INGEST_MIN_FREE_BYTES',
+            'INGEST_PROBE_MAX_AGE_MS','INGEST_DISK_MAX_AGE_MS','INGEST_MIN_FREE_BYTES',
             'INGEST_MIN_FREE_PERCENT','INGEST_MIN_FREE_INODES','INGEST_MAX_INFLIGHT'}
 
 class WindowError(Exception):
@@ -788,6 +788,46 @@ def sampler_terminal(state, expected_run, probe=False):
             'natural_native_completion':natural,'complete_fixed_duration':complete,
             'capacity_verified':False,'source_authenticated':False})
 
+def validate_sampler_terminal(value, owner, samples_ref, rows):
+    """Validate the private native StopPost receipt; never replace --wait close."""
+    shape(value,['v','kind','run_id','owner','native','native_monotonic_us','samples','frames','last_frame',
+                 'natural_native_completion','complete_fixed_duration','capacity_verified','source_authenticated'])
+    native,clock = value['native'],value['native_monotonic_us']
+    shape(samples_ref,['bytes','sha256'])
+    shape(native,['InvocationID','ExecMainPID','Result','ExecMainCode','ExecMainStatus',
+                  'ExecMainStartTimestampMonotonic','ExecMainExitTimestampMonotonic'])
+    shape(clock,['ExecMainStartTimestampMonotonic','ExecMainExitTimestampMonotonic'])
+    require(type(value['v']) is int and value['v'] == 1 and value['kind'] == 'sampler_terminal'
+            and value['run_id'] == owner['run_id'] and value['owner'] == owner
+            and native['InvocationID'] == owner['invocation_id'] and native['ExecMainPID'] == str(owner['main_pid'])
+            and native['Result'] == 'success' and native['ExecMainCode'] == '1' and native['ExecMainStatus'] == '0'
+            and all(type(item) is int and item > 0 for item in clock.values())
+            and str(clock['ExecMainStartTimestampMonotonic']) == owner['started_monotonic_us']
+            and native['ExecMainStartTimestampMonotonic'] == str(clock['ExecMainStartTimestampMonotonic'])
+            and native['ExecMainExitTimestampMonotonic'] == str(clock['ExecMainExitTimestampMonotonic'])
+            and clock['ExecMainExitTimestampMonotonic'] >= clock['ExecMainStartTimestampMonotonic']
+            and clock['ExecMainExitTimestampMonotonic']-clock['ExecMainStartTimestampMonotonic'] >= owner['seconds']*1000000
+            and value['natural_native_completion'] is True and value['complete_fixed_duration'] is True
+            and value['capacity_verified'] is False and value['source_authenticated'] is False, 'sampler_terminal_invalid')
+    require(samples_ref == value['samples'] and type(samples_ref['bytes']) is int and 0 < samples_ref['bytes'] <= 8*1024*1024
+            and digest(samples_ref['sha256']) and type(value['frames']) is int
+            and value['frames'] == len(rows) == owner['seconds']//10+1 and rows[-1]['elapsedMs'] >= owner['seconds']*1000
+            and value['last_frame'] == rows[-1], 'sampler_terminal_samples_invalid')
+    return value
+
+def sampler_wait_result(returncode, terminal, owner, samples_ref, rows):
+    validate_sampler_terminal(terminal,owner,samples_ref,rows)
+    if returncode is None:
+        return 'ending'
+    require(type(returncode) is int and returncode == 0, 'sampler_failed')
+    return 'completed'
+
+def read_sampler_terminal(state,owner,rows):
+    value,_ = read_json(state/'sampler-terminal.json',16384)
+    samples_ref,_ = stable_file(state/'samples.jsonl',8*1024*1024,True,False)
+    validate_sampler_terminal(value,owner,samples_ref,rows)
+    return value,samples_ref
+
 def owned_sampler_stop(state,run):
     try:
         owner,_ = read_json(state/'sampler-owner.json',4096)
@@ -922,29 +962,35 @@ class Supervisor:
             return None,[]
         rows = sample_frames(self.state)
         elapsed = (time.monotonic_ns()//1000-self.sampler_started)//1000
-        if self.sampler_done is None and self.sampler.poll() is not None:
-            terminal,_ = read_json(self.state/'sampler-terminal.json',16384)
-            require(terminal['owner'] == self.sampler_owner, 'sampler_owner_mismatch')
+        wait_code = self.sampler.poll()
+        if self.sampler_done is None and wait_code is not None:
+            terminal,samples_ref = read_sampler_terminal(self.state,self.sampler_owner,rows)
+            require(sampler_wait_result(wait_code,terminal,self.sampler_owner,samples_ref,rows) == 'completed', 'sampler_failed')
             self.sampler_done = terminal
-            if self.sampler.returncode != 0 or terminal['complete_fixed_duration'] is not True:
-                self.latch('sampler_failed')
         if self.sampler_done is None:
             try:
                 require(start_ticks(self.sampler_owner['main_pid']) == self.sampler_owner['start_ticks'], 'sampler_failed')
             except (OSError,WindowError):
-                # Main exit is not the --wait terminal. Permit only the same
-                # completed native sampler's bounded StopPost transition.
-                ending = properties(self.sampler_owner['unit'],['InvocationID','ExecMainPID','ActiveState','ExecMainCode','ExecMainStatus'])
-                require(ending['InvocationID'] == self.sampler_owner['invocation_id']
-                        and ending['ExecMainPID'] == str(self.sampler_owner['main_pid']) and ending['ActiveState'] == 'deactivating'
-                        and ending['ExecMainCode'] == '1' and ending['ExecMainStatus'] == '0'
-                        and elapsed >= self.sampler_owner['seconds']*1000, 'sampler_failed')
+                # Unit GC may race this original Popen.poll(). A complete,
+                # bound StopPost receipt permits only a nonadmitting transition
+                # until this same original --wait handle actually returns 0.
+                require(elapsed >= self.sampler_owner['seconds']*1000 and rows
+                        and rows[-1]['elapsedMs'] >= self.sampler_owner['seconds']*1000, 'sampler_failed')
                 self.sampler_ending = True
                 self.sampler_exit_seen = self.sampler_exit_seen or time.monotonic()
                 require(time.monotonic()-self.sampler_exit_seen <= 25, 'sampler_failed')
-            if rows:
+                try:
+                    terminal,samples_ref = read_sampler_terminal(self.state,self.sampler_owner,rows)
+                except (FileNotFoundError,WindowError,OSError,ValueError,KeyError,TypeError):
+                    # The wx receipt itself may still be being written. This
+                    # bounded state grants neither health nor post-window work;
+                    # after original close, strict receipt validation is required.
+                    terminal = None
+                if terminal is not None:
+                    require(sampler_wait_result(None,terminal,self.sampler_owner,samples_ref,rows) == 'ending', 'sampler_failed')
+            if rows and not self.sampler_ending:
                 require(0 <= time.time_ns()//1000000-rows[-1]['capturedAt'] <= 20000, 'sampler_failed')
-            else:
+            elif not rows:
                 require(elapsed <= 20000, 'sampler_failed')
         if not self.ready and self.phase == 'preparing' and not self.pending and not self.abort:
             self.make_ready(rows)

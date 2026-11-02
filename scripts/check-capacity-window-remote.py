@@ -10,6 +10,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -42,7 +43,44 @@ def terminal():
                             for role in ['client_terminal','client_result','client_manifest','client_stdout','client_stderr']])
     return value
 
+def synthetic_sampler_receipt(pid=123):
+    # Pure receipt-schema fixture, not native systemd/time/source evidence.
+    owner = {'v':1,'kind':'sampler_owner','run_id':RUN,'unit':'synthetic-no-systemd.service','invocation_id':'d'*32,
+             'main_pid':pid,'start_ticks':'123','started_monotonic_us':'1000000','source_sha256':'f'*64,'seconds':10}
+    rows = [{'capturedAt':1000,'elapsedMs':0,'telemetry':{'sampledAt':1000}},
+            {'capturedAt':11000,'elapsedMs':10000,'telemetry':{'sampledAt':11000}}]
+    raw = b''.join(remote.encoded(row) for row in rows)
+    ref = {'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
+    value = {'v':1,'kind':'sampler_terminal','run_id':RUN,'owner':copy.deepcopy(owner),
+             'native':{'InvocationID':owner['invocation_id'],'ExecMainPID':str(pid),'Result':'success','ExecMainCode':'1',
+                       'ExecMainStatus':'0','ExecMainStartTimestampMonotonic':'1000000','ExecMainExitTimestampMonotonic':'11000000'},
+             'native_monotonic_us':{'ExecMainStartTimestampMonotonic':1000000,'ExecMainExitTimestampMonotonic':11000000},
+             'samples':copy.deepcopy(ref),'frames':2,'last_frame':copy.deepcopy(rows[-1]),'natural_native_completion':True,
+             'complete_fixed_duration':True,'capacity_verified':False,'source_authenticated':False}
+    return owner,value,ref,rows
+
 class Protocol(unittest.TestCase):
+    def test_forwarded_pressure_keys_match_actual_application_policy(self):
+        source = SOURCE.parents[1]/'packages/server/src/ingest-pressure.ts'
+        keys = set(re.findall(r"\['[A-Za-z]+', '(INGEST_[A-Z_]+)',",source.read_text(encoding='utf-8')))
+        self.assertEqual(len(keys),7)
+        self.assertTrue(keys <= remote.ENV_KEYS)
+        self.assertNotIn('INGEST_MAX_PROBE_AGE_MS',remote.ENV_KEYS)
+        self.assertNotIn('INGEST_MAX_DISK_AGE_MS',remote.ENV_KEYS)
+    def test_sampler_receipt_is_only_bound_ending_evidence_before_original_close(self):
+        owner,value,ref,rows = synthetic_sampler_receipt()
+        self.assertEqual(remote.sampler_wait_result(None,value,owner,ref,rows),'ending')
+        self.assertEqual(remote.sampler_wait_result(0,value,owner,ref,rows),'completed')
+        with self.assertRaises(remote.WindowError):remote.sampler_wait_result(1,value,owner,ref,rows)
+        for change in ['owner','source','clock','raw-clock','samples','partial']:
+            altered = copy.deepcopy(value)
+            if change == 'owner':altered['native']['InvocationID'] = 'e'*32
+            elif change == 'source':altered['owner']['source_sha256'] = 'e'*64
+            elif change == 'clock':altered['native_monotonic_us']['ExecMainExitTimestampMonotonic'] = 10999999
+            elif change == 'raw-clock':altered['native']['ExecMainExitTimestampMonotonic'] = '11000001'
+            elif change == 'samples':altered['samples']['sha256'] = 'e'*64
+            else:del altered['complete_fixed_duration']
+            with self.subTest(change=change),self.assertRaises(remote.WindowError):remote.sampler_wait_result(0,altered,owner,ref,rows)
     def test_actual_captured_mount_permutation_keeps_every_bound_field(self):
         # Exact Kafka projection from the first native probe's two preserved
         # raw configuration files (SHA256 3a369ce1... / 114a96e5...). Docker
@@ -195,6 +233,22 @@ class NativeFiles(unittest.TestCase):
         self.assertLess(time.monotonic()-started,4)
 
 class NativeStdio(unittest.TestCase):
+    def test_same_original_native_wait_must_close_after_valid_receipt(self):
+        for exit_code in [0,3]:
+            child = subprocess.Popen([sys.executable,'-c','import sys;sys.stdout.buffer.write(b"ready\\n");sys.stdout.buffer.flush();sys.stdin.buffer.read();sys.exit(int(sys.argv[1]))',str(exit_code)],
+                                     stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+            try:
+                self.assertEqual(child.stdout.readline(),b'ready\n')
+                owner,value,ref,rows = synthetic_sampler_receipt(child.pid)
+                self.assertIsNone(child.poll())
+                self.assertEqual(remote.sampler_wait_result(child.poll(),value,owner,ref,rows),'ending')
+                out,error = child.communicate(b'original-parent-release',timeout=5)
+                self.assertEqual(out,b'');self.assertEqual(error,b'');self.assertEqual(child.returncode,exit_code)
+                if exit_code == 0:self.assertEqual(remote.sampler_wait_result(child.returncode,value,owner,ref,rows),'completed')
+                else:
+                    with self.assertRaises(remote.WindowError):remote.sampler_wait_result(child.returncode,value,owner,ref,rows)
+            finally:
+                if child.poll() is None:child.kill();child.communicate(timeout=5)
     def child(self,raw):
         code = '''import importlib.util,sys
 s=importlib.util.spec_from_file_location("remote",sys.argv[1]);m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
