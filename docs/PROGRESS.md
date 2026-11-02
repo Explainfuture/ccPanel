@@ -1733,3 +1733,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 本机typecheck和19项可运行测试通过，14项POSIX存储/受控故障用例跳过。故障覆盖实际key读后取消、中途写取消、对象发布后fsync失败、head替换后fsync失败、wx碰撞保留；模拟错误不作实际断电/磁盘满证明。第18套PG扩展真实已签名源状态加密落盘、CAS和外部tip下全链读取，源/门禁不变，待CI；未改VPS。
 - 首轮Actions41467218167对5920bee的verify/postgres/sftp全部success：430通过/9平台跳过、18套真实PG完成，新增Linux存储/故障用例实际执行；真实PG签名状态加密落盘、CAS、外部tip全链读取和私有夹具清理均true，本地锚点不冒充独立保管。随后bef0155固定同步验签后的wire字符串，防止等待前head读取期间调用方修改传入对象；新增实际文件读取屏障下的修改用例，确认落盘仍为已验签版本。本机复核19通过/15POSIX跳过，修正待新CI。
 - Actions41468593693对bef0155的verify/postgres/sftp全部success：431通过/9平台跳过，6项Linux原生文件故障/竞态用例全部实际执行，18套真实PG通过。第18套加密状态日志/CAS/全链读取/正常夹具清理通过，source/anchor custody/latest仍false；第17套另以同份122317字节PG候选经SFTP下载认证解密并恢复43关系，不与第18套的备份hash夹具拼接为真实绑定证明。未启用存储/调度，未改线上013、源数据或恢复门禁，容量及整机RPO/RTO缺口不变。
+
+### 步骤218：配置驱动的本地状态发布
+
+- 新增兼容v1的严格v2 state配置/双重禁用模板和已有签名/公钥元数据preflight。启用只接受已有自有私有canonical PEM及根目录，角色路径分离，不生成密钥/根目录，不读取未使用的源SSH或目的地身份；禁用只读配置，输入路径/凭证均不访问。
+- 新增publishRecoveryStateLocal与显式backup:publish-state-local：有界状态/锚点/PEM读取，实际候选清单字节hash、数据库/schema/先备份后状态时间绑定，匹配Ed25519固定公钥，显式expected head签名→加密CAS追加→全链读取及清单重查。自持本次发布锚点只验存储自洽，independentTipVerified/来源/保管/latest/recovery/offhost均false，成功退出2；发布后校验失败保留对象并报uncertain。
+- 配置与发布聚焦测试本机86通过/26POSIX跳过，typecheck和diff检查通过；新增受控原生文件调度用例验证真实head替换后清单变化报uncertain并保留已发布链，以及实际signer读取后取消不创建日志/锁且句柄关闭。第17套真实PG扩展同份SFTP下载候选+实际后续源导出+实际清单hash，经配置CLI发布、独立解密验签/记录hash绑定/全链读取、错误DB与重复genesis拒绝、源/门禁不变及正常夹具清理。实际Linux/PG执行待CI；未改VPS/启用目的地、正式key或调度，不替代原源授权/受保护远端锚点/容量与整机RPO/RTO验收。

@@ -1,6 +1,6 @@
 # 可配置离机备份方案
 
-状态：配置设计及只读配置预检已实现，默认禁用；已有显式本地/SFTP候选复制组件，完整远程备份执行器未实现。用户暂时没有独立目的地，先完成本方案；不安装定时器、不连接用户外部存储、不创建云资源，也不将现有工作站手动加密副本称为自动异机备份。配置模板见 infra/backup/offhost.example.json。显式backup:copy-sftp可读取启用配置仅传输已有候选，禁用配置不访问凭证或网络；没有自动执行捕获/验证发布/调度的程序。
+状态：配置设计及只读配置预检已实现，默认禁用；已有显式本地/SFTP候选复制和本地状态发布组件，完整远程备份执行器未实现。用户暂时没有独立目的地，先完成本方案；不安装定时器、不连接用户外部存储、不创建云资源，也不将现有工作站手动加密副本称为自动异机备份。原模板见 infra/backup/offhost.example.json；兼容的v2状态模板见 infra/backup/offhost-state.example.json，两者都默认关闭。显式命令只处理已有候选/状态；没有自动执行源捕获、可信验证发布或调度的程序。
 
 ## 部署与配置
 
@@ -31,7 +31,7 @@
 }
 ```
 
-配置验证器已实现：enabled必须为布尔值，version必须为1；分钟/秒/份数/字节限制为正安全整数，port为1–65535，maxAttempts为1–10，stateMaxAgeSeconds必须小于现有v2导入1小时新鲜度上限，状态任务间隔必须小于该陈旧阈值。启用时只允许与kind匹配的目的地字段，所有null必填引用必须补齐，拒绝未知字段和不支持的加密格式。前缀只能为单个安全目录名，不允许点段、斜杠或控制字符。加密密钥不能与SSH文件引用相同路径或落在local目的地目录中。凭证文件须在协调器本地验证权限及非符号链接，不能把文件内容写入日志。
+配置验证器已实现：enabled必须为布尔值，version支持原1和新增2；v2必须有精确state对象，v1拒绝该扩展字段。分钟/秒/份数/字节限制为正安全整数，port为1–65535，maxAttempts为1–10，stateMaxAgeSeconds必须小于现有v2导入1小时新鲜度上限，状态任务间隔必须小于该陈旧阈值。启用时只允许与kind匹配的目的地字段，所有null必填引用必须补齐，拒绝未知字段和不支持的加密格式。前缀只能为单个安全目录名，不允许点段、斜杠或控制字符。加密密钥不能与SSH文件引用相同路径或落在local目的地目录中。凭证文件须在协调器本地验证权限及非符号链接，不能把文件内容写入日志。
 
 ### 当前只读预检命令
 
@@ -41,11 +41,30 @@ pnpm backup:check infra/backup/offhost.example.json
 
 默认模板输出disabled/transferEnabled=false/credentialsInspected=0，退出0；只读取有界配置文件并校验结构，不读取任何引用凭证、创建目录/密钥或联网。禁用状态仍拒绝拼错字段和非法配置，不将字符串false当布尔值。
 
-启用配置先验证配置文件及SSH引用、32字节加密密钥的文件类型/大小/权限；POSIX使用NOFOLLOW、NONBLOCK并比较打开前后inode/dev，拒绝符号链接、非普通文件、组/其他用户可访问文件。不会读取凭证内容，也不会验证SSH key/known_hosts实际格式、主机身份、网络连通性或故障域。Windows ACL检查尚未实现，启用配置返回credential_permissions_unverified，不能把POSIX mode当ACL证明。
+启用配置先验证配置文件及SSH引用、32字节加密密钥的文件类型/大小/权限；v2 state同时启用时另检查签名私钥/固定公钥元数据。POSIX使用NOFOLLOW、NONBLOCK并比较打开前后inode/dev，拒绝符号链接、非普通文件、组/其他用户可访问文件。不会读取凭证内容，也不会验证SSH key/known_hosts/签名密钥实际格式、主机身份、网络连通性或故障域。Windows ACL检查尚未实现，启用配置返回credential_permissions_unverified，不能把POSIX mode当ACL证明。
 
 即使以上元数据检查全部通过，backup:check仍仅输出configured_executor_unavailable/transferEnabled=false，退出2；主机身份与独立故障域验证均false。其他配置/文件错误退出1，只含固定错误码/字段名，不回显路径、主机或秘密值。显式复制组件不等于完整run流程或定时器，退出2不能被调度器当成功备份。后续执行器仍须做原源版本与目的地独立性验证；字符串不同不能排除DNS别名或同机目录。
 
 ## 两条数据流
+
+### 配置驱动的本地状态发布（步骤218）
+
+v2 state字段为enabled、sourceId、signingKeyFile、publicKeyFile、journalRoot和anchorRoot。仅全局enabled与state.enabled同时为true时执行；否则backup:publish-state-local输出disabled/退出0，只读配置，不探测输入路径、凭证、目录或网络。关闭状态仍严格校验字段形状。启用要求整个配置结构完整，但本命令不读取source SSH/目的地凭证、不连接原源或传输目的地，worker独立性声明不当作已验证事实。
+
+```sh
+pnpm backup:publish-state-local /private/offhost.json /private/source-state.json /private/download/backup-id --genesis
+pnpm backup:publish-state-local /private/offhost.json /private/source-state.json /private/download/backup-id /private/expected-head.json
+```
+
+输入是已完成的backup:export-state输出和已有候选集合，不自动执行这两步。--genesis只表示显式预期空链；后续必须另传预期锚点文件，不默认读取本地head作为期望值。预期锚点用于CAS，不是独立可信最新tip。命令不创建密钥/根目录或替换既有文件；journal/anchor须为现有自有私有canonical目录，互不嵌套且与local目的地分离。签名/公钥/AES/SSH角色引用互异，均在这些存储根外；状态明文也不得位于日志/锚点目录。POSIX运行，Windows拒绝未验证ACL的启用路径。
+
+只接受已有的canonical Ed25519 PKCS8私钥PEM与SPKI公钥PEM（标准64列base64、LF及末尾换行，分别等于Node key export输出），文件各最多8KiB，固定公钥必须与私钥匹配。拒绝加密私钥、附加内容、不同算法/公钥、符号链接、非自有/非私有文件；不从记录携带密钥建立信任。读取的密钥Buffer在结束时清零，不能保证JavaScript字符串或原生KeyObject内存同步擦除；私钥生命周期/轮换/独立保管仍由后续流程管理。
+
+状态文件最多16MiB，预期锚点8KiB，候选清单1MiB；有界读取核对前后文件身份/元数据和canonical路径。候选经实际密文hash检查，绑定原始capture.json字节SHA256，backup.id为候选目录名；数据库/schema必须与状态及配置一致，状态时间不得早于候选capturedAt且须满足新鲜度。数据库名/source-id相同不证明连接同一真实原源；清单hash与签名也不证明备份能解密恢复，源releaseVerified保持false。
+
+签名→加密CAS追加→以本次发布锚点读取验证完整存储链→再次核对原清单hash。此处完整链核验只证明刚写入的数据自洽，independentTipVerified明确false。成功stored_unverified/退出2，回执有backupManifestSha256、backupId、anchor、recordsVerified和storedChainVerified；来源端点、锚点保管、最新状态、恢复和离机标记均false，不能作为成功备份水位或调用恢复apply。append已返回后发生任何读取/校验/取消/超时失败均state_publish_uncertain，保留对象/head供核查；append自身的不确定错误保持journal_publish_uncertain，不自动回滚或改为新genesis。
+
+整个显式操作共享配置总时限与取消信号，不自动重试/调度或发布远端锚点；内核I/O和强杀清理边界同日志组件。CI扩展将真实PG候选经SFTP下载后，关联同一源的真实后续导出和该清单hash，再独立解密验签核对；实际结果见PROGRESS步骤218。未启用用户存储、VPS任务或正式密钥。
 
 ### SFTP候选目的地组件（步骤213）
 
@@ -113,7 +132,7 @@ CI专用loopback OpenSSH夹具使用临时主机/用户key、临时高端口和�
 
 ### 私有加密状态日志与本地链首CAS（步骤217）
 
-新增appendRecoveryStateJournal与verifyRecoveryStateJournal文件组件，尚无自动作业或CLI。调用方提供已有的两处私有canonical目录、固定公钥、预期source-id和目录外已有32字节AES密钥；签名私钥不交给存储组件。Windows ACL未验证则拒绝，不能用两处本机目录冒充独立故障域或受保护锚点。
+新增appendRecoveryStateJournal与verifyRecoveryStateJournal文件组件，底层API不调度作业；步骤218另提供显式配置发布CLI。调用方提供已有的两处私有canonical目录、固定公钥、预期source-id和目录外已有32字节AES密钥；签名私钥不交给存储组件。Windows ACL未验证则拒绝，不能用两处本机目录冒充独立故障域或受保护锚点。
 
 已签名记录经CCPBK001 AES256-GCM加密后，以`序号-record_hash.state.enc`排他发布、fsync及回读；磁盘不写签名payload明文。anchorRoot的head.json只存锚点元数据，是本地CAS游标，不是独立可信tip。追加前独占创建.append.lock，不自动偷取过期/PID锁；比较调用方expectedHead与实际head，核验完整文件名序列及前一已签名head/状态，再检查新记录链接与语义连续性。追加并不重新解密所有历史，historicalRecordsReverified明确false；完整消费者验证必须逐条解密/验签整链。
 
@@ -121,7 +140,7 @@ CI专用loopback OpenSSH夹具使用临时主机/用户key、临时高端口和�
 
 完整读取要求另外传入trustedTip，不能用本地head自行建立信任；异步逐条解密/核对文件名、签名与连续性，不把全历史载入数组。完成时再检查实际时钟新鲜度（显式测试时钟除外）和head未变。单记录默认24MiB/最多32MiB、最多10000记录，目录枚举也有上限；内存按单记录而非全链增长，最大记录实际内存/吞吐仍待容量测量。存储API保护目录、密钥和读取前后元数据，有协作式截止/取消；不强制中断内核I/O。
 
-读取成功journal_verified_unadmitted也不提升恢复准入。公开密钥和独立tip的来源/保管、正式key配置、持久化远端投递/CAS、检查点裁剪/轮换和调度仍待实现；本机head及密文一起回退仍须外部新tip才可检测。当前PG测试使用临时key/目录和外部变量模拟tip，备份关联仍为夹具，没有启用用户存储或修改VPS。
+读取成功journal_verified_unadmitted也不提升恢复准入。步骤218只增加已有密钥文件引用和本地发布；公开密钥和独立tip的来源/保管、正式key部署、持久化远端投递/CAS、检查点裁剪/轮换和调度仍待实现；本机head及密文一起回退仍须外部新tip才可检测。第18套PG测试使用临时key/目录和外部变量模拟tip，备份关联仍为夹具；第17套另验真实归档绑定，见218。没有启用用户存储或修改VPS。
 
 ### 签名状态记录与外部锚点校验（步骤216）
 

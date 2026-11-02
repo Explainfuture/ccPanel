@@ -1,11 +1,11 @@
 // Actual candidate CLI: dedicated CI service or explicitly guarded VPS fixture.
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {randomBytes,randomUUID,createHash} from 'node:crypto';
-import {mkdtemp,mkdir,writeFile,readFile,readdir,stat,unlink,rmdir} from 'node:fs/promises';
+import {randomBytes,randomUUID,createHash,generateKeyPairSync,createDecipheriv,verify} from 'node:crypto';
+import {mkdtemp,mkdir,writeFile,readFile,readdir,stat,lstat,unlink,rmdir} from 'node:fs/promises';
 import {createReadStream} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join,dirname,isAbsolute} from 'node:path';
+import {join,dirname,isAbsolute,resolve,sep,basename} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import pg from 'pg';
 import {readBackupFingerprints} from '../packages/server/src/backup-snapshot';
@@ -114,9 +114,73 @@ try{
       // Every stage uses this same actual PG archive, not a synthetic payload or
       // the pre-transfer local copy. The restore runs before fixture teardown.
       await restoreFrom(downloaded);
+      // This separate binding proof consumes the same downloaded manifest and
+      // an actual post-capture export from the original source database. Neither
+      // the restored target nor the earlier state suite's fixture hash is used.
+      const stateParent=await mkdtemp(join(directory,'state-publish-'));
+      assert.equal(dirname(stateParent),directory);assert.ok(basename(stateParent).startsWith('state-publish-'));
+      const journalRoot=join(stateParent,'journal'),anchorRoot=join(stateParent,'anchors');
+      const configFile=join(stateParent,'config.json'),stateFile=join(stateParent,'source-state.json'),wrongStateFile=join(stateParent,'wrong-source-state.json');
+      const signingKeyFile=join(stateParent,'signer.pem'),publicKeyFile=join(stateParent,'public.pem');
+      const removeStateFixture=async(path:string):Promise<void>=>{
+        const absolute=resolve(path);assert.ok(absolute===stateParent||absolute.startsWith(stateParent+sep));
+        const metadata=await lstat(absolute);
+        if(!metadata.isDirectory()||metadata.isSymbolicLink()){await unlink(absolute);return;}
+        for(const name of await readdir(absolute))await removeStateFixture(join(absolute,name));await rmdir(absolute);
+      };
+      let statePublicationEvidence:Record<string,unknown>;
+      try{
+        const sourceBefore=await readBackupFingerprints(db),sourceGateBefore=(await db.query('SELECT row_to_json(g) AS state FROM recovery_gate g')).rows;
+        const {exportRecoverySourceState}=await import(pathToFileURL(join(dirname(process.env.CCPANEL_CAPTURE_CLI!),'recovery-state-export-adapter.mjs')).href) as typeof import('../packages/server/src/recovery-state-export');
+        const {verifyRecoveryStateJournal}=await import(pathToFileURL(join(dirname(process.env.CCPANEL_CAPTURE_CLI!),'recovery-state-journal-adapter.mjs')).href) as typeof import('../packages/server/src/recovery-state-journal');
+        const state=await exportRecoverySourceState({connectionString:source.href,sourceId:'ci-capture-source',expectedSchema:22,timeoutMs:15000,maxAgeSeconds:600});
+        assert.equal(state.source.database,manifest.source.database);assert.ok(state.exported_at>=manifest.capturedAt);
+        const signer=generateKeyPairSync('ed25519');
+        await mkdir(journalRoot,{mode:0o700});await mkdir(anchorRoot,{mode:0o700});
+        await writeFile(signingKeyFile,signer.privateKey.export({format:'pem',type:'pkcs8'}),{mode:0o600,flag:'wx'});
+        await writeFile(publicKeyFile,signer.publicKey.export({format:'pem',type:'spki'}),{mode:0o600,flag:'wx'});
+        const config={version:2,enabled:true,worker:{identity:'ci-configured-state',independentFailureDomainConfirmed:true},source:{host:source.hostname,port:22,user:'ccpanel_ci',knownHostsFile:join(stateParent,'source-known-not-read'),identityFile:join(stateParent,'source-identity-not-read'),expectedRelease:'m4-sdk-013',expectedSchema:22},encryption:{format:'CCPBK001',keyFile:key},destination:{kind:'local',root:localRoot,sftp:null,prefix:'ccpanel-backups'},schedule:{fullEveryMinutes:360,stateEveryMinutes:5},retention:{daily:7,weekly:4,monthly:3},limits:{runTimeoutSeconds:30,exportMaxBytes:manifest.archive.plaintextBytes,stateMaxAgeSeconds:600,incompleteRetentionHours:24,maxAttempts:1},state:{enabled:true,sourceId:'ci-capture-source',signingKeyFile,publicKeyFile,journalRoot,anchorRoot}};
+        await writeFile(configFile,JSON.stringify(config)+'\n',{mode:0o600,flag:'wx'});
+        await writeFile(stateFile,JSON.stringify(state)+'\n',{mode:0o600,flag:'wx'});
+        await writeFile(wrongStateFile,JSON.stringify({...state,source:{...state.source,database:'unrelated_ci_source'}})+'\n',{mode:0o600,flag:'wx'});
+        const publicationCli=join(dirname(process.env.CCPANEL_CAPTURE_CLI!),'publish-recovery-state-local.mjs');
+        const rejected=await run(process.execPath,[publicationCli,configFile,wrongStateFile,downloaded,'--genesis']);
+        assert.equal(rejected.code,1);assert.equal(rejected.stdout,'');assert.deepEqual(await readdir(journalRoot),[]);assert.deepEqual(await readdir(anchorRoot),[]);
+        const published=await run(process.execPath,[publicationCli,configFile,stateFile,downloaded,'--genesis']);
+        assert.equal(published.code,2,'state publication is explicitly NOT recovery admission');
+        const publication=JSON.parse(published.stdout),actualManifestHash=createHash('sha256').update(await readFile(join(downloaded,'capture.json'))).digest('hex');
+        assert.equal(publication.status,'stored_unverified');assert.equal(publication.backupId,'pg-candidate');assert.equal(publication.backupManifestSha256,actualManifestHash);assert.equal(actualManifestHash,inspected.manifestSha256);assert.equal(publication.recordsVerified,1);assert.equal(publication.storedChainVerified,true);
+        for(const field of ['sourceEndpointVerified','anchorCustodyVerified','latestStateVerified','recoveryVerified','offhostVerified'])assert.equal(publication[field],false);
+        const objectName='1-'+publication.anchor.record_hash+'.state.enc';
+        assert.deepEqual(await readdir(journalRoot),[objectName]);assert.deepEqual(await readdir(anchorRoot),['head.json']);
+        const stored=await readFile(join(journalRoot,objectName)),head=await readFile(join(anchorRoot,'head.json'));
+        assert.deepEqual(JSON.parse(head.toString('utf8')),publication.anchor);assert.equal((await stat(join(journalRoot,objectName))).mode&0o777,0o600);
+        const encryptionKey=await readFile(key);let plaintext:Buffer|undefined;
+        try{
+          assert.equal(stored.subarray(0,8).toString('ascii'),'CCPBK001');
+          const decryptor=createDecipheriv('aes-256-gcm',encryptionKey,stored.subarray(8,20));decryptor.setAAD(stored.subarray(0,8));decryptor.setAuthTag(stored.subarray(-16));
+          plaintext=Buffer.concat([decryptor.update(stored.subarray(20,-16)),decryptor.final()]);
+          const wire=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(plaintext));assert.equal(wire.algorithm,'Ed25519');assert.equal(wire.version,1);
+          const payload=Buffer.from(wire.payload,'base64'),signature=Buffer.from(wire.signature,'base64'),length=Buffer.alloc(4);length.writeUInt32BE(payload.length);
+          assert.equal(verify(null,Buffer.concat([Buffer.from('ccpanel.recovery-state.v1\0'),payload]),signer.publicKey,signature),true);
+          const recordHash=createHash('sha256').update(Buffer.from('ccpanel.recovery-state.hash.v1\0')).update(length).update(payload).update(signature).digest('hex');assert.equal(recordHash,publication.anchor.record_hash);
+          const body=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(payload));
+          assert.deepEqual(body.backup,{id:'pg-candidate',manifest_sha256:actualManifestHash});assert.deepEqual(body.state,state);assert.equal(body.source_id,'ci-capture-source');assert.equal(body.sequence,'1');assert.equal(body.previous_hash,null);
+          payload.fill(0);signature.fill(0);
+        }finally{encryptionKey.fill(0);plaintext?.fill(0);}
+        const checked=await verifyRecoveryStateJournal({journalRoot,anchorRoot,encryptionKeyFile:key,publicKey:signer.publicKey,expectedSourceId:'ci-capture-source',trustedTip:publication.anchor,timeoutMs:30000,maxAgeSeconds:600});
+        assert.equal(checked.recordsVerified,1);assert.deepEqual(checked.state,state);assert.deepEqual(checked.anchor,publication.anchor);
+        assert.equal(checked.latestStateVerified,false);assert.equal(checked.sourceEndpointVerified,false);assert.equal(checked.anchorCustodyVerified,false);
+        const repeated=await run(process.execPath,[publicationCli,configFile,stateFile,downloaded,'--genesis']);assert.equal(repeated.code,1);assert.equal(repeated.stdout,'');
+        assert.deepEqual(await readFile(join(journalRoot,objectName)),stored);assert.deepEqual(await readFile(join(anchorRoot,'head.json')),head);
+        assert.deepEqual(await readBackupFingerprints(db),sourceBefore);assert.deepEqual((await db.query('SELECT row_to_json(g) AS state FROM recovery_gate g')).rows,sourceGateBefore);
+        assert.equal(await readFile(stateFile,'utf8'),JSON.stringify(state)+'\n');assert.equal(await readFile(join(downloaded,'capture.json'),'utf8'),rawManifest);
+        statePublicationEvidence={configured_state_publication_cli:true,configured_state_pg_binding:true,state_binding_uses_actual_manifest:true,state_binding_backup_hash_is_fixture:false,source_export_after_same_candidate_capture:true,independent_signed_record_decryption_checked:true,configured_state_full_chain_checked:true,wrong_source_database_refused:true,duplicate_genesis_refused:true,source_and_gate_unchanged:true,state_anchor_custody_verified:false,state_latest_admission_verified:false};
+      }finally{await removeStateFixture(stateParent);}
+      await assert.rejects(lstat(stateParent),{code:'ENOENT'});statePublicationEvidence!.configured_state_fixture_removed=true;
       assert.equal(await readFile(join(downloaded,'capture.json'),'utf8'),rawManifest);assert.equal(await readFile(join(remote,'capture.json'),'utf8'),rawManifest);
       assert.deepEqual(await readdir(context.remoteRoot),['pg-candidate']);
-      return{sftp_transport:true,same_candidate_sftp_pg_restore:true,host_pin_verified:true,sftp_cipher_hash_matches:true,sftp_manifest_hash_matches:true,remote_contains_no_plaintext_or_encryption_key:true,source_identity_verified:false,independent_failure_domain_verified:false,remote_directory_durability_verified:false};
+      return{sftp_transport:true,same_candidate_sftp_pg_restore:true,host_pin_verified:true,sftp_cipher_hash_matches:true,sftp_manifest_hash_matches:true,remote_contains_no_plaintext_or_encryption_key:true,source_identity_verified:false,independent_failure_domain_verified:false,remote_directory_durability_verified:false,...statePublicationEvidence!};
     });
     sftpEvidence.sftp_fixture_cleanup_confirmed=true;
   }else await restoreFrom(localSet);
