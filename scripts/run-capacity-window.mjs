@@ -13,7 +13,9 @@ const hashPattern=/^[a-f0-9]{64}$/,runPattern=/^[a-f0-9]{32}$/;
 const tokenPattern=/^[A-Za-z0-9_-]{1,64}$/;
 const clientFiles=['load-check-public.mjs','load-evidence.mjs','load-control-lease.mjs','load-stop-reader.mjs'];
 const maximum={wire:8192,request:4096,fixture:4096,binding:16384,ready:16384,result:2*1024*1024,manifest:2*1024*1024,stdout:256*1024,stderr:64*1024};
-const freezeRoleCaps={fixture:4096,binding:16384,owner:4096,ready:16384,run:16384,client_result:2*1024*1024,client_manifest:2*1024*1024,client_progress:65536,client_terminal:16384,client_stdout:256*1024,client_stderr:65536,samples:8*1024*1024,sampler_owner:16384,sampler_terminal:16384,configuration_before:65536,configuration_after:65536,resource_baseline:65536,resource_final:65536,monitor_before:32*1024*1024,monitor_after:32*1024*1024,db_baseline:1024*1024,db_verified:1024*1024,db_cleanup:65536,key_revoked:16384};
+// Match the remote FILES entries that freeze_now can actually publish. Secret
+// fixture, the freeze itself, and future controller StopPost are not entries.
+const freezeRoleCaps={run:16384,owner:4096,ready:16384,binding:16384,sampler_owner:4096,sampler_terminal:16384,resource_baseline:262144,resource_final:262144,samples:8*1024*1024,monitor_before:32*1024*1024,monitor_after:32*1024*1024,db_baseline:262144,db_verified:262144,db_cleanup:262144,db_cleanup_deferred:262144,key_revoked:16384,fixture_created:16384,client_wire_terminal:4096,terminal_accepted:4096,business_after:2*1024*1024,client_result:2*1024*1024,client_manifest:2*1024*1024,client_terminal:32768,client_progress:65536,client_stdout:262144,client_stderr:65536};
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const canonicalPath=value=>process.platform==='win32'?value.toLowerCase():value;
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -219,7 +221,7 @@ function validateRemoteFreeze(value,cfg,ownerHash,terminalRef,submitted){
     // This file is published BEFORE controller ExecStopPost. It cannot bind a
     // future controller_terminal receipt; the original SSH native close is
     // observed separately. The role may be read later by the final operator.
-    const status=/^status_([1-9][0-9]{0,18})$/.exec(item.role),cap=Object.hasOwn(freezeRoleCaps,item.role)?freezeRoleCaps[item.role]:status&&positive(status[1])?8192:null;
+    const cap=Object.hasOwn(freezeRoleCaps,item.role)?freezeRoleCaps[item.role]:null;
     if(cap===null||item.bytes>cap)fail('invalid_remote_freeze');refs.set(item.role,item);
   }
   if(value.controller_outcome==='completed'){

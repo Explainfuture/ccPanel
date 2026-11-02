@@ -33,6 +33,17 @@ if(process.argv[2]==='--peer'){
     if(mode==='freeze_wrong_terminal')value.client_terminal_sha256='0'.repeat(64);
     if(mode==='freeze_duplicate_role')value.artifacts.push({...value.artifacts[0]});
     if(mode==='freeze_future_terminal')value.artifacts.push({role:'controller_terminal',bytes:1,sha256:'0'.repeat(64)});
+    if(mode==='complete_remote_inventory'){
+      for(const [role,definition]of Object.entries(data.freezeRoles)){
+        if(value.artifacts.some(ref=>ref.role===role))continue;
+        // Native fixture metadata only, not a claim to have captured live PG,
+        // host or sampler data. Every referenced fixture file really exists.
+        let raw;
+        try{raw=await readFile(join(root,definition.name));}catch(error){if(error.code!=='ENOENT')throw error;raw=role==='resource_baseline'?Buffer.alloc(131072,32):bytes({fixture_only:true,role});await store(join(root,definition.name),raw);}
+        value.artifacts.push({role,bytes:raw.length,sha256:sha(raw)});
+      }
+      assert.deepEqual(value.artifacts.map(ref=>ref.role).sort(),Object.keys(data.freezeRoles).sort());
+    }
     const raw=bytes(value);await store(join(root,'freeze.json'),raw);freezeHash=sha(raw);
   }
   const collector=setInterval(()=>{
@@ -79,6 +90,13 @@ if(process.argv[2]==='--peer'){
   assert.equal(process.argv.length,2);const parent=await realpath(tmpdir()),root=await mkdtemp(join(parent,'ccpanel-coordinator-'));await mkdir(join(root,'cases'),{mode:0o700});
   const checks=[];const known='SHA256:'+Buffer.alloc(32,1).toString('base64').replace(/=+$/,'');
   try{
+    const remoteSource=await readFile('scripts/capacity-window-remote.py','utf8'),table=/^FILES = \{([\s\S]*?)\}\r?\nUPLOAD =/m.exec(remoteSource);assert.ok(table,'Read the actual remote FILES contract without executing Python');
+    const freezeRoles={};
+    for(const match of table[1].matchAll(/'([a-z_]+)':\('([^']+)',([0-9*]+)\)/g)){
+      const [_,role,name,expression]=match,cap=expression.split('*').map(Number).reduce((a,b)=>a*b,1);assert.ok(Number.isSafeInteger(cap)&&cap>0);
+      if(!['freeze','fixture','controller_terminal'].includes(role))freezeRoles[role]={name,cap};
+    }
+    assert.equal(Object.keys(freezeRoles).length,26,'Cover all current freeze-emittable roles, not a shortened hand-written inventory');
     const artifacts=Object.fromEntries(await Promise.all(names.map(async name=>[name,sha(await readFile(join('scripts',name)))])));
     const operator={controller:'e'.repeat(64),coordinator:sha(await readFile('scripts/run-capacity-window.mjs')),sampler:'d'.repeat(64),host_state:'c'.repeat(64),capture:'b'.repeat(64),db_operator:'a'.repeat(64),first_stop:sha(await readFile('scripts/load-first-stop.mjs')),load_check:artifacts[names[0]],load_evidence:artifacts[names[1]],load_lease:artifacts[names[2]],load_stop_reader:artifacts[names[3]]};
     async function run(mode){
@@ -89,7 +107,7 @@ if(process.argv[2]==='--peer'){
       const fixture={tenant:randomUUID(),project:randomUUID(),user:randomUUID(),key:'PRIVATE_SYNTHETIC_WRITE_KEY',email:'control@integration.invalid',password:'PRIVATE_SYNTHETIC_PASSWORD',origin:cfg.expected_origin,created_at:new Date().toISOString(),run_id:cfg.run_id,write_key_id:randomUUID()},fixtureRaw=bytes(fixture);await store(join(folder,'fixture.json'),fixtureRaw);
       const binding={version:1,kind:'capacity_window_binding',run_id:cfg.run_id,planned_events:1800,product:{release:'m4-polling-014',source_commit:'b9b213f2313151c1e21be30e924a9af3a1f84a82',schema:22,api_sha256:'1'.repeat(64),worker_sha256:'2'.repeat(64),sdk_sha256:'3'.repeat(64),compose_sha256:'4'.repeat(64)},containers:Object.fromEntries(['api','worker','kafka','postgres'].map((name,index)=>[name,{id:String(index+1).repeat(64),started_at:new Date().toISOString(),restart_count:0,image_id:'sha256:'+'5'.repeat(64)}])),tools:{db_operator_sha256:operator.db_operator,generator_sha256:operator.load_check,evidence_sha256:operator.load_evidence,lease_sha256:operator.load_lease,reader_sha256:operator.load_stop_reader,sampler_sha256:operator.sampler,controller_sha256:operator.controller},namespace:{events:'fixture.events',dlq:'fixture.dlq',group:'fixture.group'},configuration_sha256:configuration},bindingRaw=bytes(binding);await store(join(folder,'binding.json'),bindingRaw);
       const ready={v:1,kind:'ready',run_id:cfg.run_id,owner_sha256:null,binding_sha256:sha(bindingRaw),configuration_sha256:configuration,business_before_sha256:'6'.repeat(64),monitor_before_sha256:'7'.repeat(64),sampler_owner_sha256:'8'.repeat(64),fixture_ref:{role:'fixture',bytes:fixtureRaw.length,sha256:sha(fixtureRaw)},captured_at_us:String(BigInt(Date.now())*1000n)};
-      await store(join(folder,'case.json'),bytes({cfg,ready,mode}));let producerCount=0;
+      await store(join(folder,'case.json'),bytes({cfg,ready,mode,freezeRoles}));let producerCount=0;
       const transportFactory=async()=>({
         process:spawn(process.execPath,[self,'--peer',folder],{stdio:['pipe','pipe','pipe'],windowsHide:true}),actualSSH:false,
         async readArtifact(role,path){let raw=await readFile(join(folder,role+'.json'));if(mode==='corrupt_binding'&&role==='binding')raw=Buffer.concat([raw,Buffer.from(' ')]);await store(path,raw);},
@@ -100,7 +118,7 @@ if(process.argv[2]==='--peer'){
       assert.equal(result.actual_ssh,false);assert.equal(result.actual_generator,false);assert.equal(result.actual_tls,false);assert.equal(result.node_runtime.child_node_options_removed,false);assert.equal(result.node_runtime.child_tls_reject_unauthorized,null);assert.equal(result.capacity_verified,false);assert.equal(result.source_authenticated,false);
       const raw=await readFile(join(directory,'coordinator-freeze.json'));assert.deepEqual(JSON.parse(raw),result);
       for(const [name,ref]of Object.entries(result.artifacts)){const content=await readFile(join(directory,name));assert.equal(content.length,ref.bytes,name);assert.equal(sha(content),ref.sha256,name);}
-      if(mode==='good'||mode==='delayed_admission'){
+      if(mode==='good'||mode==='delayed_admission'||mode==='complete_remote_inventory'){
         assert.equal(result.controller_completed,true);assert.equal(result.client_native_close.code,0);assert.equal(result.ssh_native_close.code,0);assert.equal(result.client_watchdog_fired,false);
         const terminal=JSON.parse(await readFile(join(directory,'client-terminal.json')));assert.equal(terminal.pid,JSON.parse(await readFile(join(directory,'client-close.json'))).pid);assert.equal(terminal.close.code,0);assert.equal(terminal.close.signal,null);assert.equal(terminal.observed_at,result.client_native_close.observed_at);assert.deepEqual(terminal.result,result.artifacts['client-result.json']);assert.deepEqual(terminal.manifest,result.artifacts['client-result.json.manifest.json']);assert.deepEqual(terminal.artifacts,artifacts);
         await assert.rejects(runCapacityWindow(cfg,directory,{testOnly:true,transportFactory,generatorFactory}),{code:'EEXIST'});assert.deepEqual(await readFile(join(directory,'coordinator-freeze.json')),raw);assert.equal(producerCount,1);
@@ -112,7 +130,7 @@ if(process.argv[2]==='--peer'){
       }
       checks.push(mode);
     }
-    for(const mode of ['good','wrong_nonce','owner_swap','late_reply','bad_initialized','malformed_result','missing_result','corrupt_binding','premature_exit','duplicate_reply','resource_abort','freeze_wrong_run','freeze_wrong_terminal','freeze_duplicate_role','freeze_future_terminal','delayed_admission'])await run(mode);
+    for(const mode of ['good','wrong_nonce','owner_swap','late_reply','bad_initialized','malformed_result','missing_result','corrupt_binding','premature_exit','duplicate_reply','resource_abort','freeze_wrong_run','freeze_wrong_terminal','freeze_duplicate_role','freeze_future_terminal','delayed_admission','complete_remote_inventory'])await run(mode);
     assert.throws(()=>validateWindowConfig({version:1}),/invalid_window_config/);
     console.log(JSON.stringify({passed:true,checks,real_native_transport_process:true,actual_ssh:false,actual_generator:false,actual_tls:false,raw_hashes_and_original_native_closes:true,old_namespace_restart_refused:true,full_workload_verified:false,capacity_verified:false,platform:process.platform}));
   }finally{const target=resolve(root);assert.equal(dirname(target),parent);assert.ok(basename(target).startsWith('ccpanel-coordinator-'));await rm(target,{recursive:true,force:true});}
