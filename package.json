@@ -20,6 +20,7 @@
     "backup:copy-local": "tsx scripts/copy-backup-local.ts",
     "backup:copy-sftp": "tsx scripts/copy-backup-sftp.ts",
     "backup:export-state": "tsx scripts/export-recovery-state.ts",
+    "backup:publish-state-local": "tsx scripts/publish-recovery-state-local.ts",
     "backup:decrypt-candidate": "tsx scripts/decrypt-backup-candidate.ts",
     "worker": "tsx apps/worker/src/main.ts"
   },
