@@ -64,7 +64,7 @@ pnpm backup:publish-state-local /private/offhost.json /private/source-state.json
 
 签名→加密CAS追加→以本次发布锚点读取验证完整存储链→再次核对原清单hash。此处完整链核验只证明刚写入的数据自洽，independentTipVerified明确false。成功stored_unverified/退出2，回执有backupManifestSha256、backupId、anchor、recordsVerified和storedChainVerified；来源端点、锚点保管、最新状态、恢复和离机标记均false，不能作为成功备份水位或调用恢复apply。append已返回后发生任何读取/校验/取消/超时失败均state_publish_uncertain，保留对象/head供核查；append自身的不确定错误保持journal_publish_uncertain，不自动回滚或改为新genesis。
 
-整个显式操作共享配置总时限与取消信号，不自动重试/调度或发布远端锚点；内核I/O和强杀清理边界同日志组件。CI扩展将真实PG候选经SFTP下载后，关联同一源的真实后续导出和该清单hash，再独立解密验签核对；实际结果见PROGRESS步骤218。未启用用户存储、VPS任务或正式密钥。
+整个显式操作共享配置总时限与取消信号，不自动重试/调度或发布远端锚点；内核I/O和强杀清理边界同日志组件。CI已将真实PG候选经SFTP下载后，关联同一源的真实后续导出和该清单hash，再独立解密验签核对；Actions41471070238全部通过，实际结果见PROGRESS步骤218。未启用用户存储、VPS任务或正式密钥。
 
 ### SFTP候选目的地组件（步骤213）
 
