@@ -54,8 +54,11 @@ try{
   const inspected=await inspectBackupCandidate({directory:candidate,expectedSchema:22,maxBytes:8388644,timeoutMs:30000});
   assert.equal(inspected.cipherIntegrityChecked,true);assert.equal(inspected.sha256,manifest.archive.sha256);assert.equal(inspected.sourceAuthenticated,false);assert.equal(inspected.recoveryVerified,false);
   if(!vps){
-    const inspection=await run(process.execPath,[join(dirname(process.env.CCPANEL_CAPTURE_CLI!),'inspect-backup.mjs'),candidate,'22']);
+    const inspectionArgs=[join(dirname(process.env.CCPANEL_CAPTURE_CLI!),'inspect-backup.mjs'),candidate,'22'];
+    const inspection=await run(process.execPath,inspectionArgs,{...process.env,CCPANEL_BACKUP_MAX_BYTES:String(manifest.archive.plaintextBytes)});
     assert.equal(inspection.code,2);assert.deepEqual(JSON.parse(inspection.stdout),inspected);
+    const overBudget=await run(process.execPath,inspectionArgs,{...process.env,CCPANEL_BACKUP_MAX_BYTES:String(manifest.archive.plaintextBytes-1)});
+    assert.equal(overBudget.code,1);assert.equal(overBudget.stdout,'');
   }
   const again=await capture();assert.equal(again.code,1);assert.equal(await readFile(join(candidate,'capture.json'),'utf8'),rawManifest);
   const badOutput=join(directory,'schema-mismatch');const mismatch=await capture(badOutput,'999');assert.equal(mismatch.code,1);assert.deepEqual(await readdir(badOutput),[]);await rmdir(badOutput);

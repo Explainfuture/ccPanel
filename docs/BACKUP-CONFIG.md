@@ -49,9 +49,9 @@ pnpm backup:check infra/backup/offhost.example.json
 
 ### 候选集合只读检查（步骤210）
 
-`pnpm backup:inspect /absolute/private/candidate 22`检查单份候选，不读取加密密钥、不写文件、不联网。要求POSIX受限自有目录和普通文件，拒绝符号链接、额外文件（包括残留工作明文）、缺文件、过大清单、非法/提升状态字段、错误schema和不符合现有范围的关系指纹。指纹中的PG bigint保持文本，不经JavaScript浮点数。
+`pnpm backup:inspect /absolute/private/candidate 22`检查单份候选，不读取加密密钥、不写文件、不联网。要求POSIX受限自有目录和普通文件，拒绝符号链接、额外文件（包括残留工作明文）、缺文件、过大清单、非法/提升状态字段、错误schema和指纹结构错误（包括重复关系或恢复控制表）。这里只检查关系名及计数/hash的结构，不证明清单包含该schema的完整关系范围；完整范围须由可信schema清单和实际恢复对账验证。指纹中的PG bigint保持文本，不经JavaScript浮点数。
 
-检查器按64KiB分块读取密文，在调用者上限内核对CCPBK001头、字节数及SHA256；核对读取前后文件元数据/路径inode，读取后再比较清单，使用有界运行时间和取消检查。默认CLI密文上限268435492字节，可用CCPANEL_BACKUP_MAX_BYTES调整；不能把它当作磁盘空间预留或对阻塞内核I/O的强制中断。目录归可信协调器持有，调用者仍须任务锁，不能将检查结果当后续文件不会变化的保证。
+检查器按64KiB分块读取密文，在调用者上限内核对CCPBK001头、字节数及SHA256；核对读取前后文件元数据/路径inode，读取后再比较清单，使用有界运行时间和取消检查。CLI的CCPANEL_BACKUP_MAX_BYTES与backup:capture同为明文字节预算（默认268435456），检查时自动增加36字节信封开销；核心API的maxBytes直接表示密文上限。不能把上限当作磁盘空间预留或对阻塞内核I/O的强制中断。目录归可信协调器持有，调用者仍须任务锁，不能将检查结果当后续文件不会变化的保证。
 
 通过输出captured_unverified/cipherIntegrityChecked=true、退出2；错误仅固定码、退出1。Windows ACL未验证则拒绝。hash与清单一致不证明清单来自原源，也不证明AES-GCM认证、明文正确、最新状态完整或可恢复；sourceAuthenticated/recoveryVerified/offhostVerified/latestStateVerified仍false。不写verified manifest或成功水位，不开启调度。后续传输/恢复必须重新校验所用字节并完成认证解密、可信来源和实际恢复验证。
 

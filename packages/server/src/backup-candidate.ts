@@ -70,6 +70,7 @@ export async function inspectBackupCandidate(options:{directory:string;expectedS
     if(!Buffer.concat(chunks).equals(Buffer.concat(repeated)))fail('backup_candidate_changed');
     const final=await lstat(directory);checkpoint();
     if(final.dev!==initial.dev||final.ino!==initial.ino||await realpath(directory)!==directory||JSON.stringify((await readdir(directory)).sort())!==JSON.stringify(['capture.json','database.dump.enc']))fail('backup_candidate_changed');
+    checkpoint();
     return{status:'captured_unverified' as const,cipherIntegrityChecked:true,bytes,sha256:archive.sha256 as string,relations:(manifest!.fingerprints as string[]).length,recoveryVerified:false,offhostVerified:false,latestStateVerified:false,sourceAuthenticated:false};
   }catch(error){if(error instanceof BackupCandidateError)throw error;throw new BackupCandidateError('backup_candidate_inspection_failed');}
 }
