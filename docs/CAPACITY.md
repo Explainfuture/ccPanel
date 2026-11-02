@@ -374,3 +374,11 @@ POSIX支持SIGINT/SIGTERM；Windows外部Stop-Process/信号API可能直接强�
 首轮基线未建立；第二轮文件完整但因ID文本排序被离线解析器拒绝，原始失败文件保留。5065b55修复原生bigint分页、写行前有界顺序检查，新增三类历史各505个同微秒ID跨三页的真实PG回归。[CI41513066564](https://github.com/Explainfuture/ccPanel/actions/runs/41513066564) verify/postgres/sftp全部通过，527单测/9跳过、20实际PG套件及35离线格式检查。第三轮VPS监督单元实际退出0并清理；两份45442行快照下载后的SHA均与各自采集回执一致，原解析器通过：45437原行保留且未改写，2条样本到期/3条压力历史超额的缺失均为最旧前缀，无法解释缺失0。37非监控public关系指纹、版本及配置边界一致，采集/保留持续启用；没有生成容量事件或部署新应用。证据见evidence/monitor-preservation-222.json。
 
 此端点规则仍须接入完整窗口的业务/控制状态、原客户端精确ID、PG/Kafka位点及真实sampler终态核对，不能单独形成容量通过。已只读确认shared sampler与014源文件SHA不一致，未来必须在全程deploy.lock下正确固定工具；完整外层监督、首次停止原因、跨机失联停止和不确定发布时隔离夹具的流程仍未实现。保留200MiB安全余量和原CPU/Swap/时长门槛；没有关闭正常保留、放宽旧报告或启动新30分钟负载。
+
+## 步骤223：严格对账与独立stop/lease组件（尚未接成完整流程）
+
+552531e使fixture verify按同一RR快照核对raw唯一ID与三表双向精确集合、stored状态、当前聚合epoch和可见桶总数，pending时结束快照再重试；缺表/view拒绝跳过。实际PG制造同数量B两行/A缺失、failed状态、stale/NULL epoch，观察等待ROLLBACK后真实aggregate提交，再由原client自然成功；未修复NULL在原预算后拒绝。该证明不替代Kafka、完整client终态或安全清理屏障，cleanup本身未改。
+
+5844aaf/e089bb5分别实现原子首次停止发布和可选专用stdin单调租约，native竞争/文件故障及真实子进程/pipe回归已执行。[CI41517281466](https://github.com/Explainfuture/ccPanel/actions/runs/41517281466)三job成功：527单测/9跳过、20真实PG、14 Linux首次发布及30租约检查；Windows首次发布12项、租约30项也通过。孤儿只证明实际自写fsync abort/exit-handler回执，独立native terminal明确未证；普通直接子进程由真实close判定。契约、Windows原生失败修复及限界见CAPACITY-CONTROL与evidence/capacity-controls-223.json。
+
+现有负载生成器尚未接这两个组件，不能以本项宣称已有完整失联保护、跨机bridge或容量通过。下一步接独立stop轮询/租约，再实现完整部署锁、同一client/sampler终态和冻结/对账/隔离清理。没有修改VPS/014资源或启动新负载，原失败与200MiB、CPU/Swap及1800秒门槛保持；备份仍默认关闭。
