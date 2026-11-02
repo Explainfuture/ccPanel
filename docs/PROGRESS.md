@@ -15,7 +15,7 @@
 - M1 SDK、鉴权、Kafka/PG 闭环：基础闭环与浏览器联调通过；完整异常/浏览器矩阵待验收。
 - M2 图表、报表、仪表盘：趋势/筛选、时间线、共享报表编辑、仪表盘布局/筛选、异步查询和受保护导出已上线预览；趋势折线、柱状及日期表格已在步骤171发布并通过真实查询/页面验收。
 - M3 身份、漏斗、留存、分群：基础分析与共享行为报表已实现，有算法基准、PG及历史真实链路证据；完整PRD口径和发布矩阵仍需逐项核对。
-- M4 容量与恢复验收：服务中断恢复、PG 加密离机副本恢复、删除屏障及真实 Kafka 重放测试通过；两次 30 分钟数据对账与延迟通过，但 swap 活动仍未满足资源发布门槛。自动备份/删除清单恢复、管理型 DLQ 重放及剩余故障窗口未完成。
+- M4 容量与恢复验收：服务中断恢复、PG 加密离机副本恢复、删除屏障及真实 Kafka 重放测试通过；两次 30 分钟数据对账与延迟通过，但 swap 活动仍未满足资源发布门槛。管理型 DLQ 重放已有真实 API/Worker/Kafka 与页面场景证据；自动异机备份、可信最新状态持续同步及其余故障/发布矩阵仍未完成。
 
 ### 步骤 03：VPS 真实基础设施与集成验证（2026-10-23）
 
@@ -1741,3 +1741,11 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 配置与发布聚焦测试本机86通过/26POSIX跳过，typecheck和diff检查通过；新增受控原生文件调度用例验证真实head替换后清单变化报uncertain并保留已发布链，以及实际signer读取后取消不创建日志/锁且句柄关闭。第17套真实PG扩展同份SFTP下载候选+实际后续源导出+实际清单hash，经配置CLI发布、独立解密验签/记录hash绑定/全链读取、错误DB与重复genesis拒绝、源/门禁不变及正常夹具清理。实际Linux/PG执行待CI；未改VPS/启用目的地、正式key或调度，不替代原源授权/受保护远端锚点/容量与整机RPO/RTO验收。
 - 2026-11-02 UTC15:24仅只读复核VPS：013/公网TLS ready，API/Worker/PG/Kafka均运行，1vCPU load约0.10/0.15/0.18、可用288452KiB（约282MiB）、swap已用334056KiB、磁盘空闲12529922048字节。单次快照不作30分钟容量或持续swap通过证据，未改线上文件/配置或启动负载。
 - Actions41471070238对30431ea的verify/postgres/sftp全部success：508通过/9平台跳过，新增49配置、26发布和2原生调度用例全部Linux执行通过；18套真实PG完成。第17套同份122317字节PG候选经SFTP下载认证解密/恢复43关系，再用同原源后续真实导出和实际清单hash完成配置CLI发布，独立AES/Ed25519/记录hash/备份关联及全链读取、错误DB/重复genesis拒绝、源/门禁不变和夹具清理均true；state_binding_backup_hash_is_fixture=false。第18套原有快照/签名日志的关联hash仍为夹具，未混淆两者；所有来源/独立锚点/最新准入标记仍false。用户配置仍禁用、正式key/目的地/调度/VPS均未变，整体目标未完成。
+
+### 步骤219：实际Kafka跨分区批次部分成功恢复
+
+- 核对PRD发现A14缺实际证据；复用当前013 API/Worker，公开Node SDK trackFor+真实文件队列，固定源码4899d25未改，Node束SHA8d2b70582f9ff01ea6958b204d0b8c86c00ce03e28699fe81654d6e335de6028/gzip7749。随机双分区topic大小限制制造同批小事件已写/大事件被拒，要求真实日志/503/high1与0/原批保留，再同SDK/API自动整批重试、实际Worker及精确ID/聚合对账；无生产测试开关或mock结果。
+- 新控制器+独立ExecStopPost恢复，systemd420秒/清理300秒监督及所有准备步骤超时/命名容器回收；主服务计划暂停，44关系冻结比较，隔离资源清理。初始9831941的CI41474663097全部success；首轮VPS5RZttw因root0600挂载EACCES未进入故障场景，已恢复ready且主44关系指纹同，额外核对旧topics/group/临时DB均0。eb47a1d修正私有UID1000只读脚本副本，Linux语法及暂存hash核验通过，修正CI/第二轮真实终态待记录。
+- 顺手修正里程碑顶部已过时的“管理型DLQ未完成”，引用既有真实API/Worker/Kafka/页面证据但不扩大为全A16/A19通过。完整容量、设备矩阵、独立备份/可信状态及生产HA缺口保留。
+- eb47a1d第二轮Bhwg5K通过：真实Produce大小拒收1、HTTP[503,202]、故障期Kafka high[1,0]/PG0/outbox2；同API producer/SDK自动原批重试后high[1,1]、确认文件清空，显式原批重复后high[2,2]。两个原ID的raw/dedup/jobs/processed/聚合贡献各2、duplicates2、DLQ0、门禁不变。冻结证据docs/evidence/partial-produce-node-sdk-219.json（SHA36e278bb38ac83d9351e2668abc1880c649f0efe6e1d34714afdb62036c12308），客户端清单与check日志hash在两端匹配；未以Kafka物理条数替代客户端事件集合。
+- unit ccpanel-partialproduce-5564e0b838e422ac正常结束/已收集，ExecStopPost ready；主库暂停44关系指纹同，SHA4839f6a5036d9a488e47f2254439d89a9af291a9bb05a4277bb567594887e6f8。另核对topics/group/临时DB0、013 ready、raw2/dedup3/DLQ0/位点总15618与运行束hash未变。Actions41475233210的verify/postgres/sftp全部success：508通过/9平台跳过、18套真实PG；CI并未执行此远程broker故障。仅A14指定窗口得到当前版本真实证据，未运行新容量窗口或覆盖掉电/磁盘故障/浏览器IDB/分析HTTP/完整设备矩阵。

@@ -93,3 +93,19 @@ check-retired-drills.py 在空PATH下执行四个入口，要求退出64、无�
 从真实只读host telemetry复制出仅测试API读取的原子文件，压力期仅将两种磁盘availableBytes改为0，持续跟随真实探针更新时间；没有填满磁盘或更改主遥测/生产配置。当前API按真实admission路径返回503/disk_space_low及Retry-After30秒，SDK保留原事件；3秒后强制flush也不得提前发送。撤去测试字段后，不更换SDK/API进程，不修改时钟或mock HTTP响应，等待SDK定时重试收到真实202。两次HTTP完整载荷逐字节相同，队列在确认后为0；再手动重发原载荷，真实Worker消费两条后必须只有raw/dedup/jobs/processed/桶贡献各1、duplicates1、DLQ0，原event_id精确相同，完整性门禁全行不变。
 
 2026-10-24 JZElxI通过：状态[503,202]，实际重试间隔30678ms，Retry-After30000ms。结果双方保存，SHA256 c4df2b05cbdd6971354dbe907b9eefd5462bcba320fea84385b555655b73b80e；暂停期间主库44关系指纹一致，临时topic/group/DB/env/ledger清理，主服务恢复ready。测试遥测留在独立证据目录，不用于线上探针。该项是压力信号到退避/恢复的当前版本证据，不是实际磁盘满写失败、浏览器关闭/持久化、无中断、高并发容量或HA证明。
+
+## 当前013跨分区批次部分成功（步骤219 / A14）
+
+新增partial-produce-window-remote.sh及partial-produce-window-check.mjs：固定013实际API/Worker/Browser束hash，Node SDK源码与4899d25一致、重新构建gzip7749/SHA256 8d2b70582f9ff01ea6958b204d0b8c86c00ce03e28699fe81654d6e335de6028，通过只读专用挂载导入。使用公开trackFor和真实FileQueue，先fsync客户端原事件/路由清单；不是浏览器或IndexedDB验收。部署锁、就绪、200MiB可用内存及无活动容量任务检查后，暂停主API/Worker，只运行随机临时DB/topics/group。API与Worker依次运行、heap40，测试API仅容器回环3198，无宿主端口。
+
+KafkaJS公开默认分区器选择两个不同distinct_id，使两事件进入两个分区。只将新topic的max.message.bytes设1536：一条小事件和一条含4096字节合成属性的事件同批发送，必须观测真实Produce大小拒收日志、HTTP503、Kafka高位1/0及文件队列仍含两个原事件，前提缺失就失败。该配置限制记录批大小，参见[Kafka4.1 topic配置](https://kafka.apache.org/41/configuration/topic-configs/)。不修改主topic、broker或应用确认逻辑。
+
+恢复该随机topic上限并保留原ISR/unclean election/保留期配置，不更换SDK或API producer，等待原SDK自动整批重试；完整载荷必须一致，202精确确认原ID后文件队列才空，再显式重发原批。真实Worker对账两个原ID的raw/dedup/jobs/processed和两个事件名的聚合桶各一次、DLQ0、门禁不变，PG/Kafka提交等于实际broker高位。物理重复数由实际Kafka高位推导，不能因producer幂等吸收部分重试而硬编码消息总数。这里核对聚合桶，未执行分析查询HTTP或完整A17。
+
+控制器必须直接作为root systemd MainPID运行，RuntimeMaxSec420、TimeoutStopSec300、KillMode=mixed，并有独立ExecStopPost=/bin/bash（规范路径下的partial-produce-resume-remote.sh）；未满足则暂停前拒绝。初始化/指纹/容器/清理各命令有界，按唯一名回收临时容器；先核对暂停期间主库44关系并恢复ready，再清理隔离Kafka/DB。SDK与harness复制到UID1000的私有只读文件后挂载，root暂存文件可保持0600。ExecStopPost即使主脚本异常结束仍尝试恢复已有原服务，不替换release。强杀/系统级故障的所有清理分支尚未验收，不能将监督配置当成掉电保证。
+
+首轮5RZttw未进入broker故障场景：root0600脚本直接挂载导致容器EACCES。主库44关系指纹同、原服务ready；另读Kafka确认该次topics/group均0、PG临时库0。eb47a1d修正为专用UID1000只读副本并核验hash，保留首轮失败不作A14通过。修正后的实际终态见下。
+
+修正后Bhwg5K实际通过，冻结[安全证据JSON](evidence/partial-produce-node-sdk-219.json)。真实大小拒收1次、首503且high0/1分别1/0，FileQueue保留完整两事件；同API/SDK自动重试202、完整载荷一致，Kafka high变1/1（小事件的部分重试由producer幂等吸收）。显式重发后high2/2，实际Worker的raw/dedup/jobs/processed/聚合贡献各2，按原ID集合核对、duplicates2、DLQ0，完整性门禁不变。原客户端清单SHA42d265a49ab15a8032ea0e8fa1e2d86be3704f7c1d1b82dea062af366a3ebafd；check.log SHA2f8bbafeb8efce450e8220e7f3f824c1cafc149aa4f80e284aeae25f7090c70b已在两端核对。
+
+监督单元正常结束并已收集，ExecStopPost再次确认原服务ready；主库暂停期间44关系指纹一致，SHA4839f6a5036d9a488e47f2254439d89a9af291a9bb05a4277bb567594887e6f8。收尾另读Kafka确认该次topics/group0、PG临时库0，root raw2/dedup3/DLQ0/位点总15618，013及三处运行bundle hash均未变。子进程退出已等待且未触发强杀；未断言每个退出码，JSON说明该标记的准确含义。修正Actions41475233210的verify/postgres/sftp全部通过：508测试/9平台跳过、18套PG；CI仅回归/语法，真实Kafka故障证据来自本VPS。该结果补A14这个实际跨分区窗口，不扩大为完整故障/设备矩阵、浏览器补发、分析HTTP、容量、无中断或HA验收。
