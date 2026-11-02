@@ -307,7 +307,3 @@ export function windowDbConfigFromEnv(env:NodeJS.ProcessEnv):WindowDbConfig{
   for(const key of ['DATABASE_URL','KAFKA_BROKERS','PUBLIC_ORIGIN','CCPANEL_WINDOW_CONFIGURATION_SHA256','CCPANEL_WINDOW_PRODUCT_ROOT','CCPANEL_WINDOW_TOOL_ROOT'])assert(typeof env[key]==='string'&&env[key]!.length>0,'configuration_invalid');
   return{connectionString:env.DATABASE_URL!,brokers:env.KAFKA_BROKERS!.split(','),namespace:kafkaNamespace(env),origin:env.PUBLIC_ORIGIN!,expectedSchema:22,durability:kafkaDurability(env),pressure:pressurePolicy(env),productRoot:env.CCPANEL_WINDOW_PRODUCT_ROOT!,toolsDirectory:env.CCPANEL_WINDOW_TOOL_ROOT!,operatorFile:fileURLToPath(import.meta.url),configurationSha256:env.CCPANEL_WINDOW_CONFIGURATION_SHA256!};
 }
-if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
-  try{const args=process.argv.slice(2),[command,directory,sequence]=args;assert(args.length===(command==='status'?3:2),'command_invalid');const value=await runCapacityWindowDb({command:command as WindowDbCommand,directory:directory??'',...(sequence===undefined?{}:{sequence})},windowDbConfigFromEnv(process.env));assert(value,'operation_failed');console.log(JSON.stringify(value));if(value.status==='cleanup_deferred')process.exitCode=2;}
-  catch(error){console.error(JSON.stringify({code:error instanceof WindowDbError?error.code:'window_db_operation_failed'}));process.exitCode=1;}
-}
