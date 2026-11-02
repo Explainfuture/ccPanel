@@ -1,0 +1,33 @@
+{
+  "version": 2,
+  "enabled": false,
+  "worker": { "identity": null, "independentFailureDomainConfirmed": false },
+  "source": {
+    "host": null, "port": 22, "user": null,
+    "knownHostsFile": null, "identityFile": null,
+    "expectedRelease": null, "expectedSchema": 22
+  },
+  "encryption": { "format": "CCPBK001", "keyFile": null },
+  "destination": {
+    "kind": "local", "root": null,
+    "sftp": null,
+    "prefix": "ccpanel-backups"
+  },
+  "state": {
+    "enabled": false,
+    "sourceId": null,
+    "signingKeyFile": null,
+    "publicKeyFile": null,
+    "journalRoot": null,
+    "anchorRoot": null
+  },
+  "schedule": { "fullEveryMinutes": 360, "stateEveryMinutes": 5 },
+  "retention": { "daily": 7, "weekly": 4, "monthly": 3 },
+  "limits": {
+    "runTimeoutSeconds": 1800,
+    "exportMaxBytes": 10737418240,
+    "stateMaxAgeSeconds": 600,
+    "incompleteRetentionHours": 24,
+    "maxAttempts": 3
+  }
+}

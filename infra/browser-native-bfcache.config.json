@@ -1,0 +1,17 @@
+{
+  "browser": {
+    "browserName": "chromium",
+    "isolated": true,
+    "launchOptions": {
+      "channel": "chrome",
+      "headless": false,
+      "ignoreDefaultArgs": [
+        "--disable-back-forward-cache",
+        "--disable-background-timer-throttling",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding"
+      ]
+    }
+  },
+  "outputDir": "output/playwright/bfcache208"
+}

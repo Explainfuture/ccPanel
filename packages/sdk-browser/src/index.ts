@@ -1,0 +1,276 @@
+import { byteLength, limits, validateEvent, type AnalyticsEvent, type Json } from '../../schema/src/index.js';
+import { MemoryQueue,type Queue,type QueueRow } from './queue.js';
+import {IndexedQueue} from './indexed-queue.js';
+export type { AnalyticsEvent,Json } from '../../schema/src/index.js';
+export interface AnalyticsOptions {
+  endpoint:string;projectId:string;writeKey:string;consent:boolean;
+  flushInterval?:number;batchSize?:number;queue?:Queue;fetch?:typeof globalThis.fetch;
+  propertyAllowlist?:Readonly<Record<string,readonly string[]>>;
+  onError?:(code:string,details?:{event_ids:string[]})=>void;source?:'browser'|'node';
+}
+export interface DeliveryCounters{expired:number;rejected_overflow:number;rejected_pending_overflow:number;storage_error:number}
+export interface TrackOptions{event_time?:string}
+export interface TrackResult{status:'queued-persistent'|'queued-memory'|'rejected';event_id?:string;reason?:string}
+const sensitive=/password|secret|token|authorization|cookie|phone|email/i;
+export class Analytics {
+  private counters:DeliveryCounters={expired:0,rejected_overflow:0,rejected_pending_overflow:0,storage_error:0};
+  private queue:Queue;
+  private memory=new MemoryQueue();
+  private consent:boolean;
+  private anonymous='';private user:string|undefined;
+  private timer:ReturnType<typeof setTimeout>|undefined;
+  private flight:Promise<{confirmed:number;pending:number}>|undefined;
+  private flightView:Promise<{confirmed:number;pending:number}>|undefined;
+  private snapshot:{event:AnalyticsEvent;created:number}[]=[];
+  private hiddenSent=false;private paused=false;private lastError:string|undefined;private epoch=0;
+  private owner=crypto.randomUUID();private identityKey:string;
+  private consentKey:string;
+  private consentMarker:string|null=null;
+  private flushInterval:number;private batchSize:number;private running=true;private pendingWrites=0;private pendingBytes=0;
+  private needsRecovery=false;private nextRecovery=0;
+  private consentChanges:Promise<void>=Promise.resolve();
+  private allowedProperties:Map<string,Set<string>>|undefined;
+  private cleanup:(()=>void)[]=[];
+  constructor(private options:AnalyticsOptions){
+    // Keep endpoint/project queue ownership fixed for this instance. Key rotation
+    // remains explicit through updateWriteKey rather than caller object mutation.
+    options=this.options={...options};
+    if(typeof options.endpoint!=='string')throw new Error('invalid_endpoint');
+    let url:URL;try{url=new URL(options.endpoint);}catch{throw new Error('invalid_endpoint');}
+    if(url.username||url.password||url.search||url.hash)throw new Error('invalid_endpoint');
+    options.endpoint=url.href;
+    if(url.protocol!=='https:'&&!(url.protocol==='http:'&&['localhost','127.0.0.1'].includes(url.hostname)))throw new Error('HTTPS endpoint required');
+    if(typeof options.projectId!=='string'||!options.projectId.trim()||typeof options.writeKey!=='string'||!options.writeKey.trim()||options.writeKey.length>256)throw new Error('projectId and writeKey required');
+    this.batchSize=options.batchSize??limits.batchEvents;
+    if(!Number.isInteger(this.batchSize)||this.batchSize<1||this.batchSize>100)throw new Error('invalid_batch_size');
+    // Browsers and Node use a signed 32-bit millisecond timer delay.
+    // NaN/Infinity/overflow can otherwise become an unintended ~1 ms loop.
+    if(options.flushInterval!==undefined&&(!Number.isInteger(options.flushInterval)||options.flushInterval<100||options.flushInterval>2147483647))throw new Error('invalid_flush_interval');
+    this.flushInterval=options.flushInterval??3000;
+    if(options.propertyAllowlist!==undefined){
+      const list=options.propertyAllowlist;
+      if(!list||typeof list!=='object'||Array.isArray(list)||![Object.prototype,null].includes(Object.getPrototypeOf(list))||Object.keys(list).length>1000)throw new Error('invalid_property_allowlist');
+      this.allowedProperties=new Map();
+      for(const[name,keys]of Object.entries(list)){
+        if(!name||name.length>128||!Array.isArray(keys)||keys.length>100||!keys.every(k=>typeof k==='string'&&k.length>0&&k.length<=128))throw new Error('invalid_property_allowlist');
+        this.allowedProperties.set(name,new Set(keys));
+      }
+    }
+    this.identityKey=`ccpanel:identity:${url.origin}${url.pathname}:${options.projectId}`;
+    this.consentKey=this.identityKey+':consent';
+    this.consentMarker=this.readConsentMarker();
+    this.consent=options.consent===true&&!this.consentMarker?.startsWith('revoked:');
+    this.queue=options.queue??(typeof indexedDB!=='undefined'?new IndexedQueue(this.identityKey+':queue'):this.memory);
+    if(this.consent)this.loadIdentity();
+    if(typeof window!=='undefined'){
+      const hidden=()=>{if(document.visibilityState==='hidden')this.beacon();else{this.hiddenSent=false;this.triggerFlush();}};
+      const pagehide=()=>this.beacon();const online=()=>this.triggerFlush();
+      const storage=(e:StorageEvent)=>{if(e.key===this.consentKey)this.hasConsent();else if(e.key===this.identityKey&&this.hasConsent())this.loadIdentity();};
+      document.addEventListener('visibilitychange',hidden);window.addEventListener('pagehide',pagehide);window.addEventListener('online',online);window.addEventListener('storage',storage);
+      this.cleanup.push(()=>{document.removeEventListener('visibilitychange',hidden);window.removeEventListener('pagehide',pagehide);window.removeEventListener('online',online);window.removeEventListener('storage',storage);});
+    }
+    this.triggerFlush();
+  }
+  private error(code:string,details?:{event_ids:string[]}){
+    if(code==='storage_error'&&this.queue.persistent)this.needsRecovery=true;
+    if(code==='storage_error'||code==='rejected_overflow'||code==='rejected_pending_overflow')this.counters[code]=Math.min(Number.MAX_SAFE_INTEGER,this.counters[code]+1);
+    else if(/^expired:[1-9][0-9]*$/.test(code))this.counters.expired=Math.min(Number.MAX_SAFE_INTEGER,this.counters.expired+Number(code.slice(8)));
+    this.lastError=code;try{this.options.onError?.(code,details);}catch{/* diagnostics must not break business code */}}
+  private readConsentMarker(){try{return typeof localStorage==='undefined'?null:localStorage.getItem(this.consentKey);}catch{return null;}}
+  private consentRevision(marker:string|null){return marker?.replace(/^(?:revoked|granted):/,'')??'initial';}
+  private hasConsent(){
+    const marker=this.readConsentMarker();
+    if(this.consent&&(marker?.startsWith('revoked:')||this.consentRevision(marker)!==this.consentRevision(this.consentMarker)))void this.changeConsent(false,false).catch(()=>this.error('consent_cleanup_error'));
+    return this.consent;
+  }
+  private loadIdentity(){
+    try{const s=typeof localStorage!=='undefined'?localStorage.getItem(this.identityKey):null;if(s){const v=JSON.parse(s);if(typeof v.anonymous==='string'){this.anonymous=v.anonymous;this.user=typeof v.user==='string'?v.user:undefined;return;}}}catch{this.error('identity_storage_error');}
+    this.anonymous=crypto.randomUUID();this.user=undefined;this.saveIdentity();
+  }
+  private saveIdentity(){if(!this.hasConsent())return;try{if(typeof localStorage!=='undefined')localStorage.setItem(this.identityKey,JSON.stringify({anonymous:this.anonymous,user:this.user}));}catch{this.error('identity_storage_error');}}
+  async track(name:string,properties:Record<string,Json>={},options?:TrackOptions):Promise<TrackResult>{
+    return this.trackWithIdentity(name,properties,this.user||this.anonymous,this.anonymous,options);
+  }
+  // Snapshot caller-provided identities without mutating the instance identity.
+  // Node request handlers use this path so concurrent users cannot overwrite it.
+  protected async trackWithIdentity(name:string,properties:Record<string,Json>,distinctId:string,anonymousId?:string,options?:TrackOptions):Promise<TrackResult>{
+    if(!this.hasConsent()||!this.running)return{status:'rejected',reason:'consent_required'};
+    if(this.pendingWrites>=(this.queue.persistent?1000:100)){this.error('rejected_pending_overflow');return{status:'rejected',reason:'rejected_pending_overflow'};}
+    const version=this.epoch;
+    // Capture business time before any async storage work. Retry never rebuilds it.
+    let eventTime:string;
+    try{
+      if(options!==undefined&&(!options||typeof options!=='object'||Array.isArray(options)||Object.getPrototypeOf(options)!==Object.prototype||Object.keys(options).some(k=>k!=='event_time')))throw new Error('invalid_event_time');
+      const supplied=options?.event_time;
+      eventTime=supplied===undefined?new Date().toISOString():supplied;
+      if(typeof eventTime!=='string')throw new Error('invalid_event_time');
+    }catch{this.error('invalid_event_time');return{status:'rejected',reason:'invalid_event_time'};}
+    // Freeze the payload before the first await so identity changes and caller mutation cannot rewrite it.
+    let event:AnalyticsEvent;
+    try{
+      if(this.allowedProperties){
+        if(!properties||typeof properties!=='object'||Array.isArray(properties)||Object.getPrototypeOf(properties)!==Object.prototype)throw new Error('invalid_properties');
+        const allow=this.allowedProperties.get(name);
+        // Read only approved own fields; unknown event names have no approved
+        // properties. Constructor copies configuration so later mutation cannot
+        // silently expand collection. Sensitive-key filtering still applies.
+        properties=Object.fromEntries(Object.keys(properties).filter(k=>allow?.has(k)).map(k=>[k,properties[k]!]));
+      }
+      const context:Record<string,Json>={sdk:'ccpanel',version:'0.1.0',source:this.options.source||'browser'};
+      if(typeof location!=='undefined')context.page=location.pathname;
+      event={event_id:crypto.randomUUID(),event_name:name,distinct_id:distinctId,anonymous_id:anonymousId,event_time:eventTime,properties,context,schema_version:1};
+      const invalid=validateEvent(event)||(name==='$identify'&&!anonymousId?'missing_anonymous_id':undefined);if(invalid){this.error(invalid);return{status:'rejected',reason:invalid};}
+      event=JSON.parse(JSON.stringify(event));
+      // Default privacy filter applies recursively without touching the caller's object.
+      const scrub=(v:Json):Json=>Array.isArray(v)?v.map(scrub):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).filter(([k])=>!sensitive.test(k)).map(([k,x])=>[k,scrub(x)])):v;
+      event.properties=scrub(event.properties) as Record<string,Json>;
+    }catch{this.error('invalid_properties');return{status:'rejected',reason:'invalid_properties'};}
+    const eventBytes=byteLength(event);
+    if(this.pendingBytes+eventBytes>(this.queue.persistent?5*1024*1024:512*1024)){this.error('rejected_pending_overflow');return{status:'rejected',reason:'rejected_pending_overflow'};}
+    this.pendingWrites++;this.pendingBytes+=eventBytes;
+    try{
+      if(this.snapshot.length<this.batchSize&&byteLength(this.envelope([...this.snapshot.map(r=>r.event),event]))<=limits.batchBytes)this.snapshot.push({event,created:Date.now()});
+      let stored=false;
+      try{stored=await this.queue.add(event,this.queue.persistent?1000:100,this.queue.persistent?5*1024*1024:512*1024);}
+      catch{this.needsRecovery=true;this.error('storage_error');stored=await this.memory.add(event,100,512*1024);}
+      if(!this.hasConsent()||version!==this.epoch){await this.queue.finish([event.event_id],'');await this.memory.finish([event.event_id],'');return{status:'rejected',reason:'consent_revoked'};}
+      if(!stored){this.snapshot=this.snapshot.filter(r=>r.event.event_id!==event.event_id);this.error('rejected_overflow');return{status:'rejected',reason:'rejected_overflow'};}
+      const status=this.queue.persistent&&!(await this.memory.peek(100)).some(r=>r.event.event_id===event.event_id)?'queued-persistent':'queued-memory';
+      this.schedule(true);
+      const stats=await this.getQueueStatus();if(stats.count>=this.batchSize||stats.bytes>=limits.batchBytes)queueMicrotask(()=>this.triggerFlush());
+      return{status,event_id:event.event_id};
+    }finally{this.pendingWrites--;this.pendingBytes-=eventBytes;}
+  }
+  async identify(userId:string){if(!userId||userId.length>256)throw new Error('invalid_user_id');if(!this.hasConsent())return;this.user=userId;this.saveIdentity();return this.track('$identify');}
+  reset(){this.user=undefined;this.anonymous=this.hasConsent()?crypto.randomUUID():'';if(this.consent)this.saveIdentity();}
+  setConsent(value:boolean){return this.changeConsent(value,true);}
+  private changeConsent(value:boolean,publish:boolean){
+    // Runtime callers may bypass TypeScript; only explicit true grants collection.
+    value=value===true;
+    const version=++this.epoch;this.consent=false;this.snapshot=[];this.schedule(false);
+    const prior=this.readConsentMarker();
+    if(!value&&publish)try{localStorage.setItem(this.consentKey,'revoked:'+crypto.randomUUID());}catch{/* cross-tab synchronization unavailable */}
+    const apply=async()=>{
+      if(!value){
+        if(this.flight)await this.flight;
+        // A delayed withdrawal must not erase events from a newer grant.
+        const marker=this.readConsentMarker();
+        if(!marker||marker.startsWith('revoked:')){
+          await this.queue.clear();try{localStorage.removeItem(this.identityKey);}catch{/* optional storage */}
+        }else if(!this.queue.persistent)await this.queue.clear();
+        await this.memory.clear();this.user=undefined;this.anonymous='';
+      }
+      if(version!==this.epoch)return;
+      if(value&&publish){
+        // A newer withdrawal in another tab wins over an older queued grant.
+        if(this.readConsentMarker()!==prior)return;
+        if(prior?.startsWith('revoked:'))await this.queue.clear();
+        if(this.readConsentMarker()!==prior)return;
+        try{localStorage.setItem(this.consentKey,prior?.startsWith('revoked:')?'granted:'+prior.slice(8):prior??'granted:initial');}catch{/* local grant still works without web storage */}
+      }
+      this.consentMarker=this.readConsentMarker();
+      this.consent=value;if(value){this.loadIdentity();this.triggerFlush();}
+    };
+    const change=this.consentChanges.catch(()=>{}).then(async()=>{
+      if(typeof navigator!=='undefined'&&navigator.locks)await navigator.locks.request(this.consentKey,async()=>{await apply();});else await apply();
+    });
+    this.consentChanges=change;return change;
+  }
+  updateWriteKey(key:string){if(typeof key!=='string'||!key.trim()||key.length>256)throw new Error('invalid_key');this.options.writeKey=key;this.paused=false;this.triggerFlush();}
+  private envelope(events:AnalyticsEvent[]){return{write_key:this.options.writeKey,project_id:this.options.projectId,schema_version:1,events};}
+  private async stores(){return this.queue===this.memory?[this.queue]:[this.queue,this.memory];}
+  async getQueueStatus(){let count=0,bytes=0,persistent_count=0,memory_count=0,oldest:number|null=null;for(const q of await this.stores()){try{const s=await q.stats();count+=s.count;bytes+=s.bytes;if(q.persistent)persistent_count+=s.count;else memory_count+=s.count;if(s.oldest!==null)oldest=oldest===null?s.oldest:Math.min(oldest,s.oldest);}catch{this.error('storage_error');}}return{count,bytes,persistent_count,memory_count,oldest,counters:{...this.counters},pending_writes:this.pendingWrites,pending_bytes:this.pendingBytes,pending_limit_count:this.queue.persistent?1000:100,pending_limit_bytes:this.queue.persistent?5*1024*1024:512*1024,last_error:this.lastError,storage:this.needsRecovery?'memory-fallback':this.queue.persistent?'persistent-with-memory-fallback':'memory'};}
+  private schedule(pending:boolean){
+    if(!pending||!this.running||!this.consent||this.paused){
+      if(this.timer!==undefined)clearTimeout(this.timer);this.timer=undefined;return;
+    }
+    if(this.timer!==undefined)return;
+    this.timer=setTimeout(()=>{this.timer=undefined;this.triggerFlush();},this.flushInterval);
+    this.timer.unref?.();
+  }
+  private triggerFlush(){void this.flush().catch(()=>{/* deadline already reported through onError */});}
+  flush():Promise<{confirmed:number;pending:number}>{
+    const operation=this.flushOperation();
+    if(this.options.source!=='node')return operation;
+    if(this.flightView)return this.flightView;
+    return this.flightView=new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>{this.error('flush_timeout');reject(new Error('flush_timeout'));},10000);
+      void operation.then(result=>{clearTimeout(timer);resolve(result);},error=>{clearTimeout(timer);reject(error);});
+    });
+  }
+  // Retain actual ownership until I/O settles even after a caller deadline.
+  protected flushOperation():Promise<{confirmed:number;pending:number}>{
+    if(this.flight)return this.flight;
+    this.flight=this.send().then(result=>{this.schedule(result.pending>0||this.pendingWrites>0||this.needsRecovery);return result;}).catch(()=>{this.error('send_error');this.schedule(true);return{confirmed:0,pending:0};}).finally(()=>{this.flight=undefined;this.flightView=undefined;});return this.flight;
+  }
+  private async send(){
+    let confirmed=0;
+    if(!this.hasConsent()||this.paused||!this.running)return{confirmed,pending:(await this.getQueueStatus()).count};
+    if(this.needsRecovery&&!this.pendingWrites&&Date.now()>=this.nextRecovery){
+      this.nextRecovery=Date.now()+30000;
+      try{await this.queue.recover?.();await this.queue.stats();this.needsRecovery=false;this.lastError=undefined;}catch{this.error('storage_error');}
+    }
+    if(this.queue.persistent&&!this.needsRecovery){
+      const expiredMemory=await this.memory.expire(Date.now()-limits.ttl);if(expiredMemory)this.error('expired:'+expiredMemory);
+      for(const row of await this.memory.peek(100)){
+        try{if(await this.queue.add(row.event,1000,5*1024*1024,row))await this.memory.finish([row.event.event_id],'');else break;}
+        catch{this.needsRecovery=true;this.error('storage_error');break;}
+      }
+    }
+    for(const q of await this.stores()){
+      let rows:QueueRow[]=[];
+      try{
+        const expired=await q.expire(Date.now()-limits.ttl);if(expired)this.error('expired:'+expired);
+        rows=await q.claim(Date.now(),this.batchSize,limits.batchBytes-2048,this.owner);
+      }catch{this.error('storage_error');continue;}
+      if(!rows.length)continue;
+      // Respect the exact envelope byte limit, not just the summed event bodies.
+      while(rows.length&&byteLength(this.envelope(rows.map(r=>r.event)))>limits.batchBytes){const r=rows.pop()!;await q.finish([r.event.event_id],this.owner,Date.now());}
+      if(!rows.length)continue;
+      const ids=rows.map(r=>r.event.event_id),epoch=this.epoch;
+      let retryAt=Date.now()+Math.floor(Math.random()*Math.min(60000,1000*2**Math.min(16,Math.max(...rows.map(r=>r.attempts)))));
+      try{
+        if(!this.hasConsent()||epoch!==this.epoch)break;
+        const response=await(this.options.fetch||globalThis.fetch)(this.options.endpoint,{method:'POST',headers:{'content-type':'text/plain;charset=UTF-8'},credentials:'omit',body:JSON.stringify(this.envelope(rows.map(r=>r.event))),signal:AbortSignal.timeout(10000)});
+        if(response.status===202){
+          const b=await response.json() as {accepted_event_ids?:unknown};const ack=b.accepted_event_ids;
+          if(!Array.isArray(ack)||ack.length!==ids.length||new Set(ack).size!==ids.length||!ids.every(id=>ack.includes(id)))throw new Error('invalid_ack');
+          await q.finish(ids,this.owner);confirmed+=ids.length;
+        }else if(response.status===401||response.status===403){this.paused=true;this.error('credentials_or_origin_error');await q.finish(ids,this.owner,retryAt);}
+        else if(response.status===400){
+          const b=await response.json() as {errors?:{index:number;code:string}[]};
+          if(!Array.isArray(b.errors)||!b.errors.length||b.errors.some(e=>!Number.isInteger(e.index)||e.index<0||e.index>=ids.length)){this.paused=true;this.error('unlocated_bad_request');await q.finish(ids,this.owner,retryAt);}
+          else{const rejected=[...new Set(b.errors.map(e=>ids[e.index]!))];await q.finish(rejected,this.owner);await q.finish(ids.filter(id=>!rejected.includes(id)),this.owner,Date.now());for(const e of b.errors)this.error('event_rejected:'+e.code,{event_ids:[ids[e.index]!]});}
+        }else if(response.status===413){
+          if(rows.length===1){await q.finish(ids,this.owner);this.error('event_too_large');}else{this.batchSize=Math.max(1,Math.floor(rows.length/2));await q.finish(ids,this.owner,Date.now());}
+        }else{
+          if(response.status===429||response.status===503){const h=response.headers.get('retry-after');if(h){const wait=/^\d+$/.test(h)?Date.now()+Number(h)*1000:Date.parse(h);if(Number.isFinite(wait))retryAt=Math.max(retryAt,wait);}}
+          await q.finish(ids,this.owner,retryAt);this.error('retry_http_'+response.status);
+        }
+      }catch{await q.finish(ids,this.owner,retryAt).catch(()=>this.error('storage_error'));this.error('network_or_ack_error');}
+    }
+    const current:{event:AnalyticsEvent;created:number}[]=[];
+    for(const q of await this.stores())try{for(const r of await q.peek(this.batchSize)){if(current.length<this.batchSize&&byteLength(this.envelope([...current.map(row=>row.event),r.event]))<=limits.batchBytes)current.push({event:r.event,created:r.created});}}catch{this.error('storage_error');}
+    // Do not replace the exit snapshot while a track write is still in progress.
+    if(!this.pendingWrites)this.snapshot=current;
+    return{confirmed,pending:(await this.getQueueStatus()).count};
+  }
+  beacon(){
+    if(!this.hasConsent()||!this.running||this.paused||this.hiddenSent||!this.snapshot.length||typeof navigator==='undefined'||!navigator.sendBeacon)return false;
+    // Exit must stay synchronous. Keep queue creation time in the bounded snapshot
+    // so a suspended page cannot bypass local TTL without an IndexedDB read.
+    // Actual expiry deletion/counters remain owned by the ordinary queue sweep.
+    const cutoff=Date.now()-limits.ttl,events=this.snapshot.filter(row=>row.created>=cutoff).map(row=>row.event);
+    if(!events.length)return false;
+    this.hiddenSent=true;
+    return navigator.sendBeacon(this.options.endpoint,new Blob([JSON.stringify(this.envelope(events))],{type:'text/plain;charset=UTF-8'}));
+  }
+  destroy(){this.running=false;this.schedule(false);for(const fn of this.cleanup)fn();this.cleanup=[];}
+}
+export type EventMap=Record<string,Record<string,Json>>;
+export type TypedAnalytics<Events extends EventMap>=Omit<Analytics,'track'>&{
+  track<Name extends Extract<keyof Events,string>>(name:Name,...args:{} extends Events[Name]?[properties?:Events[Name],options?:TrackOptions]:[properties:Events[Name],options?:TrackOptions]):Promise<TrackResult>;
+};
+export function createAnalytics(options:AnalyticsOptions):Analytics;
+export function createAnalytics<Events extends EventMap>(options:AnalyticsOptions):TypedAnalytics<Events>;
+export function createAnalytics(options:AnalyticsOptions):unknown{return new Analytics(options);}

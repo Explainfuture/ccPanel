@@ -6,3 +6,12 @@ dist/
 coverage/
 *.log
 .DS_Store
+.local/
+artifacts/
+playwright-report/
+test-results/
+output/
+.playwright-cli/
+*.tsbuildinfo
+__pycache__/
+*.pyc

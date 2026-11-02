@@ -1,0 +1,1 @@
+{"name":"@ccpanel/sdk-browser","version":"0.1.0","type":"module","files":["dist"],"exports":{".":{"types":"./dist/types/sdk-browser/src/index.d.ts","import":"./dist/index.js"}},"sideEffects":false,"scripts":{"build":"node ../../scripts/build-sdk.mjs"}}

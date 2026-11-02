@@ -1,0 +1,322 @@
+{
+  "version": 1,
+  "step": 222,
+  "purpose": "retention_policy_endpoint_monitor_preservation",
+  "source_commit": "5065b55e66f5657f914329a1a9fa0d9ad706fee4",
+  "runtime": {
+    "release": "m4-polling-014",
+    "source_commit": "b9b213f2313151c1e21be30e924a9af3a1f84a82",
+    "schema": 22,
+    "application_deployed_in_this_step": false,
+    "workload_started": false,
+    "configuration_unchanged": true,
+    "actual_collection_enabled": true,
+    "actual_retention_enabled": true
+  },
+  "validation": {
+    "ci_run": 41513066564,
+    "jobs": {
+      "verify": "success",
+      "postgres": "success",
+      "sftp": "success"
+    },
+    "unit_tests_passed": 527,
+    "platform_skips": 9,
+    "real_pg_suites": 20,
+    "offline_descriptor_checks": 35,
+    "actual_pg_monitor_result": {
+      "passed": true,
+      "actual_pg_monitor_capture": true,
+      "same_read_only_rr_snapshot": true,
+      "actual_relation_barrier": true,
+      "concurrent_real_store_and_prune_committed": true,
+      "operational_cap": 50000,
+      "history_caps": [
+        5000,
+        5000,
+        5000
+      ],
+      "captured_old_rows": 65000,
+      "microsecond_keyset_and_int64_ids_preserved": true,
+      "numeric_tied_history_exact_ids_per_table": 505,
+      "numeric_tied_history_pages_per_table": 3,
+      "actual_sql_alias_trap_reproduced": true,
+      "independent_node_full_row_hash_checked": true,
+      "actual_bounded_expiry_deleted": 100,
+      "expired_remainder_retained": true,
+      "policy_required_originals_verified": true,
+      "actual_cli": true,
+      "uri_override_schema_locks_refused": true,
+      "actual_locked_query_timeout_and_abort": true,
+      "client_connection_check_interval_ms": 100,
+      "abort_backend_cleanup_ms": 88,
+      "partial_footer_rejected": true,
+      "server_cleanup_observed_separately": true,
+      "sessions_remaining": 0,
+      "shared_leases_released": true,
+      "leases_released_while_relation_lock_held": true,
+      "capture_source_unchanged": true,
+      "source_authenticated": false,
+      "causal_prune_verified": false,
+      "continuous_availability_verified": false,
+      "full_capacity_verified": false
+    },
+    "first_abort_cleanup_ci_failed": 41502067053,
+    "session_disconnect_fix_ci_passed": 41505334213
+  },
+  "attempts": [
+    {
+      "run": "r1",
+      "source_commit": "5b28a7d7af07bcc738229b5953c73fe0102c9a27",
+      "terminal": {
+        "unit": "ccpanel-monitor222-12cefd54ef980467.service",
+        "systemd_run_wait_exit": 1,
+        "observed_at": "2026-11-02T19:16:31.769105+00:00",
+        "source_commit": "5b28a7d7af07bcc738229b5953c73fe0102c9a27",
+        "capacity_verified": false
+      },
+      "terminal_sha256": "969fc61bb390dca8e4018c207afcaeb5469bc3d833e9deeb6387f606587617e3",
+      "result_sha256": "4b66326aa6109717ce164dc47a6c287c8b08807bd5b60db85bc1db6a52d67cc3",
+      "cleanup_sha256": "5e8dff1d15e70badd4482ece9f2ea8fc1204f0e0e6287ebca2d213b2884a4550",
+      "unit_output_sha256": "22fda0e76c2a248aca8beeb50fba6b4805d4ed80ed257a56e12c8df9f2542614",
+      "captured_snapshots": 0,
+      "original_state_comparison": "not_established_no_initial_baseline",
+      "https_ready": true,
+      "capture_sessions_gone": true,
+      "owned_container_and_credentials_removed": true,
+      "exact_failure_phase_not_established": true
+    },
+    {
+      "run": "r2",
+      "source_commit": "20c0f824deee22466cdbc73eb0afb15b62325fb8",
+      "private_proof_bundle_sha256": "3a20dc3e1e7ef9e0ba348eade23da05066d034c5619be07b0c5b8c93a2080a29",
+      "terminal": {
+        "unit": "ccpanel-monitor222-9cbde85e291a8ede.service",
+        "systemd_run_wait_exit": 0,
+        "observed_at": "2026-11-02T19:36:25.820653+00:00",
+        "source_commit": "20c0f824deee22466cdbc73eb0afb15b62325fb8",
+        "capacity_verified": false
+      },
+      "controller_completed": true,
+      "file_integrity_valid": true,
+      "policy_verification_accepted": false,
+      "actual_offhost_verifier_exit": 1,
+      "error": "invalid_monitor_snapshot_order",
+      "offhost_rejection_sha256": "fd9c9fc8881d1ef9e7a1488393050605cced051373561a8b9cf927bd51321879",
+      "raw_inputs_unchanged": true,
+      "snapshot_sha256": {
+        "after": "cf7dd8fd57944aa0d267f4fa83289168f0867f0f4920ca4d90d181cdace1d6c6",
+        "before": "91d04bb5c35c79ae34a604e2fac5fa8d09e4e5c85ba8362f17a88d6e6693ef6a"
+      },
+      "first_native_order_violation_line": 40260,
+      "cause": "ORDER_BY_id_resolved_to_text_output_alias",
+      "original_files_not_reordered": true
+    },
+    {
+      "run": "r3",
+      "source_commit": "5065b55e66f5657f914329a1a9fa0d9ad706fee4",
+      "unit": "ccpanel-monitor222-2d9be3365c029f27.service",
+      "invocation_id": "665fe01134134a44a1ce4258ea9ab6a6",
+      "actual_live_main_pid": 2719006,
+      "terminal": {
+        "unit": "ccpanel-monitor222-2d9be3365c029f27.service",
+        "systemd_run_wait_exit": 0,
+        "observed_at": "2026-11-02T19:52:32.470154+00:00",
+        "source_commit": "5065b55e66f5657f914329a1a9fa0d9ad706fee4",
+        "capacity_verified": false
+      },
+      "controller": {
+        "capture_controller_completed": true,
+        "actual_capture_exit_zero": [
+          true,
+          true
+        ],
+        "production_configuration_and_nonmonitor_rows_unchanged": true,
+        "comparison_status": "matched",
+        "original_shell_exit": 0,
+        "original_phase": "completed",
+        "https_ready": true,
+        "capture_pg_sessions_gone": true,
+        "helper_sha256": "82fa1ecab8bf3aa7d2edaab1a240ab5f357fa4e2e96dc95c33b2ddb64a08ba19",
+        "node_image_id": "sha256:e21fc383b50d5347dc7a9f1cae45b8f4e2f0d39f7ade28e4eef7d2934522b752",
+        "policy_verifier_run_on_vps": false,
+        "actual_delete_cause_verified": false,
+        "source_authenticated": false,
+        "continuous_availability_verified": false,
+        "capacity_verified": false,
+        "latest_state_verified": false,
+        "before": {
+          "capture_exit_zero": true,
+          "bytes": 10105840,
+          "rows": 45442,
+          "counts": {
+            "operational_samples": 40248,
+            "operational_alert_history": 166,
+            "pressure_signal_history": 5000,
+            "dlq_alert_history": 28
+          },
+          "sha256": "6f2623c5d225c7278a18695e1cd43820ec49c279a2eb1c52dc4156e133584568",
+          "prefix_sha256": "585675a2199ac3a9c82fd6ff9cd4aa14b39c837b22f2fa822b9c63432194ff44",
+          "footer_present": true,
+          "policy_verified": false
+        },
+        "after": {
+          "capture_exit_zero": true,
+          "bytes": 10105840,
+          "rows": 45442,
+          "counts": {
+            "operational_samples": 40248,
+            "operational_alert_history": 166,
+            "pressure_signal_history": 5000,
+            "dlq_alert_history": 28
+          },
+          "sha256": "b194a5ad9d4bab04693cdd8309ae28aae40df3957b03970f62215a2c7cee5b52",
+          "prefix_sha256": "f096b5d537b68242723da5cfb85cd694f0070d451fbb34fc7a4dc227d785eccc",
+          "footer_present": true,
+          "policy_verified": false
+        }
+      },
+      "cleanup": {
+        "owned_capture_removed": true,
+        "credential_file_removed": true
+      },
+      "helper": {
+        "source_commit": "5065b55e66f5657f914329a1a9fa0d9ad706fee4",
+        "capture_sha256": "82fa1ecab8bf3aa7d2edaab1a240ab5f357fa4e2e96dc95c33b2ddb64a08ba19",
+        "capture_bytes": 13489,
+        "controller_sha256": "675b6111a54be6a9e1c3425064717a099dd084ccdbdcfe18c476622fa57fde0d",
+        "controller_bytes": 19992,
+        "runtime_release": "m4-polling-014",
+        "runtime_source_commit": "b9b213f2313151c1e21be30e924a9af3a1f84a82"
+      },
+      "private_proof_bundle_sha256": "efced12221a32bffb0ec5a6afac287c4ed608300204fed9ad94a8e7e083d2cd3",
+      "private_proof_sha256": {
+        "after_integrity": "9e523a3ee4a25f001a66d3c85a40065eda8d0e193a5565303f1f84e5a03cd7b6",
+        "after_receipt": "93f24ece9ac70de44c9d670640c9f9dc08d4e1daaaadb8dc9562d2c04e82fde6",
+        "attempted": "53a96989c3ddd519688f193e524fdf659d540e1cd228d025bd56eeabc27003eb",
+        "before_integrity": "7cd1615c81bd1118dd0a6d89a0f654e24543678cc24c8882333929d0f90a5765",
+        "before_receipt": "39db3a34a3a173843548a5f6595319a5afcee3d829e9732b74bbb904508489be",
+        "cleanup": "5e8dff1d15e70badd4482ece9f2ea8fc1204f0e0e6287ebca2d213b2884a4550",
+        "configuration_after": "2364765493f7027834c254acededcbf58dd5afa75181ddda8bbac6255cc8db5b",
+        "configuration_before": "2364765493f7027834c254acededcbf58dd5afa75181ddda8bbac6255cc8db5b",
+        "live_unit": "3ab92d1027b77537bd1f9142b7323f51f7a56221b052e4159dc532648f0afa88",
+        "public_after": "612d92edbc2a09c7bec2054374e0b8b9be779ea49ffc1aeb4531c956a098eb77",
+        "public_before": "612d92edbc2a09c7bec2054374e0b8b9be779ea49ffc1aeb4531c956a098eb77",
+        "result": "8023e8f96ee5f2c2dd3f267f86a37abead829f4cf48e8cde6b0a31732f5579bc",
+        "terminal": "1d2bd2dfbc0bf09c38079ca3b89384f41dd93db96eec21ee41c9013d55b2095f",
+        "unit_output": "379e3831e7aa6d4511009a5bc0c786b91938f85482d04fc85d256b54b68a835d"
+      },
+      "configuration_pair_equal": true,
+      "nonmonitor_public_fingerprints_pair_equal": true,
+      "nonmonitor_public_relations": 37,
+      "excluded_monitor_history_relations": 4,
+      "excluded_dynamic_monitor_state_relations": 3,
+      "policy_report_sha256": "d1398dfe21d19dd016253baa7ca3b4708f299a88cea3f82c20808a525389d799",
+      "offhost_verification_sha256": "3268da29157aa88706c3bea1a81622829af5373f7f72d2793ce258241a0fbd8f",
+      "actual_offhost_verifier_exit": 0,
+      "policy_report": {
+        "actual_delete_cause_verified": false,
+        "actual_delete_timing_verified": false,
+        "capacity_verified": false,
+        "conservative_endpoint_check": true,
+        "continuous_availability_verified": false,
+        "input_sha256": {
+          "after": "b194a5ad9d4bab04693cdd8309ae28aae40df3957b03970f62215a2c7cee5b52",
+          "before": "6f2623c5d225c7278a18695e1cd43820ec49c279a2eb1c52dc4156e133584568"
+        },
+        "intermediate_new_rows_complete_verified": false,
+        "interval_us": "51673291",
+        "latest_state_verified": false,
+        "legitimate_backdated_or_reinserted_rows_may_be_rejected": true,
+        "policy_required_originals_preserved": true,
+        "reasons": [],
+        "recovery_verified": false,
+        "scope": "monitor_original_rows_end_state_policy",
+        "source_authenticated": false,
+        "source_label_is_authentication": false,
+        "tables": {
+          "dlq_alert_history": {
+            "changed_original_rows": 0,
+            "cutoff_us": "1792439526545820",
+            "final_rows": 28,
+            "missing_age_eligible": 0,
+            "missing_capacity_eligible": 0,
+            "missing_original_rows": 0,
+            "missing_originals_oldest_prefix": true,
+            "original_rows": 28,
+            "retained_original_rows": 28,
+            "retention_days": 14,
+            "row_cap": 5000,
+            "unexplained_missing": 0
+          },
+          "operational_alert_history": {
+            "changed_original_rows": 0,
+            "cutoff_us": "1792439526545820",
+            "final_rows": 166,
+            "missing_age_eligible": 0,
+            "missing_capacity_eligible": 0,
+            "missing_original_rows": 0,
+            "missing_originals_oldest_prefix": true,
+            "original_rows": 166,
+            "retained_original_rows": 166,
+            "retention_days": 14,
+            "row_cap": 5000,
+            "unexplained_missing": 0
+          },
+          "operational_samples": {
+            "changed_original_rows": 0,
+            "cutoff_us": "1793044326545820",
+            "final_rows": 40248,
+            "missing_age_eligible": 2,
+            "missing_capacity_eligible": 0,
+            "missing_original_rows": 2,
+            "missing_originals_oldest_prefix": true,
+            "original_rows": 40248,
+            "retained_original_rows": 40246,
+            "retention_days": 7,
+            "row_cap": 50000,
+            "unexplained_missing": 0
+          },
+          "pressure_signal_history": {
+            "changed_original_rows": 0,
+            "cutoff_us": "1792439526545820",
+            "final_rows": 5000,
+            "missing_age_eligible": 0,
+            "missing_capacity_eligible": 3,
+            "missing_original_rows": 3,
+            "missing_originals_oldest_prefix": true,
+            "original_rows": 5000,
+            "retained_original_rows": 4997,
+            "retention_days": 14,
+            "row_cap": 5000,
+            "unexplained_missing": 0
+          }
+        },
+        "version": 1
+      },
+      "supervisor_cost": {
+        "runtime_ms": 97492,
+        "cpu_ms": 2600,
+        "memory_peak_display": "20.1M",
+        "swap_peak_display": "0B",
+        "capture_container_cost_included": false
+      }
+    }
+  ],
+  "policy_required_originals_preserved": true,
+  "source_authenticated": false,
+  "actual_delete_cause_verified": false,
+  "actual_delete_timing_verified": false,
+  "continuous_availability_verified": false,
+  "intermediate_new_rows_complete_verified": false,
+  "capacity_verified": false,
+  "latest_state_verified": false,
+  "recovery_verified": false,
+  "remaining": [
+    "full_capacity_outer_controller_and_bridge",
+    "shared_sampler_source_hash_alignment_under_deploy_lock",
+    "new_fixed_version_full_capacity_window",
+    "full_browser_device_and_failure_matrix",
+    "independently_trusted_offhost_destination_and_latest_state_recovery"
+  ]
+}

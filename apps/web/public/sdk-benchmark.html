@@ -1,0 +1,2 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ccPanel SDK 性能验收</title><link rel="stylesheet" href="/sdk-lab.css"></head><body><main><h1>SDK 性能验收</h1><p>依次运行未安装、安装但空闲、20 EPS 三组对照。请保持页面可见。网络使用内存确认，不写入服务器；本页只测试 SDK 和本地存储开销。</p><button id="start">开始约 80 秒测试</button><pre id="output" aria-live="polite">尚未运行。</pre><p>同步阶段与持久入队耗时分开报告；浏览器、设备与采样条件会影响结果。本页不替代跨浏览器生命周期或公网性能验收。</p></main><script type="module" src="/sdk-benchmark.js"></script></body></html>

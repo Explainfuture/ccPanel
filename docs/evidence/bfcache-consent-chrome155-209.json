@@ -1,0 +1,49 @@
+{
+  "passed": true,
+  "browser": "155.0.8059.85",
+  "cases": [
+    {
+      "regrant_elsewhere": false,
+      "native_bfcache": true,
+      "same_document": true,
+      "withdrawal_cleared_old_queue": true,
+      "stale_client_denied": true,
+      "automatic_receipts_after_restore": 0,
+      "newer_authorized_queue_preserved": true,
+      "explicit_grant_required": true,
+      "old_event_not_replayed": true,
+      "new_identity": true,
+      "queue_final": 0,
+      "modes": [
+        "no-cors",
+        "cors"
+      ]
+    },
+    {
+      "regrant_elsewhere": true,
+      "native_bfcache": true,
+      "same_document": true,
+      "withdrawal_cleared_old_queue": true,
+      "stale_client_denied": true,
+      "automatic_receipts_after_restore": 0,
+      "newer_authorized_queue_preserved": true,
+      "explicit_grant_required": true,
+      "old_event_not_replayed": true,
+      "new_identity": true,
+      "queue_final": 0,
+      "modes": [
+        "no-cors",
+        "cors"
+      ]
+    }
+  ],
+  "real_indexeddb": true,
+  "real_http": true,
+  "unhandled_page_errors": 0,
+  "negative_observation_ms": 2000,
+  "kafka_pg": false,
+  "full_device_matrix": false,
+  "date": "2026-10-24",
+  "platform": "Windows",
+  "sdk_sha256": "449f14f4719751a13ef1a666ff141511dd223ddc93b246968d87bf2688c4b661"
+}

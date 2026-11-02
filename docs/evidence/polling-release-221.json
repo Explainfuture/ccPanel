@@ -1,0 +1,217 @@
+{
+  "version": 1,
+  "step": 221,
+  "release": "m4-polling-014",
+  "schema": 22,
+  "source_commit": "b9b213f2313151c1e21be30e924a9af3a1f84a82",
+  "archive": {
+    "archive_sha256": "b35161c68394fde34fd91fbab03540d19fd88f4cfeb525b314de2023ae354948",
+    "archive_bytes": 550764,
+    "files": 193,
+    "inventory_sha256": "5ae58dd7dee93b5fda69e1e988389a31fb34f3a84b5ef5a3dd485f40854f5656",
+    "reproducible_archive_equal": true,
+    "dist_source_maps_excluded": true,
+    "dist_hashes": {
+      "dist/api.mjs": "f87bcc8d07b2d84fc87ec59e6e91773c8870ef96be6db86ed86bd6718f8731a9",
+      "dist/web/index.html": "f311faf29558b3ba13357c11199a82ee028b9a288e214af21e15794d76449a6a",
+      "dist/web/sdk/ccpanel.js": "449f14f4719751a13ef1a666ff141511dd223ddc93b246968d87bf2688c4b661",
+      "dist/worker.mjs": "fafdbe510b80547d20da6f2f8821cd60066f5a78e9b2999db2aba0a4a07f8d29"
+    }
+  },
+  "private_proof_bundle_sha256": "9c16fec0fad4812bd91f91da4c442f8463faec7871ed2a64b93b251f54a29bbe",
+  "private_proof_hashes": {
+    "applied": "5bf8c6cd919acfe26811776cf1691bc90567fc17cb960c67d19ea27fff6d311a",
+    "archive_stage": "b6e2b315bc9d5f239c37950fb215b04da41b8bd5c168d86a1aa696cd317fed7b",
+    "backup": "2928d8552f0ed46abf03671c57110f773e86f614db0f9e3901eb7a999a427ec5",
+    "client_manifest": "8edd25f747a08e04710eacd8d7d31991e174260bc84f6e75950a89c2aff018ac",
+    "client_result": "c9fb38780aff4d27bd049a60d81d9872f99423d1b2310c7e10831951f15e8c7a",
+    "database": "c0dba97978063f356a8ead149d03aa882ea29038585fc1a25e3e8f60c09dd836",
+    "dependency_create": "112a5ef9bd397dd03401c401d47ebcc5c76529430c5c5a015584f87e5dd2412c",
+    "dependency_extraction": "4fb9fde2aeeea8125aa271a600dd04e174d777050251a87ddf27d0836aa80003",
+    "dependency_import": "e83be802806ee6e52dc13c021e7ee0e09277cc471b02638f9857c2f7ef545c60",
+    "dependency_marker": "9811538d2576781cedf72eb2f85229e7aa3e8d5f0066b46fa092e71d4e7aa92b",
+    "dependency_smoke": "33297be99156b6d773c643c908896f57f7b56df31d3a4f2b575d053ce0ee01d1",
+    "dependency_verify": "678d0f8c58abc7f2666127267fa7cc08dc5bbc49782762f6dbc9672ac9907331",
+    "final": "be7abf03db9445e9382da4c68dd5e9e077221213ca328380842ec74b18d0655a",
+    "jobs": "fdce0aaf8e2fd18ca98323515cc90a5d978536ca5e8353208efec870d8b88f96",
+    "offsets": "0aa3d7150f3210347f54990295209ea26cae0e33bd17487242a69fb9fb9c96af",
+    "prepared": "f0c79faf874a5ba5bf47af57a094979f8383a9a879e4e78086c7cde4b6605c79",
+    "restore": "146bf978de2b3f5c12163a7356eab33defcf96e7f5cb2d406203d52f78f0de61"
+  },
+  "dependency_build": {
+    "admitted": false,
+    "archiveBytes": 6431295,
+    "archiveSha256": "a61b0d40d6563f1d1b3daa9e2ab30896edddcff39475d8131b8d81c11a3cef65",
+    "contentBytes": 52663245,
+    "entries": 6751,
+    "status": "built_unadmitted",
+    "location": "workstation_native_linux",
+    "node_version": "v22.22.3",
+    "pnpm_version": "12.3.4",
+    "native_imports": 12,
+    "store_excluded": true,
+    "independent_build_provenance_verified": false
+  },
+  "dependency_import": {
+    "completed": true,
+    "native_uid": 1000,
+    "native_imports": 12,
+    "network": "none",
+    "read_only": true,
+    "tree_sha256": "27648597c4e18bd50fd3ca06f4d77c0b610e85ba98f59dc37719425312fe4d23",
+    "nodes": 6748,
+    "bytes": 52604111,
+    "previous_tree_unchanged": true,
+    "previous_tree_sha256": "78c8355bdef8007fb3eb1f59181bedca644c4bee4a3da9bfb0281d0796a82c56"
+  },
+  "preparation_failures": [
+    {
+      "source_commit": "34ac949",
+      "reason": "missing_container_human_error_format",
+      "completed_marker_absent": true,
+      "live_services_unchanged": true
+    },
+    {
+      "source_commit": "915e816",
+      "reason": "available_memory_safety_guard",
+      "threshold_mib": 200,
+      "completed_marker_absent": true,
+      "live_services_unchanged": true
+    }
+  ],
+  "backup": {
+    "plaintext_sha256": "fbe392ad7ec17864dac4310a58d2710dda41f59d76f6a228ee0871b7c460379f",
+    "ciphertext_sha256": "1dcd54632d47f169845748d7d8abc89c0d275603526f558ad81983c866d9c379",
+    "fingerprint_sha256": "17e6a90fa11474aa77698c2fad489b6c0275f7f184ee0ef5bbd26a41660ca5ef",
+    "offhost_verified": true,
+    "isolated_restore_passed": true,
+    "restore_seconds": 15,
+    "restore_database_removed": true,
+    "fingerprint_relations": 42,
+    "recovery_control_table_data_excluded": true,
+    "dump_and_ledger_roundtrip_equal": true,
+    "plaintext_bytes": 3685631,
+    "ciphertext_bytes": 3685667,
+    "ledger_plaintext_sha256": "a01c6635f9eede1f097e0b9a9c04f5f099270905f1bf530b893f5b658887693a",
+    "ledger_ciphertext_sha256": "f23f2cb2f9730716cdd3cf02b626ccd0f7e54b74555de20ab1299e35088bbdc8",
+    "excluded_table_data": [
+      "public.recovery_gate",
+      "public.recovery_import_scopes"
+    ],
+    "automatic_backup_enabled": false
+  },
+  "deployment": {
+    "original_projection_relations": 41,
+    "original_projection_equal_before_collection_activation": true,
+    "original_projection_relations_still_present_after_cleanup": 41,
+    "post_cleanup_business_relations_equal": 33,
+    "separately_checked_recovery_controls_equal": true,
+    "post_activation_monitor_history_preservation_asserted": false,
+    "collection_enabled": true,
+    "retention_enabled": true,
+    "postgres_and_kafka_container_identities_and_start_times_unchanged": true,
+    "all_services_running_without_oom_or_restart_count": true
+  },
+  "smoke": {
+    "unique_events": 2,
+    "client_manifest_sha256": "8edd25f747a08e04710eacd8d7d31991e174260bc84f6e75950a89c2aff018ac",
+    "event_ids_sha256": "6421a6a2df75e99a781b248012187efc56a040b41c0ba78c0e4915e19d080dc0",
+    "client_manifest_before_submission": true,
+    "sdk_batch_http_status": 202,
+    "original_batch_duplicate_http_status": 202,
+    "queue_pending": 0,
+    "business_time_preserved": true,
+    "raw": 2,
+    "dedup": 2,
+    "aggregation_jobs": 2,
+    "processed_jobs": 2,
+    "bucket_events": 2,
+    "duplicate_metric": 2,
+    "dlq": 0,
+    "async_queries": [
+      {
+        "metric": "count",
+        "status": "succeeded",
+        "value": 2,
+        "events": 2
+      },
+      {
+        "metric": "users",
+        "status": "succeeded",
+        "value": 2,
+        "events": 2
+      },
+      {
+        "metric": "sum",
+        "status": "succeeded",
+        "value": 5,
+        "events": 2
+      }
+    ],
+    "node_sdk_build_sha256": "8d2b70582f9ff01ea6958b204d0b8c86c00ce03e28699fe81654d6e335de6028"
+  },
+  "offsets": {
+    "passed": true,
+    "postgres_equals_kafka_committed_and_high": true,
+    "lag": 0,
+    "offsets": [
+      {
+        "partition_id": 0,
+        "next_offset": "7727"
+      },
+      {
+        "partition_id": 1,
+        "next_offset": "7895"
+      }
+    ],
+    "previous_sum": "15618",
+    "after_sum": "15622",
+    "new_attempts": 4
+  },
+  "cleanup": {
+    "synthetic_companies": 0,
+    "temporary_restore_databases": 0,
+    "temporary_server_plaintext_removed": true,
+    "temporary_workstation_plaintext_removed": true,
+    "existing_key_retained_on_workstation": true,
+    "kafka_test_messages_follow_normal_retention": true
+  },
+  "final_business": {
+    "raw": 2,
+    "dedup": 3,
+    "dlq": 0,
+    "temporary_databases": 0,
+    "synthetic_companies": 0,
+    "rules": [
+      4,
+      3,
+      2
+    ]
+  },
+  "memory_snapshot": {
+    "MemAvailable": "367644 kB",
+    "SwapFree": "713984 kB",
+    "SwapTotal": "1049576 kB"
+  },
+  "ci": {
+    "run": 41492581440,
+    "verify": "success",
+    "postgres": "success",
+    "sftp": "success",
+    "vitest_passed": 527,
+    "vitest_skipped": 9,
+    "real_pg_suites": 19,
+    "installer_checks": 29,
+    "dependency_verifier_checks": 16,
+    "offhost_builder_checks": 16,
+    "artifact_import_checks": 11
+  },
+  "limitations": {
+    "capacity_passed": false,
+    "full_browser_device_matrix_passed": false,
+    "automatic_independent_destination_backup_enabled": false,
+    "latest_state_recovery_admitted": false,
+    "whole_host_loss_ha_proved": false,
+    "net_production_ram_saving_proved": false
+  }
+}
