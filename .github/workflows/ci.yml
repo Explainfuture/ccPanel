@@ -47,6 +47,9 @@ jobs:
       - run: python3 scripts/check-schema21-activation.py
       - run: python3 scripts/check-schema22-postmigration.py
       - run: python3 scripts/check-operational-collection-env.py
+      - run: bash -n scripts/prepare-release-dependencies.sh && python3 scripts/check-release-dependencies-installer.py
+      - run: python3 scripts/check-release-dependencies.py
+      - run: python3 scripts/check-package-release.py
       - run: python3 scripts/check-capacity-preservation.py
       - run: pnpm --dir packages/sdk-browser pack --pack-destination ../../artifacts
       - run: pnpm --dir packages/sdk-node pack --pack-destination ../../artifacts
