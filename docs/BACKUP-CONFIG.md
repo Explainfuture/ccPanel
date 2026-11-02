@@ -53,7 +53,7 @@ pnpm backup:check infra/backup/offhost.example.json
 
 先检查候选并固定密文/清单hash，再从同一密文文件句柄分块解密CCPBK001 AES256-GCM；认证完成前的明文仅写本次独占创建的0600临时文件。核对密文、明文字节数/hash、源复核与fsync后，重新读取实际落盘明文再核对，才排他hardlink发布输出并同步父目录。回执decrypted_unverified/authenticatedDecryption=true/plaintextReadbackChecked=true，退出2；认证成功不证明可信原源身份、完整关系范围、最新状态或可恢复，四个未验证标记仍false，不写verified manifest/成功水位。
 
-认证失败、明文不符、受控取消或普通I/O失败时，关闭持有句柄、清零本次密钥Buffer，并尝试仅清理本次创建且尚未发布的临时明文；wx碰撞文件和已有/竞争输出不删。清理失败明确decrypt_cleanup_failed；输出发布后错误为decrypt_publish_uncertain并保留输出，不能当成功。成功输出是敏感工作文件，由恢复控制器在核验/恢复后清除。进程强杀/断电、阻塞内核I/O或删除失败不保证明文自动消失，后续作业控制器仍须负责私有工作目录生命周期。
+认证失败、明文不符、受控取消或普通I/O失败时，关闭持有句柄、清零本次密钥Buffer，并尝试仅清理本次创建的临时路径；wx碰撞文件、已有/竞争输出和已发布输出不删。清理失败明确decrypt_cleanup_failed；输出发布后错误为decrypt_publish_uncertain并保留输出，不能当成功。成功输出是敏感工作文件，由恢复控制器在核验/恢复后清除。进程强杀/断电、阻塞内核I/O或删除失败不保证明文自动消失，后续作业控制器仍须负责私有工作目录生命周期。
 
 该入口不执行pg_restore、不导入最新v2状态、不打开恢复门禁，也不替换历史手工encrypt-backup.mjs接口。CI从本地目的地副本通过此真实CLI解密，再独立hash和实际隔离PG恢复；不是独立目的地/源身份/最新状态/整机RPO或RTO验收。
 

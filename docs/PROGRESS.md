@@ -1693,3 +1693,4 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 新增decryptBackupCandidate及显式backup:decrypt-candidate，已有私有32字节密钥、固定候选/清单hash、有界分块GCM认证、明文hash及实际落盘回读、源复核、排他输出和父目录fsync。输出decrypted_unverified/退出2，来源/恢复/异机/最新状态仍false；不执行restore/最新状态导入或门禁切换。
 - 普通失败/取消关闭句柄、清零密钥Buffer并仅清理本次拥有的未发布工作明文；未成功wx的碰撞文件、已有/竞争输出不删除，输出发布后异常明确uncertain。强杀/断电和清理失败不能宣称明文一定删除。旧手工脚本保持，PG候选套件改走新CLI，从目的地副本解密后独立hash及实际恢复。
 - 实际AES-GCM夹具覆盖正确解密、错误密钥、更新外层hash后篡改正文/tag、伪造明文hash、预算/schema/输出/私有权限/密钥路径；另有受控原生文件故障/竞争测试。本机typecheck及3项拒绝/Windows测试通过，POSIX路径待Linux CI；无VPS/目的地/调度变更。
+- Actions41378887154对d062748的verify/postgres全部success：332通过/6平台专属跳过；新增6项Linux故障用例实际执行（取消、模拟写失败、竞争输出、wx碰撞、落盘明文篡改回读拒绝、发布后fsync异常）。17套实际PG完成，新解密CLI按精确预算退出2、重复输出拒绝，目的地122316字节密文认证解密、独立明文hash及43关系恢复一致，候选标记未变。不是独立目的地/可信最新状态/完整恢复门禁或整机RPO/RTO验收。
