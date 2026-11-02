@@ -1,10 +1,10 @@
 # 可配置离机备份方案
 
-状态：配置设计及只读配置预检已实现，默认禁用；已有显式本地候选复制组件，完整远程执行器未实现。用户暂时没有独立目的地，先完成本方案；不安装定时器、不连接外部存储、不创建云资源，也不将现有工作站手动加密副本称为自动异机备份。配置模板见 infra/backup/offhost.example.json。字段是后续执行器的实现契约，当前没有读取该模板并执行传输的程序。
+状态：配置设计及只读配置预检已实现，默认禁用；已有显式本地/SFTP候选复制组件，完整远程备份执行器未实现。用户暂时没有独立目的地，先完成本方案；不安装定时器、不连接用户外部存储、不创建云资源，也不将现有工作站手动加密副本称为自动异机备份。配置模板见 infra/backup/offhost.example.json。显式backup:copy-sftp可读取启用配置仅传输已有候选，禁用配置不访问凭证或网络；没有自动执行捕获/验证发布/调度的程序。
 
 ## 部署与配置
 
-备份协调器部署在独立机器上，由它拉取源VPS数据，并在该机器加密、验真、上传目的地。加密密钥仅在协调器和独立密钥保管处，源VPS与对象存储都不得持有。目的地可以是协调器自己的受限磁盘，也可以经SFTP上传另一台机器。适配器计划先支持local与sftp；当前已有local候选复制组件，SFTP尚未实现。S3兼容对象存储留到后续adapter，不假定Cloudflare或任何免费额度。
+备份协调器部署在独立机器上，由它拉取源VPS数据，并在该机器加密、验真、上传目的地。加密密钥仅在协调器和独立密钥保管处，源VPS与对象存储都不得持有。目的地可以是协调器自己的受限磁盘，也可以经SFTP上传另一台机器。已有local与sftp候选组件；S3兼容对象存储留到后续adapter，不假定Cloudflare或任何免费额度。
 
 模板enabled=false时，其余待填字段允许null；执行器必须直接报告disabled，不探测网络、生成密钥、创建目录或登记成功。启用前必须填写独立worker标识、源固定SSH身份和可信主机指纹、预期release/schema、密钥文件引用、目的地身份及保留策略。所有File字段只引用协调器上的受限文件，不嵌入密码、私钥或token。配置不得提交填充后的实际凭证路径或主机信息；机器上的配置用权限0600保存。
 
@@ -43,9 +43,21 @@ pnpm backup:check infra/backup/offhost.example.json
 
 启用配置先验证配置文件及SSH引用、32字节加密密钥的文件类型/大小/权限；POSIX使用NOFOLLOW、NONBLOCK并比较打开前后inode/dev，拒绝符号链接、非普通文件、组/其他用户可访问文件。不会读取凭证内容，也不会验证SSH key/known_hosts实际格式、主机身份、网络连通性或故障域。Windows ACL检查尚未实现，启用配置返回credential_permissions_unverified，不能把POSIX mode当ACL证明。
 
-即使以上元数据检查全部通过，也仅输出configured_executor_unavailable/transferEnabled=false，退出2；主机身份与独立故障域验证均false。其他配置/文件错误退出1，只含固定错误码/字段名，不回显路径、主机或秘密值。当前没有run模式、定时器和上传功能，退出2不能被调度器当成功备份。后续执行器仍须做真正SSH指纹、原源版本与目的地独立性验证；字符串不同不能排除DNS别名或同机目录。
+即使以上元数据检查全部通过，backup:check仍仅输出configured_executor_unavailable/transferEnabled=false，退出2；主机身份与独立故障域验证均false。其他配置/文件错误退出1，只含固定错误码/字段名，不回显路径、主机或秘密值。显式复制组件不等于完整run流程或定时器，退出2不能被调度器当成功备份。后续执行器仍须做原源版本与目的地独立性验证；字符串不同不能排除DNS别名或同机目录。
 
 ## 两条数据流
+
+### SFTP候选目的地组件（步骤213）
+
+`pnpm backup:copy-sftp /private/offhost.json /private/work/candidate /private/download backup-id`显式传输已有候选。禁用模板输出disabled/退出0，不访问源/下载目录、引用凭证或网络；启用配置须为自有私有文件，destination.kind=sftp。服务端的remoteRoot/prefix须由操作员预先创建为自有私有目录；组件不自动创建根目录。只读取目的地身份与已存在候选，不连接source、不读取加密密钥、不执行pg_restore或切流。
+
+使用固定ssh2 1.17.0（可选原生构建禁用）和公钥认证，不使用密码、agent、交互提示、远程exec或首次连接自动信任。专用known_hosts支持精确主机/端口、逗号别名和OpenSSH |1|哈希条目；拒绝标记行、通配/否定模式、非法编码或缺少匹配主机，完整原始主机key逐字节比较。SSH私钥须为已有私有普通文件，暂不支持加密私钥口令。主机pin通过不证明与原源处于不同故障域。
+
+源检查与凭证校验后才建连接；验证远端canonical目录、数值UID及私有模式，独占创建ID集合和wx文件。64KiB有界上传、要求文件fsync扩展、重新下载到独占私有本地集合，核对密文/清单hash和源未变后，才以hardlink扩展排他发布远端capture.json并回读该清单。所需扩展见[ssh2 SFTP API](https://github.com/mscdex/ssh2/blob/v1.17.0/SFTP.md)。不覆盖/清空既有或残缺集合；断连、取消、超时等保留私有残片供调查，新ID重试。发出发布请求后的异常保守报告sftp_publish_uncertain。
+
+成功transferred_unverified/退出2，hostKeyVerified与downloadReadbackChecked为true；独立故障域、恢复、最新状态和源身份仍未验证。SFTP文件fsync不等于远端父目录fsync，remoteDirectoryDurabilityVerified明确false；未发布verified索引，也不宣称断电持久性。全程共享有界时限，超时/取消销毁SSH连接并等待本地句柄清理；不能强制中断阻塞内核I/O。启用仍需真实独立目的地和完整恢复/状态链/发布验收。
+
+CI专用loopback OpenSSH夹具使用临时主机/用户key、临时高端口和私有目录，只校验协议、字节、下载后认证解密和取消/错误拒绝；它不是独立机器或真实PG备份恢复证明。SSHD夹具仅因/tmp祖先权限使用StrictModes no；传输组件自身的本地/远端权限检查仍保留。正式模板保持禁用，未连接用户VPS或外部存储。
 
 ### 候选认证解密入口（步骤212）
 

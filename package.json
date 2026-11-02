@@ -18,6 +18,7 @@
     "backup:capture": "tsx scripts/capture-backup.ts",
     "backup:inspect": "tsx scripts/inspect-backup.ts",
     "backup:copy-local": "tsx scripts/copy-backup-local.ts",
+    "backup:copy-sftp": "tsx scripts/copy-backup-sftp.ts",
     "backup:decrypt-candidate": "tsx scripts/decrypt-backup-candidate.ts",
     "worker": "tsx apps/worker/src/main.ts"
   },
@@ -27,6 +28,7 @@
     "@types/pg": "8.23.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
+    "@types/ssh2": "1.15.6",
     "@vitejs/plugin-react": "6.1.2",
     "esbuild": "0.28.2",
     "fake-indexeddb": "6.2.6",
@@ -47,6 +49,7 @@
     "pg": "8.23.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
+    "ssh2": "1.17.0",
     "tailwind-merge": "3.7.0"
   },
   "type": "module"
