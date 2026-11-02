@@ -1715,3 +1715,4 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 核对发现原v2只含删除/保留策略，未含当前完整性gate/消费进度；修正方案范围文字，新增恢复状态version1包装、只读源导出及显式backup:export-state。抽取原deletion-ledger读取器复用同一UTC RR事务，原v1/v2/apply协议不变。
 - 包装含完整v2、当前完整性gate、全部PG流/位置及审计最大ID文本，受管DDL/离线恢复共享租约、source recovery gate/schema/大小/新鲜度/完整分区检查、超时关闭连接。仅敏感stdout手动输出；状态未认证/非可信最新/Kafka未观察，退出2；不存储/上传/加锚点、不导入或快进旧备份位点、不开放门禁。
 - 本机typecheck和11项格式测试通过。新增第18套实际PG：真实relation lock屏障后并发修改删除/保留/gate/audit/大offset，前后导出分别对同一快照，另验真实锁等待超时与租约/连接清理、源不变、拒绝关闭门禁/独占恢复/schema不符和实际CLI；待CI。未改VPS、目的地或调度。
+- 独立复核后将URI参数限制下沉到导出API，避免pg连接串覆盖构造器的UTC/application_name/statement_timeout；重复sslmode/片段/未知选项拒绝，CLI复用同一校验。新增9项网络访问前拒绝测试，不依赖调用方自行约束URI。

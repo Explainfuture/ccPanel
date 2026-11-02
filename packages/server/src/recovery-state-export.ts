@@ -13,6 +13,12 @@ export async function exportRecoverySourceState(options:StateExportOptions):Prom
   const fail=(code:string):never=>{throw new RecoveryStateExportError(code);};
   const timeout=options.timeoutMs??30000,age=options.maxAgeSeconds??600;
   if(typeof options.connectionString!=='string'||!options.connectionString||typeof options.sourceId!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(options.sourceId)||!Number.isSafeInteger(options.expectedSchema)||options.expectedSchema<1||!Number.isSafeInteger(timeout)||timeout<100||timeout>120000||!Number.isSafeInteger(age)||age<1||age>=3600)fail('state_export_options_invalid');
+  // pg parses connectionString after constructor options. Reject URI options
+  // that could override our timezone, application name or statement timeout.
+  let uri:URL;
+  try{uri=new URL(options.connectionString);}catch{fail('state_export_connection_invalid');}
+  if(!['postgres:','postgresql:'].includes(uri!.protocol)||!uri!.hostname||!uri!.username||!uri!.pathname.slice(1)||uri!.hash||[...uri!.searchParams.keys()].some(key=>key!=='sslmode')||uri!.searchParams.getAll('sslmode').length>1)fail('state_export_connection_invalid');
+  const ssl=uri!.searchParams.get('sslmode');if(ssl&&!['disable','allow','prefer','require','verify-ca','verify-full'].includes(ssl))fail('state_export_connection_invalid');
   const db=new pg.Client({connectionString:options.connectionString,application_name:'ccpanel_backup_state_export',options:'-c timezone=UTC',connectionTimeoutMillis:Math.min(timeout,5000),statement_timeout:Math.min(timeout,10000)});
   const deadline=performance.now()+timeout;let stopped:RecoveryStateExportError|undefined,ending:Promise<void>|undefined;
   const check=()=>{if(stopped)throw stopped;if(performance.now()>=deadline)fail('state_export_timeout');};
