@@ -1717,3 +1717,4 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 本机typecheck和11项格式测试通过。新增第18套实际PG：真实relation lock屏障后并发修改删除/保留/gate/audit/大offset，前后导出分别对同一快照，另验真实锁等待超时与租约/连接清理、源不变、拒绝关闭门禁/独占恢复/schema不符和实际CLI；待CI。未改VPS、目的地或调度。
 - 独立复核后将URI参数限制下沉到导出API，避免pg连接串覆盖构造器的UTC/application_name/statement_timeout；重复sslmode/片段/未知选项拒绝，CLI复用同一校验。新增9项网络访问前拒绝测试，不依赖调用方自行约束URI。
 - 首两轮Actions41384247965/41384471944的verify/sftp通过、postgres失败于超时后即时查询仍有1个后端；前面的同快照/新状态/CLI检查已通过，不能将本地socket close当服务端退出。修正验证为仍持有relation lock、最多2秒观察实际pg_stat_activity消失后才释放，残留则失败；另记录清理延迟和租约检查，不靠提前释放测试锁造成清理。待新CI。
+- Actions41384853660对9e55ef9的verify/postgres/sftp全部success：376测试通过/8平台跳过、18套真实PG完成。新增套件实际relation屏障+并发提交后首份旧快照一致、第二份含2个项目策略/1屏障/完整性暂停/精确大offset，源不变；实际CLI退出2未提升可信标记。超时后仍持锁，另22ms观察到后端消失、全部租约释放/会话0，未改为本地close即清理。该单次延迟不作普遍保证；来源认证、防回退链/独立锚点、连续加密投递/导入及调度仍未实现，VPS未变。
