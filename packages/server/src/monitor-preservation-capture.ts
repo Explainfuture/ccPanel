@@ -12,6 +12,14 @@ type DescriptorRow={source?:string;id:string;cursor_time:string;policy_us:string
 const int64=(value:unknown):value is string=>typeof value==='string'&&/^(0|-?[1-9][0-9]{0,18})$/.test(value)&&BigInt(value)>=-9223372036854775808n&&BigInt(value)<=9223372036854775807n;
 const positive=(value:unknown):value is string=>int64(value)&&BigInt(value)>0n;
 const uuid=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value);
+const sourceOrder=['api','host','worker'];
+function follows(row:DescriptorRow,previous:DescriptorRow,samples:boolean){
+  const time=BigInt(row.policy_us),lastTime=BigInt(previous.policy_us);
+  if(time!==lastTime)return time>lastTime;
+  if(!samples)return BigInt(row.id)>BigInt(previous.id);
+  const source=sourceOrder.indexOf(row.source!),lastSource=sourceOrder.indexOf(previous.source!);
+  return source>lastSource||(source===lastSource&&row.id>previous.id);
+}
 
 // Descriptor capture only. The caller must bind the source connection/container;
 // row hashes and this caller label do not establish origin or causal pruning.
@@ -62,8 +70,8 @@ export async function captureMonitorPreservation(options:MonitorCaptureOptions){
       ((extract(epoch FROM clock_timestamp())*1000000)::bigint)::text AS captured_us`)).rows[0];
     if(metadata.schema_version!==22)fail('monitor_capture_schema_mismatch');
     if(typeof metadata.database!=='string'||!metadata.database||Buffer.byteLength(metadata.database)>63||/[\x00-\x1f\x7f]/.test(metadata.database)||![metadata.oid,metadata.server_version_num,metadata.postmaster_started_us,metadata.snapshot_started_us,metadata.captured_us].every(positive)||BigInt(metadata.postmaster_started_us)>BigInt(metadata.snapshot_started_us)||BigInt(metadata.snapshot_started_us)>BigInt(metadata.captured_us))fail('monitor_capture_metadata_invalid');
-    const sourceOrder=(await db.query("SELECT array_agg(source ORDER BY source) AS ordered FROM (VALUES('api'::text),('host'),('worker')) s(source)")).rows[0].ordered;
-    if(JSON.stringify(sourceOrder)!==JSON.stringify(['api','host','worker']))fail('monitor_capture_collation_unsupported');
+    const actualSourceOrder=(await db.query("SELECT array_agg(source ORDER BY source) AS ordered FROM (VALUES('api'::text),('host'),('worker')) s(source)")).rows[0].ordered;
+    if(JSON.stringify(actualSourceOrder)!==JSON.stringify(sourceOrder))fail('monitor_capture_collation_unsupported');
     const gate=(await db.query('SELECT blocked FROM recovery_gate WHERE id=true')).rows;
     if(gate.length!==1||gate[0].blocked!==false)fail('monitor_capture_source_not_ready');
     const expected:Record<string,number>={};
@@ -74,23 +82,25 @@ export async function captureMonitorPreservation(options:MonitorCaptureOptions){
     await write({kind:'header',version:1,database:{name:metadata.database,oid:metadata.oid},schema_version:22,server_version_num:metadata.server_version_num,postmaster_started_us:metadata.postmaster_started_us,snapshot_started_us:metadata.snapshot_started_us,captured_us:metadata.captured_us,source_label:options.sourceLabel});
     for(const [index,table]of tables.entries()){
       let cursorTime:string|null=null,cursorSource:string|null=null,cursorId:string|null=null;
+      let previous:DescriptorRow|undefined;
       while(true){
         check();const samples=table==='operational_samples',time=samples?'observed_at':table==='operational_alert_history'?'evaluated_at':'assessed_at';
-        const page:DescriptorRow[]=(await db.query(samples?`SELECT source,instance_id::text AS id,observed_at::text AS cursor_time,
-          ((extract(epoch FROM observed_at)*1000000)::bigint)::text AS policy_us,
+        const page:DescriptorRow[]=(await db.query(samples?`SELECT t.source,t.instance_id::text AS id,t.observed_at::text AS cursor_time,
+          ((extract(epoch FROM t.observed_at)*1000000)::bigint)::text AS policy_us,
           encode(sha256(convert_to(row_to_json(t)::text,'UTF8')),'hex') AS row_sha256
-          FROM operational_samples t WHERE $1::timestamptz IS NULL OR (observed_at,source,instance_id)>($1::timestamptz,$2::text,$3::uuid)
-          ORDER BY observed_at,source,instance_id LIMIT 250`:`SELECT id::text AS id,${time}::text AS cursor_time,
-          ((extract(epoch FROM ${time})*1000000)::bigint)::text AS policy_us,
+          FROM operational_samples t WHERE $1::timestamptz IS NULL OR (t.observed_at,t.source,t.instance_id)>($1::timestamptz,$2::text,$3::uuid)
+          ORDER BY t.observed_at,t.source,t.instance_id LIMIT 250`:`SELECT t.id::text AS id,t.${time}::text AS cursor_time,
+          ((extract(epoch FROM t.${time})*1000000)::bigint)::text AS policy_us,
           encode(sha256(convert_to(row_to_json(t)::text,'UTF8')),'hex') AS row_sha256
-          FROM ${table} t WHERE $1::timestamptz IS NULL OR (${time},id)>($1::timestamptz,$2::bigint)
-          ORDER BY ${time},id LIMIT 250`,samples?[cursorTime,cursorSource,cursorId]:[cursorTime,cursorId])).rows;
+          FROM ${table} t WHERE $1::timestamptz IS NULL OR (t.${time},t.id)>($1::timestamptz,$2::bigint)
+          ORDER BY t.${time},t.id LIMIT 250`,samples?[cursorTime,cursorSource,cursorId]:[cursorTime,cursorId])).rows;
         if(!page.length)break;
         for(const row of page){
           if(!int64(row.policy_us)||typeof row.cursor_time!=='string'||!row.cursor_time||typeof row.row_sha256!=='string'||!/^[a-f0-9]{64}$/.test(row.row_sha256)||(samples?(!['api','host','worker'].includes(row.source??'')||!uuid(row.id)):!positive(row.id)))fail('monitor_capture_row_invalid');
+          if(previous&&!follows(row,previous,samples))fail('monitor_capture_order_invalid');
           counts[table]++;rows++;if(counts[table]>limits[index]!||rows>100000)fail('monitor_capture_budget_exceeded');
           await write({kind:'row',table,pk:samples?[row.source,row.id,row.policy_us]:[row.id],policy_us:row.policy_us,row_sha256:row.row_sha256});
-          cursorTime=row.cursor_time;cursorSource=samples?row.source!:null;cursorId=row.id;
+          cursorTime=row.cursor_time;cursorSource=samples?row.source!:null;cursorId=row.id;previous=row;
         }
         if(page.length<250)break;
       }
