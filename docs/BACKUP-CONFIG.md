@@ -101,7 +101,7 @@ CI专用loopback OpenSSH夹具使用临时主机/用户key、临时高端口和�
 
 `pnpm --silent backup:export-state source-id 22 > /private/state.json`使用显式CCPANEL_BACKUP_DATABASE_URL；先用umask 077和私有目录保护重定向输出，随后必须加密。stdout是敏感恢复元数据，不应直接打印到共享日志。该命令为手动只读导出，不读取/启用offhost模板、不自行存储/上传或调度；缺显式源URI即拒绝，不回退到应用DATABASE_URL。
 
-导出前以共享会话租约排除受管DDL和离线恢复，要求source recovery_gate已开放、schema22；在同一UTC REPEATABLE READ READ ONLY快照中读取完整v2删除/保留清单、当前完整性gate、consumer_streams及其全部PG分区进度、consumer_progress_audit最大ID。导出不修改数据、不打开门禁、不快进消费位点。暂停的ingest integrity gate允许导出，以保留事故；源recovery gate关闭则拒绝。全程有界超时会关闭自己的连接，释放锁；旧deletion-ledger export复用同一读取器，v1/v2/apply协议保持。
+导出前以共享会话租约排除受管DDL和离线恢复，要求source recovery_gate已开放、schema22；在同一UTC REPEATABLE READ READ ONLY快照中读取完整v2删除/保留清单、当前完整性gate、consumer_streams及其全部PG分区进度、consumer_progress_audit最大ID。导出不修改数据、不打开门禁、不快进消费位点。暂停的ingest integrity gate允许导出，以保留事故；源recovery gate关闭则拒绝。全程有界超时关闭本地连接；服务端依赖有界statement_timeout/后端退出释放会话锁，本地close不等于服务端已经清理。PG验收保持测试锁不释放，另行有界观察实际后端消失及租约释放。旧deletion-ledger export复用同一读取器，v1/v2/apply协议保持。
 
 新包装格式version1、status=exported_unverified，原v2嵌入deletion；嵌套时间与顶层一致，消费offset和audit最大ID保持int64文本。严格检查流/分区完整性（相对PG现有表），最多10000流/10000位置、details64KiB、v2清单8MiB、总体16MiB；默认新鲜度600秒且小于1小时，允许源时钟最多超前300秒。缺项、重复分区、非法/提升验证标记、schema或时间不符均拒绝。
 

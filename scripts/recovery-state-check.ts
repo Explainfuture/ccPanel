@@ -109,10 +109,19 @@ try{
   await controller.query('BEGIN');await controller.query('LOCK TABLE consumer_streams IN ACCESS EXCLUSIVE MODE');tableLocked=true;
   pending=exportRecoverySourceState({...options,timeoutMs:3000});void pending.catch(()=>{});
   await waitForExportBarrier(controllerPid);
-  // Keep the table lock held until the actual exporter deadline closes its
-  // session; releasing it first would only test a successful delayed read.
+  // Keep the table lock held after the local deadline result. Closing the
+  // local socket is not evidence that PG has already observed the disconnect;
+  // releasing this lock would incorrectly cause the server-side cleanup.
   await assert.rejects(pending,/state_export_timeout/);pending=undefined;
-  assert.equal((await observer.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname=$1 AND application_name='ccpanel_backup_state_export'",[sourceDatabase])).rows[0].n,0);
+  const cleanupStarted=performance.now(),cleanupDeadline=cleanupStarted+2000;
+  while(true){
+    // Observer uses autocommit, so each query obtains a fresh statistics view.
+    const count=(await observer.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname=$1 AND application_name='ccpanel_backup_state_export'",[sourceDatabase])).rows[0].n;
+    if(count===0)break;
+    assert.ok(performance.now()<cleanupDeadline,'state_export_backend_cleanup_not_observed');
+    await delay(20);
+  }
+  const backendCleanupAfterLocalReturnMs=Math.round(performance.now()-cleanupStarted);
   await controller.query('ROLLBACK');tableLocked=false;
   assert.deepEqual(await readBackupFingerprints(writer),beforeTimeout);
   for(const key of [169202610,recoveryLock]){
@@ -120,7 +129,7 @@ try{
     await controller.query('SELECT pg_advisory_unlock($1)',[key]);
   }
   assert.equal((await observer.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname=$1 AND application_name='ccpanel_backup_state_export'",[sourceDatabase])).rows[0].n,0);
-  console.log(JSON.stringify({passed:true,actual_pg_source_snapshot:true,relation_lock_barrier_observed:true,concurrent_policy_deletion_incident_progress_committed:true,first_export_consistent_old_snapshot:true,fresh_export_contains_complete_v2_and_integrity:true,offset_beyond_js_safe_integer_preserved:true,source_rows_unchanged_by_export:true,closed_source_gate_rejected:true,offline_recovery_lock_rejected:true,schema_mismatch_rejected:true,deadline_interrupted_actual_locked_query:true,deadline_source_rows_unchanged:true,leases_released:true,exporter_sessions_remaining:0,actual_state_cli:actualCli,source_authenticated:false,latest_state_verified:false,project_policies:2,deletion_barriers:1,streams:1}));
+  console.log(JSON.stringify({passed:true,actual_pg_source_snapshot:true,relation_lock_barrier_observed:true,concurrent_policy_deletion_incident_progress_committed:true,first_export_consistent_old_snapshot:true,fresh_export_contains_complete_v2_and_integrity:true,offset_beyond_js_safe_integer_preserved:true,source_rows_unchanged_by_export:true,closed_source_gate_rejected:true,offline_recovery_lock_rejected:true,schema_mismatch_rejected:true,deadline_interrupted_actual_locked_query:true,local_return_does_not_imply_backend_gone:true,server_cleanup_observed_separately:true,backend_cleanup_after_local_return_ms:backendCleanupAfterLocalReturnMs,deadline_source_rows_unchanged:true,leases_released:true,exporter_sessions_remaining:0,actual_state_cli:actualCli,source_authenticated:false,latest_state_verified:false,project_policies:2,deletion_barriers:1,streams:1}));
 }finally{
   if(tableLocked)await controller.query('ROLLBACK');
   if(pending)await pending.catch(()=>{});
