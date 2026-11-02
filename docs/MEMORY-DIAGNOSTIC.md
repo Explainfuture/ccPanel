@@ -29,3 +29,5 @@ capacity-report现在返回cpuBreakdownPercent及containerPressureDeltas；可�
 按实际容器地址关联pg_stat_activity，再以PG命名空间PID读取smaps_rollup：修正host(client_addr)前的首次标注未匹配IPv4的/32后缀，只用修正后的第二份作角色判断。该次API3个连接、Worker3个；其中API两个业务后端Private_Dirty分别1652/1668KiB。代码的每进程max4池中还须保留恢复租约；Worker存在嵌套持连接的消费路径，不随意缩池。错开三个API轮询可能只减少数MiB私有页，不能解释全部Kafka换出量或证明容量通过，收益须再以实际运行器对照测量。
 
 固定PerfData字段另外读到Serial young/full collection pauses，确认实际收集器为Serial；没有读取VM参数/环境、附加JVM或触发GC。数字计数为young2605/full95，nmethodSize35423456/code23416056、老年代used105945536字节；used不是完整GC后的存活量，不能据此确定可削减的堆。官方4.1.2 [Docker launch](https://raw.githubusercontent.com/apache/kafka/4.1.2/docker/jvm/launch)先加入CDS参数，因而[run-class的空选项默认G1分支](https://raw.githubusercontent.com/apache/kafka/4.1.2/bin/kafka-run-class.sh)可能不应用；这解释了不能仅看通用脚本默认值判断运行时GC，但不声称已核查全部启动环境。未修改JVM/容器限额、Swap或安全服务，也未启动新的容量负载。
+
+随后20.007秒低业务活动观察（非受控空闲）绑定同一四容器ID/启动/重启与主机实例边界，五次MemAvailable读数313196/312828/312692/314060/313952KiB，累计换入8192字节、换出0。仅用于区分当前短时活动与换出占用，不用20秒替代30分钟或推翻旧完整窗口的持续Swap失败；原始swap-activity-short.json在同一受限目录。
