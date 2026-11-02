@@ -5,13 +5,14 @@ import {tmpdir} from 'node:os';
 import {generateKeyPairSync,randomBytes} from 'node:crypto';
 import {signRecoveryStateRecord} from '../packages/server/src/recovery-state-record';
 import type {RecoverySourceState} from '../packages/server/src/recovery-state-format';
-import {appendRecoveryStateJournal} from '../packages/server/src/recovery-state-journal';
+import {appendRecoveryStateJournal,verifyRecoveryStateJournal} from '../packages/server/src/recovery-state-journal';
 
 const faults=vi.hoisted(()=>({
   journal:'',anchors:'',keyFile:'',mode:'' as ''|'record-sync'|'head-sync'|'collision',
   fired:false,recordLinked:false,headRenamed:false,collisionPath:'',ownedHandles:0,nativeWritten:0,
   beforeWrite:undefined as undefined|((index:number)=>Promise<void>),
   afterKeyRead:undefined as undefined|(()=>void),keyReadObserved:false,nativeKeyBytes:0,
+  afterObjectRead:undefined as undefined|(()=>void),objectReadPath:'',objectReadObserved:false,
 }));
 // Native file contents, metadata, links, rename and close are real. Only test
 // scheduling and the specified I/O failure are controlled; this does not prove
@@ -39,6 +40,7 @@ vi.mock('node:fs/promises',async importOriginal=>{
           faults.nativeKeyBytes+=result.bytesRead;
           if(!faults.keyReadObserved){faults.keyReadObserved=true;faults.afterKeyRead?.();}
         }
+        if(path===faults.objectReadPath&&result.bytesRead>0&&!faults.objectReadObserved){faults.objectReadObserved=true;faults.afterObjectRead?.();}
         return result;
       };
       if(key==='write')return async(...writeArgs:unknown[])=>{
@@ -58,7 +60,7 @@ vi.mock('node:fs/promises',async importOriginal=>{
   }};
 });
 
-afterEach(()=>{faults.beforeWrite=undefined;faults.afterKeyRead=undefined;faults.mode='';vi.restoreAllMocks();});
+afterEach(()=>{faults.beforeWrite=undefined;faults.afterKeyRead=undefined;faults.afterObjectRead=undefined;faults.mode='';vi.restoreAllMocks();});
 const posix=it.skipIf(process.platform==='win32');
 const sourceId='journal-fault-fixture';
 async function createFixture(){
@@ -72,8 +74,8 @@ async function createFixture(){
   // write, while the metadata remains within the64KiB details budget.
   const state:RecoverySourceState={version:1,status:'exported_unverified',source:{id:sourceId,database:'fixture',schema_version:22,authenticated:false},exported_at:at,deletion:{schema_version:2,exported_at:at,projects:[],jobs:[],barriers:[],retention:[]},integrity:{blocked:false,reason:null,detected_at:null,details:{padding:'x'.repeat(60000)},audit_high_water:'0',streams:[]},kafka_observation_verified:false,latest_state_verified:false};
   const signed=signRecoveryStateRecord({state,backup:{id:'fault-fixture',manifest_sha256:'a'.repeat(64)},previous:null,privateKey:signer.privateKey,now});
-  faults.journal=journalRoot;faults.anchors=anchorRoot;faults.keyFile=encryptionKeyFile;faults.fired=false;faults.recordLinked=false;faults.headRenamed=false;faults.collisionPath='';faults.nativeWritten=0;faults.keyReadObserved=false;faults.nativeKeyBytes=0;
-  return{parent,journalRoot,anchorRoot,encryptionKeyFile,signed,options:{journalRoot,anchorRoot,encryptionKeyFile,publicKey:signer.publicKey,expectedSourceId:sourceId,expectedHead:null,record:signed.record,timeoutMs:5000}};
+  faults.journal=journalRoot;faults.anchors=anchorRoot;faults.keyFile=encryptionKeyFile;faults.fired=false;faults.recordLinked=false;faults.headRenamed=false;faults.collisionPath='';faults.nativeWritten=0;faults.keyReadObserved=false;faults.nativeKeyBytes=0;faults.objectReadPath='';faults.objectReadObserved=false;
+  return{parent,journalRoot,anchorRoot,encryptionKeyFile,signed,state,privateKey:signer.privateKey,options:{journalRoot,anchorRoot,encryptionKeyFile,publicKey:signer.publicKey,expectedSourceId:sourceId,expectedHead:null,record:signed.record,timeoutMs:5000}};
 }
 type Fixture=Awaited<ReturnType<typeof createFixture>>;
 async function fixture(run:(value:Fixture)=>Promise<void>){
@@ -83,7 +85,7 @@ async function fixture(run:(value:Fixture)=>Promise<void>){
     const info=await lstat(absolute);if(!info.isDirectory()||info.isSymbolicLink()){await unlink(absolute);return;}
     await chmod(absolute,0o700);for(const name of await readdir(absolute))await cleanup(join(absolute,name));await rmdir(absolute);
   };
-  try{await run(value);}finally{faults.mode='';faults.beforeWrite=undefined;faults.afterKeyRead=undefined;await cleanup(value.parent);}
+  try{await run(value);}finally{faults.mode='';faults.beforeWrite=undefined;faults.afterKeyRead=undefined;faults.afterObjectRead=undefined;await cleanup(value.parent);}
 }
 async function notesPreserved(value:Fixture){
   expect(await readFile(join(value.journalRoot,'operator-note'),'utf8')).toBe('keep-record-note');
@@ -133,4 +135,20 @@ posix('a native wx collision does not delete a temporary path this append never 
   faults.mode='collision';const result=await appendRecoveryStateJournal(value.options).then(result=>({result,error:undefined}),error=>({result:undefined,error}));
   expect(faults.fired).toBe(true);expect(result.error?.code).toBe('journal_io_failed');expect(faults.recordLinked).toBe(false);expect(faults.headRenamed).toBe(false);
   expect(await readFile(faults.collisionPath,'utf8')).toBe('unowned-temp-marker');expect((await readdir(value.journalRoot)).sort()).toEqual([basename(faults.collisionPath),'operator-note'].sort());expect(await readdir(value.anchorRoot)).toEqual(['operator-note']);await notesPreserved(value);
+}));
+posix('pins validated wire fields before awaiting the previous encrypted head read',async()=>fixture(async value=>{
+  await appendRecoveryStateJournal(value.options);expect(faults.ownedHandles).toBe(0);
+  const at=new Date(Date.parse(value.state.exported_at)+1).toISOString();
+  const nextState={...value.state,exported_at:at,deletion:{...value.state.deletion,exported_at:at}};
+  const next=signRecoveryStateRecord({state:nextState,backup:{id:'fault-fixture',manifest_sha256:'a'.repeat(64)},previous:value.signed.anchor,privateKey:value.privateKey});
+  const mutable={...next.record};
+  faults.objectReadPath=join(value.journalRoot,'1-'+value.signed.anchor.record_hash+'.state.enc');
+  faults.afterObjectRead=()=>{faults.fired=true;mutable.signature=Buffer.alloc(64).toString('base64');};
+  const stored=await appendRecoveryStateJournal({...value.options,expectedHead:value.signed.anchor,record:mutable});
+  expect(faults.objectReadObserved).toBe(true);expect(faults.fired).toBe(true);expect(mutable.signature).not.toBe(next.record.signature);
+  expect(stored.anchor).toEqual(next.anchor);expect(stored.status).toBe('stored_unverified');expect(faults.ownedHandles).toBe(0);
+  const verified=await verifyRecoveryStateJournal({...value.options,trustedTip:next.anchor});
+  expect(verified.recordsVerified).toBe(2);expect(verified.anchor).toEqual(next.anchor);expect(verified.state.exported_at).toBe(at);expect(verified.latestStateVerified).toBe(false);
+  expect((await readdir(value.journalRoot)).sort()).toEqual(['1-'+value.signed.anchor.record_hash+'.state.enc','2-'+next.anchor.record_hash+'.state.enc','operator-note'].sort());
+  expect((await readdir(value.anchorRoot)).sort()).toEqual(['head.json','operator-note']);await notesPreserved(value);
 }));

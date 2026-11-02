@@ -2,7 +2,7 @@ import {constants} from 'node:fs';
 import {open,lstat,realpath,opendir,mkdir,rmdir,unlink,link,rename,statfs} from 'node:fs/promises';
 import {resolve,isAbsolute,join,sep} from 'node:path';
 import {KeyObject,createCipheriv,createDecipheriv,randomBytes,createHash} from 'node:crypto';
-import {parseRecoveryStateAnchor,verifyRecoveryStateRecord,type RecoveryStateAnchor} from './recovery-state-record';
+import {parseRecoveryStateAnchor,verifyRecoveryStateRecord,type RecoveryStateAnchor,type RecoveryStateRecord} from './recovery-state-record';
 import {assertRecoveryStateContinuity} from './recovery-state-continuity';
 import {verifyRecoveryStateChainAsync} from './recovery-state-chain';
 
@@ -110,10 +110,14 @@ export async function appendRecoveryStateJournal(options:AppendOptions){
     if((head===null)!==(expected===null)||(head&&expected&&!same(head,expected)))fail('journal_head_conflict');
     await ctx.index(head);
     const checked=verifyRecoveryStateRecord({record:options.record,publicKey:options.publicKey,expectedSourceId:options.expectedSourceId,now:options.now,maxAgeSeconds:options.maxAgeSeconds});
+    // Keep immutable wire strings immediately after synchronous validation;
+    // caller mutation while the previous head is read must not change storage.
+    const input=options.record as RecoveryStateRecord;
+    const pinnedRecord:RecoveryStateRecord={version:1,algorithm:'Ed25519',payload:input.payload,signature:input.signature};
     if(checked.body.sequence!==(head?(BigInt(head.sequence)+1n).toString():'1')||checked.body.previous_hash!==(head?.record_hash??null))fail('journal_head_conflict');
     if(BigInt(checked.anchor.sequence)>10000n)fail('journal_recovery_required');
     if(head){const previous=await ctx.decode(objectName(head));if(!same(previous.checked.anchor,head))fail('journal_recovery_required');assertRecoveryStateContinuity(previous.checked.body.state,checked.body.state);}
-    const plain=Buffer.from(JSON.stringify(options.record));let encrypted:Buffer;
+    const plain=Buffer.from(JSON.stringify(pinnedRecord));let encrypted:Buffer;
     try{
       if(plain.length>ctx.max)fail('journal_record_too_large');
       const iv=randomBytes(12),encryptor=createCipheriv('aes-256-gcm',ctx.key,iv);encryptor.setAAD(magic);
