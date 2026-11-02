@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {createServer} from 'node:http';
 import {createHash,randomUUID} from 'node:crypto';
-import {mkdtemp,mkdir,writeFile,readFile,rm} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,readFile,lstat,readlink,symlink,unlink,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {resolve,join,dirname,basename} from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -72,12 +72,18 @@ globalThis.fetch=(input,options={})=>{
 process.once('exit',()=>emit({kind:'native_test_exit',manifest_handles:handles,manifest_syncs:syncs}));
 `,{mode:0o600,flag:'wx'});
 
-async function launch(name,{leased=false,preStop=false,loginStatus=200,holdLogin=false,holdPost=false,holdTrend=false,drainPages=false}={}){
+async function launch(name,{leased=false,preStop=false,loginStatus=200,holdLogin=false,holdPost=false,holdTrend=false,drainPages=false,namespace}={}){
   const path=join(directory,name);await mkdir(path,{mode:0o700});
   const output=join(path,'result.json'),config=join(path,'config.json'),runId=leased?'NATIVE_CONTROL_'+randomUUID().replaceAll('-',''):null;
   await writeFile(config,JSON.stringify({origin:'https://load.invalid',tenant:'synthetic',project:'synthetic',email:'native@integration.invalid',password:'synthetic-only',key:'synthetic-only'}),{mode:0o600,flag:'wx'});
   await writeFile(join(path,'operator-note'),'preserve-private-note',{mode:0o600,flag:'wx'});
   if(preStop)assert.deepEqual(await publishFirstStop(output+'.stop','resource_safety'),{status:'published'});
+  let existing;
+  if(namespace){
+    const target=namespace.target==='result'?output:output+'.progress',missing=join(path,'never-created-link-target');
+    if(namespace.type==='file')await writeFile(target,'existing-private-evidence\n',{mode:0o600,flag:'wx'});else await symlink(missing,target,'file');
+    existing={...namespace,path:target,missing,identity:await lstat(target,{bigint:true}),bytes:namespace.type==='file'?await readFile(target):await readlink(target)};
+  }
   const state={rows:new Map(),visibleIds:new Set(),requests:[],holds:new Map(),firstPost:null,drainStarted:false,serverErrors:[],responded:new Set()};
   const reply=(response,body,status=200)=>{state.responded.add(response);response.writeHead(status,{'content-type':'application/json',...(status===200&&body.login?{'set-cookie':'ccpanel_session=synthetic; HttpOnly'}:{})});response.end(JSON.stringify(body));};
   const decoys=Array.from({length:50},()=>({event_id:randomUUID(),event_time:new Date(Date.now()+3600000).toISOString()}));
@@ -115,7 +121,7 @@ async function launch(name,{leased=false,preStop=false,loginStatus=200,holdLogin
   await new Promise((accept,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',accept);});
   const env={...process.env,CCPANEL_NATIVE_HTTP_ORIGIN:'http://127.0.0.1:'+server.address().port};delete env.CCPANEL_LOAD_RUN_ID;if(runId)env.CCPANEL_LOAD_RUN_ID=runId;
   const child=spawn(process.execPath,['--import',pathToFileURL(preload).href,resolve('scripts/load-check-public.mjs'),config,output,'10'],{env,stdio:['pipe','pipe','pipe']});
-  const value={name,path,output,child,server,state,runId,records:[],stderr:'',closed:false,watchdogFired:false,stdinEndedByParent:false,heartbeat:null,sequence:0,started:performance.now(),reply};
+  const value={name,path,output,child,server,state,runId,existing,records:[],stderr:'',closed:false,watchdogFired:false,stdinEndedByParent:false,heartbeat:null,sequence:0,started:performance.now(),reply};
   active.add(value);let partial='',size=0;
   child.stdout.on('data',chunk=>{
     size+=chunk.length;if(size>512*1024){child.kill('SIGKILL');return;}
@@ -175,7 +181,28 @@ async function scenario(name,options,action,verification){
   finally{await dispose(value);}
 }
 
+async function namespaceScenario(target,type){
+  const name='existing_'+target+'_'+type+'_refused_before_manifest',value=await launch(name,{namespace:{target,type}});
+  try{
+    await value.done;assert.equal(value.watchdogFired,false);assert.equal(value.signal,null);assert.equal(value.code,1);assert.ok(value.stderr.includes('workload_output_exists'));
+    assert.equal(value.state.requests.length,0,'namespace refusal must precede real login/server activity');assert.equal(value.state.serverErrors.length,0);
+    assert.equal(value.records.some(record=>record.value.kind==='native_fetch_started'),false,'namespace refusal must precede every native fetch dispatch');assert.equal(value.observed(),undefined,'startup refusal is not an aborted workload result');
+    await assert.rejects(lstat(value.output+'.manifest.json'),{code:'ENOENT'});
+    await assert.rejects(lstat(target==='result'?value.output+'.progress':value.output),{code:'ENOENT'});
+    const before=value.existing,after=await lstat(before.path,{bigint:true});assert.equal(after.dev,before.identity.dev);assert.equal(after.ino,before.identity.ino);
+    if(type==='file'){assert.equal(after.isFile(),true);assert.deepEqual(await readFile(before.path),before.bytes);}
+    else{assert.equal(after.isSymbolicLink(),true);assert.equal(await readlink(before.path),before.bytes);await assert.rejects(lstat(before.missing),{code:'ENOENT'});}
+    assert.equal(await readFile(join(value.path,'operator-note'),'utf8'),'preserve-private-note');
+    const exit=value.records.find(record=>record.value.kind==='native_test_exit');assert.ok(exit);assert.equal(exit.value.manifest_handles,0);assert.equal(exit.value.manifest_syncs,0);
+    observations.push({name,scope:'startup_namespace_refusal',existing_target:target,existing_type:type,exit_code:value.code,exit_signal:value.signal,watchdog_fired:value.watchdogFired,native_close_elapsed_ms:Math.ceil(value.closedAt-value.started),manifest_created:false,native_dispatches:0,original_entry_unchanged:true});checks.push(name);
+  }catch(error){console.error(JSON.stringify({kind:'native_namespace_refusal_failure',name,closed:value.closed,code:value.code,signal:value.signal,records:value.records,stderr:value.stderr}));throw error;}
+  finally{await dispose(value);}
+}
+
 try{
+  const probe=join(directory,'symlink-permission-probe');let danglingSupported=false;
+  try{await symlink(join(directory,'absent-probe-target'),probe,'file');danglingSupported=true;await unlink(probe);}
+  catch(error){if(process.platform!=='win32'||!['EPERM','EACCES'].includes(error.code))throw error;}
   const scenarios=[
     ()=>scenario('initial_stop_prevents_login',{preStop:true,leased:true},async value=>{await value.done;assert.equal(value.state.requests.length,0);},{reason:'resource_safety',zero:true}),
     ()=>scenario('stop_while_waiting_for_first_lease',{leased:true},async value=>{
@@ -210,12 +237,15 @@ try{
       await value.stop();await until(()=>value.observed(),'independent final-settlement stop');await value.done;
       const signal=value.records.find(record=>record.value.kind==='native_signal_aborted'&&record.value.path.endsWith('/trends'));assert.ok(signal);assert.equal(signal.value.name,'TimeoutError');assert.ok(signal.value.elapsed_ms>=14500&&signal.value.elapsed_ms<=18000,'keep the original native fifteen-second signal');
     },{reason:'resource_safety'}),
-    ()=>scenario('leased_login_failure_releases_control',{leased:true,loginStatus:401},async value=>{value.renew();},{loginFailure:true})
+    ()=>scenario('leased_login_failure_releases_control',{leased:true,loginStatus:401},async value=>{value.renew();},{loginFailure:true}),
+    ()=>namespaceScenario('result','file'),
+    ()=>namespaceScenario('progress','file'),
+    ...(danglingSupported?[()=>namespaceScenario('result','dangling_symlink'),()=>namespaceScenario('progress','dangling_symlink')]:[])
   ];
   // Keep the local check small while still exercising independent real clients.
   let next=0;const workers=Array.from({length:3},async()=>{while(next<scenarios.length){const index=next++;await scenarios[index]();}});
   const results=await Promise.allSettled(workers);for(const result of results)if(result.status==='rejected')throw result.reason;
-  console.log(JSON.stringify({passed:true,platform:process.platform,node_version:process.version,checks,observations,artifacts:artifactHashes,real_original_generator_children:true,original_native_close_observed:true,native_loopback_http:true,native_fetch_and_abort_signals:true,actual_manifest_fsync_before_post:true,all_four_artifact_hashes_verified:true,healthy_local_stop_observation_bound_ms:5000,request_timeouts_ms:[12000,15000],parent_ended_normal_lease_pipe:false,coordinator_hard_kill_exercised:false,orphan_native_terminal_claimed:false,tls_verified:false,vps_accessed:false,full_cross_host_bridge_verified:false,capacity_verified:false}));
+  console.log(JSON.stringify({passed:true,platform:process.platform,node_version:process.version,checks,observations,artifacts:artifactHashes,regular_output_and_progress_refusal_checked:true,dangling_output_checked:danglingSupported,dangling_progress_checked:danglingSupported,windows_symlink_permission_skip:process.platform==='win32'&&!danglingSupported,real_original_generator_children:true,original_native_close_observed:true,native_loopback_http:true,native_fetch_and_abort_signals:true,actual_manifest_fsync_before_post:true,all_four_artifact_hashes_verified:true,healthy_local_stop_observation_bound_ms:5000,request_timeouts_ms:[12000,15000],parent_ended_normal_lease_pipe:false,coordinator_hard_kill_exercised:false,orphan_native_terminal_claimed:false,tls_verified:false,vps_accessed:false,full_cross_host_bridge_verified:false,capacity_verified:false}));
 }finally{
   await Promise.allSettled([...active].map(dispose));assert.equal(dirname(resolve(directory)),resolve(tmpdir()));assert.ok(basename(directory).startsWith('ccpanel-native-control-'));await rm(directory,{recursive:true,force:true});
 }

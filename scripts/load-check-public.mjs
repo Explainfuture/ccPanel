@@ -1,5 +1,5 @@
 // Run off-host against trusted HTTPS; no database ports or credentials exposed.
-import {readFile,stat} from 'node:fs/promises';
+import {readFile,lstat} from 'node:fs/promises';
 import {randomUUID,createHash} from 'node:crypto';
 import {performance} from 'node:perf_hooks';
 import {publishEvidence} from './load-evidence.mjs';
@@ -94,7 +94,7 @@ function progress(){
 try{
   // Own the output namespace before making any requests. A previous run is
   // never resumed or overwritten, including its write-ahead ID manifest.
-  for(const path of [output,output+'.progress']){try{await stat(path);throw new Error('workload_output_exists');}catch(e){if(e.code!=='ENOENT')throw e;}}
+  for(const path of [output,output+'.progress']){try{await lstat(path);throw new Error('workload_output_exists');}catch(e){if(e.code!=='ENOENT')throw e;}}
   await publishEvidence(output+'.manifest.json',{...manifest(),status:'initializing'},{exclusive:true});
   for(const [signal,handler]of signalHandlers)process.once(signal,handler);
   stopTimer=setInterval(()=>void checkStop(),1000);
