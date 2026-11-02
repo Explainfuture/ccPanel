@@ -32,6 +32,9 @@ export async function preflightBackup(config:BackupConfig,inspect=inspectFile){
   if(config.destination.kind==='sftp'){
     files.push([config.destination.sftp!.knownHostsFile!,'destination.sftp.knownHostsFile',1048576],[config.destination.sftp!.identityFile!,'destination.sftp.identityFile',65536]);
   }
+  if(config.version===2&&config.state?.enabled){
+    files.push([config.state.signingKeyFile!,'state.signingKeyFile',65536],[config.state.publicKeyFile!,'state.publicKeyFile',16384]);
+  }
   // Metadata/size checks only: no credential bytes or paths are printed.
   for(const [path,field,max,key]of files)await inspect(path,field,max,key);
   return {status:'configured_executor_unavailable',transferEnabled:false,credentialsInspected:files.length,hostKeyVerified:false,independentFailureDomainVerified:false} as const;
