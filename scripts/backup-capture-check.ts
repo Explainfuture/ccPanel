@@ -6,6 +6,7 @@ import {mkdtemp,mkdir,writeFile,readFile,readdir,stat,unlink,rmdir} from 'node:f
 import {createReadStream} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,dirname,isAbsolute} from 'node:path';
+import {pathToFileURL} from 'node:url';
 import pg from 'pg';
 import {readBackupFingerprints} from '../packages/server/src/backup-snapshot';
 import {inspectBackupCandidate} from '../packages/server/src/backup-candidate';
@@ -15,10 +16,11 @@ const vps=process.env.CCPANEL_ISOLATED_CAPTURE_VPS==='true';
 const source=new URL(process.env.DATABASE_URL!);assert.match(source.pathname,/^\/ccpanel_restore_[0-9]{14}_[a-f0-9]{8}$/);
 const container=process.env.CCPANEL_PG_CONTAINER!;
 if(vps){
+  assert.notEqual(process.env.CCPANEL_SFTP_PG_CI,'true','CI SFTP fixture must never run on the VPS path');
   assert.equal(process.env.CCPANEL_EXPECTED_RELEASE,'m4-sdk-013');assert.equal(process.version,'v22.22.3');assert.equal(source.username,'ccpanel');
   assert.match(source.hostname,/^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/);assert.equal(container,'ccpanel-postgres-1');
   assert.equal(process.env.CCPANEL_CAPTURE_VPS_READY,'true');
-}else{assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(source.username,'ccpanel_ci');assert.ok(['127.0.0.1','localhost'].includes(source.hostname));assert.match(container,/^[a-f0-9]{12,64}$/);}
+}else{assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.CCPANEL_SFTP_PG_CI,'true');assert.equal(source.username,'ccpanel_ci');assert.ok(['127.0.0.1','localhost'].includes(source.hostname));assert.match(container,/^[a-f0-9]{12,64}$/);}
 assert.ok(isAbsolute(process.env.CCPANEL_CAPTURE_CLI!));
 const cryptoScript=join(dirname(process.env.CCPANEL_CAPTURE_CLI!),'encrypt-backup.mjs');
 const directory=await mkdtemp(join(tmpdir(),'ccpanel-capture-cli-')),candidate=join(directory,'candidate'),key=join(directory,'key'),plain=join(directory,'authenticated.dump');
@@ -76,24 +78,52 @@ try{
   }
   assert.equal(await readFile(join(localSet,'capture.json'),'utf8'),rawManifest);
   assert.deepEqual((await readdir(localSet)).sort(),['capture.json','database.dump.enc']);
-  // Authenticate and restore the read-back destination, not the original.
+  const restoreFrom=async(destination:string)=>{
+  // Authenticate and restore this read-back destination, never the original.
   if(!vps){
-    const args=[join(dirname(process.env.CCPANEL_CAPTURE_CLI!),'decrypt-backup-candidate.mjs'),localSet,key,plain,'22'];
+    const args=[join(dirname(process.env.CCPANEL_CAPTURE_CLI!),'decrypt-backup-candidate.mjs'),destination,key,plain,'22'];
     const decrypted=await run(process.execPath,args,{...process.env,CCPANEL_BACKUP_MAX_BYTES:String(manifest.archive.plaintextBytes)});assert.equal(decrypted.code,2);authenticated=true;
     const receipt=JSON.parse(decrypted.stdout);assert.equal(receipt.status,'decrypted_unverified');assert.equal(receipt.authenticatedDecryption,true);assert.equal(receipt.plaintextReadbackChecked,true);assert.equal(receipt.sha256,manifest.archive.plaintextSha256);assert.equal(receipt.manifestSha256,inspected.manifestSha256);assert.equal(receipt.recoveryVerified,false);assert.equal(receipt.latestStateVerified,false);
     const repeated=await run(process.execPath,args);assert.equal(repeated.code,1);
   }else{
-    const decrypted=await decryptBackupCandidate({directory:localSet,keyFile:key,output:plain,expectedSchema:22,maxBytes:8388644,timeoutMs:30000});assert.equal(decrypted.status,'decrypted_unverified');authenticated=true;
+    const decrypted=await decryptBackupCandidate({directory:destination,keyFile:key,output:plain,expectedSchema:22,maxBytes:8388644,timeoutMs:30000});assert.equal(decrypted.status,'decrypted_unverified');authenticated=true;
   }
   const plainHash=createHash('sha256');for await(const chunk of createReadStream(plain))plainHash.update(chunk);assert.equal(plainHash.digest('hex'),manifest.archive.plaintextSha256);
   if(vps){await restored.connect();restoredConnected=true;assert.equal((await restored.query("SELECT count(*)::int AS n FROM pg_tables WHERE schemaname='public'")).rows[0].n,0,'controller-owned restore database must be empty');}
   else{await admin.query(`CREATE DATABASE ${targetName}`);targetCreated=true;}
   const restore=await run('docker',['exec','-i',container,'pg_restore','-U',source.username,'-d',targetName,'--single-transaction','--exit-on-error','--no-owner','--no-acl'],process.env,plain);assert.equal(restore.code,0);
   if(!restoredConnected){await restored.connect();restoredConnected=true;}assert.deepEqual(await readBackupFingerprints(restored),manifest.fingerprints);assert.deepEqual((await restored.query('SELECT id::text,name FROM tenants')).rows,[{id:tenant,name:'CANDIDATE CLI FIXTURE'}]);assert.equal((await restored.query('SELECT count(*)::int AS n FROM recovery_gate')).rows[0].n,0);
+  };
+  let sftpEvidence:Record<string,unknown>={sftp_transport:false};
+  if(!vps){
+    // CI-only helper bundles are dynamically loaded. The retained VPS mode
+    // never imports ssh2 or starts an SSH daemon from its older release deps.
+    const {withLoopbackSftp}=await import(pathToFileURL(join(dirname(process.env.CCPANEL_CAPTURE_CLI!),'loopback-sftp-fixture.mjs')).href) as typeof import('./with-loopback-sftp');
+    const {transferBackupCandidateSftp}=await import(pathToFileURL(join(dirname(process.env.CCPANEL_CAPTURE_CLI!),'backup-sftp-adapter.mjs')).href) as typeof import('../packages/server/src/backup-sftp');
+    sftpEvidence=await withLoopbackSftp(async context=>{
+      const transferred=await transferBackupCandidateSftp({sourceDirectory:localSet,downloadRoot:context.downloadRoot,remoteRoot:context.remoteRoot,id:'pg-candidate',expectedSchema:22,maxBytes:manifest.archive.bytes,timeoutMs:30000,connection:context.connection});
+      assert.equal(transferred.status,'transferred_unverified');assert.equal(transferred.hostKeyVerified,true);assert.equal(transferred.downloadReadbackChecked,true);assert.equal(transferred.bytes,manifest.archive.bytes);assert.equal(transferred.sha256,inspected.sha256);assert.equal(transferred.manifestSha256,inspected.manifestSha256);
+      for(const field of ['sourceAuthenticated','recoveryVerified','offhostVerified','latestStateVerified','remoteDirectoryDurabilityVerified'] as const)assert.equal(transferred[field],false);
+      const downloaded=join(context.downloadRoot,'pg-candidate'),remote=join(context.remoteRoot,'pg-candidate');
+      const fingerprint=async(path:string)=>{const digest=createHash('sha256');for await(const chunk of createReadStream(path))digest.update(chunk);return digest.digest('hex');};
+      for(const set of [remote,downloaded]){
+        assert.deepEqual((await readdir(set)).sort(),['capture.json','database.dump.enc']);
+        assert.equal(await readFile(join(set,'capture.json'),'utf8'),rawManifest);assert.equal(await fingerprint(join(set,'database.dump.enc')),manifest.archive.sha256);
+        assert.equal((await stat(set)).mode&0o777,0o700);for(const file of ['capture.json','database.dump.enc'])assert.equal((await stat(join(set,file))).mode&0o777,0o600);
+      }
+      // Every stage uses this same actual PG archive, not a synthetic payload or
+      // the pre-transfer local copy. The restore runs before fixture teardown.
+      await restoreFrom(downloaded);
+      assert.equal(await readFile(join(downloaded,'capture.json'),'utf8'),rawManifest);assert.equal(await readFile(join(remote,'capture.json'),'utf8'),rawManifest);
+      assert.deepEqual(await readdir(context.remoteRoot),['pg-candidate']);
+      return{sftp_transport:true,same_candidate_sftp_pg_restore:true,host_pin_verified:true,sftp_cipher_hash_matches:true,sftp_manifest_hash_matches:true,remote_contains_no_plaintext_or_encryption_key:true,source_identity_verified:false,independent_failure_domain_verified:false,remote_directory_durability_verified:false};
+    });
+    sftpEvidence.sftp_fixture_cleanup_confirmed=true;
+  }else await restoreFrom(localSet);
   // Independent CI verification does not silently edit candidate state flags.
   assert.equal(await readFile(join(candidate,'capture.json'),'utf8'),rawManifest);
   assert.equal(await readFile(join(localSet,'capture.json'),'utf8'),rawManifest);
-  console.log(JSON.stringify({passed:true,surface:vps?'isolated_vps':'ci',actual_candidate_cli:true,cli_exit:2,status:'captured_unverified',read_only_candidate_inspection:true,local_destination_copy:true,bounded_authenticated_candidate_decryption:true,restored_from_destination:true,exclusive_output_preserved:true,schema_mismatch_has_no_manifest:true,plaintext_removed_after_capture:true,cipher_hash_matches:true,authenticated_plaintext_hash_matches:true,actual_pg_restore:true,fingerprints_match:true,candidate_flags_remain_unverified:true,bytes:manifest.archive.bytes,relations:manifest.fingerprints.length}));
+  console.log(JSON.stringify({passed:true,surface:vps?'isolated_vps':'ci',actual_candidate_cli:true,cli_exit:2,status:'captured_unverified',read_only_candidate_inspection:true,local_destination_copy:true,bounded_authenticated_candidate_decryption:true,restored_from_destination:true,exclusive_output_preserved:true,schema_mismatch_has_no_manifest:true,plaintext_removed_after_capture:true,cipher_hash_matches:true,authenticated_plaintext_hash_matches:true,actual_pg_restore:true,fingerprints_match:true,candidate_flags_remain_unverified:true,...sftpEvidence,bytes:manifest.archive.bytes,relations:manifest.fingerprints.length}));
 }finally{
   if(restoredConnected)await restored.end();await db.end();if(targetCreated)await admin.query(`DROP DATABASE ${targetName} WITH (FORCE)`);await admin.end();
   if(localCopied){await unlink(join(localSet,'capture.json'));await unlink(join(localSet,'database.dump.enc'));await rmdir(localSet);await rmdir(localRoot);}

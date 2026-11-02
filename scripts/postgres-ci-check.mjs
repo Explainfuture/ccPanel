@@ -26,7 +26,7 @@ function child(file,env,input='',args=[]){
   });
 }
 try{
-  const entries={migrate:'packages/server/src/migrate.ts','deletion-ledger':'packages/server/src/deletion-ledger.ts','backup-capture-cli':'scripts/capture-backup.ts','inspect-backup':'scripts/inspect-backup.ts','copy-backup-local':'scripts/copy-backup-local.ts','decrypt-backup-candidate':'scripts/decrypt-backup-candidate.ts'};
+  const entries={migrate:'packages/server/src/migrate.ts','deletion-ledger':'packages/server/src/deletion-ledger.ts','backup-capture-cli':'scripts/capture-backup.ts','inspect-backup':'scripts/inspect-backup.ts','copy-backup-local':'scripts/copy-backup-local.ts','decrypt-backup-candidate':'scripts/decrypt-backup-candidate.ts','backup-sftp-adapter':'packages/server/src/backup-sftp.ts','loopback-sftp-fixture':'scripts/with-loopback-sftp.ts'};
   const suites=['company-provision','report-edit','query-export','retention','partitions','capacity-proof','operational-history','operational-alerts','project-retention','schema-upgrade','retention-recovery','pressure-alerts','pressure-persistence','dlq-health','dlq-persistence','backup-snapshot','backup-capture'];
   for(const suite of suites)entries[suite]=`scripts/${suite}-check.ts`;
   for(const[name,entry]of Object.entries(entries))await build({entryPoints:[entry],outfile:path.join(dir,name+'.mjs'),bundle:true,platform:'node',target:'node22',format:'esm',packages:'external'});
@@ -44,7 +44,7 @@ try{
     const database='ccpanel_restore_'+new Date().toISOString().replace(/\D/g,'').slice(0,14)+'_'+randomBytes(4).toString('hex');
     assert.match(database,/^ccpanel_restore_[0-9]{14}_[a-f0-9]{8}$/);let created=false;
     const dburl=new URL(url);dburl.pathname='/'+database;
-    const env={...process.env,DATABASE_URL:dburl.href,PUBLIC_ORIGIN:'https://ci.ccpanel.invalid',RETENTION_ENABLED:'false',CCPANEL_CAPTURE_CLI:path.join(dir,'backup-capture-cli.mjs')};
+    const env={...process.env,DATABASE_URL:dburl.href,PUBLIC_ORIGIN:'https://ci.ccpanel.invalid',RETENTION_ENABLED:'false',CCPANEL_CAPTURE_CLI:path.join(dir,'backup-capture-cli.mjs'),...(suite==='backup-capture'?{CCPANEL_SFTP_PG_CI:'true'}:{})};
     delete env.CCPANEL_PROGRESS_BOOTSTRAP_REASON;delete env.CCPANEL_RECOVERY_LEDGER;delete env.CCPANEL_OFFLINE_RESTORE;
     try{
       await admin.query(`CREATE DATABASE ${database}`);created=true;

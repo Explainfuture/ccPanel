@@ -80,6 +80,7 @@ jobs:
           node-version: '22'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: sudo apt-get update -qq && sudo apt-get install -y openssh-server && sudo mkdir -p /run/sshd
       - run: node scripts/postgres-ci-check.mjs
         env:
           CCPANEL_PG_CONTAINER: ${{ job.services.postgres.id }}
