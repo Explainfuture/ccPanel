@@ -1,6 +1,6 @@
 # 容量测试的对账与停止组件
 
-步骤223实现了严格数据库对账、首次停止请求发布器和可选stdin租约；步骤224已将独立停止轮询和租约接入 `load-check-public.mjs`。跨机控制器、整个窗口部署锁/采样器终态/冻结/安全清理仍未实现，不能据此启动正式容量窗口或宣称失联保护已覆盖整个流程。被测应用仍为014/schema22，这两个步骤不部署应用或改变资源配置。
+步骤223实现严格数据库对账、首次停止发布器和可选stdin租约；步骤224将停止轮询与租约接入真实生成器；步骤225已实现跨机协调器、远端监督及数据库操作入口。工具实现与正式验收分开：014/schema22的完整30分钟窗口、全程部署锁和异常收口仍须取得本轮实际证据，不能因组件通过就宣称准入。被测应用及资源配置不因这些操作工具而改变。
 
 `load-fixture.mjs verify` 继续只接受明确拥有的合成公司/项目/用户及有界UUID清单。每轮使用新的RR只读事务，同时检查三张表的总数、原始事件唯一ID和双向精确ID集合、dedup的stored状态、DLQ为0，以及聚合任务的processed_at、无错误和processed_epoch等于项目当前privacy_epoch。可见桶总数须等于原事件数；这不是逐bucket或完整payload证明。桶表/可见view缺失拒绝成功，不再跳过聚合检查。
 
@@ -14,11 +14,11 @@
 {"v":1,"run_id":"EXAMPLE_RUN_000001","seq":"1"}
 ```
 
-seq为1到9223372036854775807的规范十进制字符串。严格增大才刷新本地performance.now期限；重复序号不续期，倒退、错run、额外/重复字段、非规范字节、超长、EOF、输入错误及本地到期均锁存首个观察故障。runId只是对应标签，不认证来源；未来bridge须只在核对本轮真实远端状态后推进心跳，不能仅按本地定时器续命。
+seq为1到9223372036854775807的规范十进制字符串。严格增大才刷新本地performance.now期限；重复序号不续期，倒退、错run、额外/重复字段、非规范字节、超长、EOF、输入错误及本地到期均锁存首个观察故障。runId只是对应标签，不认证来源；协调器须只在核对本轮真实远端状态后推进心跳，不能仅按本地定时器续命。
 
 close/故障移除自身timer/listener并pause专用输入；原生pipe可用时unref，不destroy调用方stream或操作内部_handle。错误回调自身抛出时，用固定安全错误终止，不吞异常后让工作负载继续。租约模块本身不读写manifest/文件或发送网络请求。
 
-生成器现在按 `CCPANEL_LOAD_RUN_ID` 是否存在明确选择stdin_monotonic_lease/unleased；空值/无效标签拒绝，不默默退回无租约。启用后固定5000ms，本例不提供可放宽时限的环境项；初次ready前不登录，有预存stop时也不登录。两种模式均记录control的mode/run_id/lease_ms，以及实际加载的四文件SHA（生成器、普通证据发布、租约、安全stop读取），未启用租约的旧用法明确标记unleased，不能由未来外层当成正式有租约窗口。
+生成器现在按 `CCPANEL_LOAD_RUN_ID` 是否存在明确选择stdin_monotonic_lease/unleased；空值/无效标签拒绝，不默默退回无租约。启用后固定5000ms，本例不提供可放宽时限的环境项；初次ready前不登录，有预存stop时也不登录。两种模式均记录control的mode/run_id/lease_ms，以及实际加载的四文件SHA（生成器、普通证据发布、租约、安全stop读取），未启用租约的旧用法明确标记unleased，不能作为正式有租约窗口。
 
 `load-stop-reader.mjs` 仅初次lstat ENOENT表示无请求。其他路径/打开/读取/关闭不确定性统一invalid_stop_request：实际正规文件、支持时NOFOLLOW/NONBLOCK、1024字节上限/完整EOF、path与fd各自前后dev/inode/size/mtime/ctime稳定，Windows跨path/fd只允许已验证的非零同inode。单reason字段、两种值的JSON可含合法转义/ASCII空白，重复/额外字段、BOM/坏UTF8、链接/FIFO/替换/增长截断均拒绝。稳定nlink2目标可读；发布器收尾unlink会变ctime，合法并发发布可能保守误拒，不能声称零误拒或敌对目录原子快照。
 
@@ -30,4 +30,22 @@ close/故障移除自身timer/listener并pause专用输入；原生pipe可用时
 
 步骤224在实际原生成器/原子发布器/本机HTTP上联调，测试adapter只改写合成HTTPS URL到loopback HTTP，保留原生fetch/AbortSignal与实际fsync-before-POST。最终Windows12场景/Linux14场景均由原ChildProcess close观察自然退出：租约正常完成且父pipe不关闭、ready前零登录、EOF/固定5秒到期、慢登录、原生POST12秒、分页drain及最终trend15秒、401清理、预存输出拒绝；Windows文件symlink权限不足明确未测，Linux实际悬空result/progress均测。CI41521270593三job成功，Linux原有accounting/Posix信号也执行通过，另47安全读取检查。显式stop/EOF本地观测最大值在最终CI为971ms，是一次测量；整套未测试TLS/SSH/VPS或完整bridge，也未在该集成用例硬杀coordinator，不能与上文独立租约孤儿用例合并扩大范围。见evidence/generator-controls-224.json。
 
-正式窗口仍须完成全程deploy.lock、shared工具SHA固定、跨机控制与失联停止、原client/sampler真实终态、不可覆盖冻结、PG/Kafka动态逐分区屏障、原业务/监控政策保留及清理门禁。上报结果不明/强杀/异常发送先撤key隔离保留fixture；不能用一次lag0或等待60秒推导永无迟到后直接删project。保持原200MiB安全余量、CPU/Swap、1800秒与正常采集/保留要求。本步骤没有VPS负载、容量通过、来源认证、连续可用或恢复准入结论。
+## 步骤225：已实现的编排与尚未通过的正式窗口
+
+`run-capacity-window.mjs`读取私有SSH配置并使用固定命令；秘密fixture经独立artifact管道写入私有目录，不进入日志。`capacity-window-remote.py`监督准备、资源检查、原采样器及收口；数据库CLI提供baseline、create、status、revoke、verify、cleanup六命令，分别冻结原状态、创建夹具、读取状态、撤key、对账及有条件清理。不依赖ignored脚本，也不启用备份目的地。
+
+Node保存原SSH与原生成器的ChildProcess句柄，只有实际close才记录退出码/信号。正式初始化诊断之后，还要读取同一child已同步的manifest，核对PID、四文件原始SHA及租约参数，才发送首帧。随后每次续租都须匹配新nonce/序号和同一远端原生所有者；旧回复、换实例、断连或超时不会续命。生产child去除NODE_OPTIONS注入并强制TLS验证；测试工厂的结果明确不代表实际SSH/TLS。
+
+原场景保持1EPS、约1KiB、趋势10秒和1800秒。采样器固定1980秒，不因等待或失败重开、加时；1940秒时若还未收到客户端终态就触发覆盖余量保护。客户端结束后最多等210秒，确认同一采样器自然退出、主机帧覆盖本次终态接收时刻，才允许大上传与数据库收尾。2700秒总预算到期触发停止，不能当作已观察全部进程关闭；停止不缩短原12/15秒在途请求时限，也不把30秒drain循环当作进程硬上限。
+
+远端用PID1 FDStore保存flock的同一打开文件描述，经BARRIER确认，由同Invocation的StopPost最后移除。私有probe.lock验证不代表正式全程deploy.lock通过，也不外推宿主机、PID1或StopPost自身死亡的保证。只停止证明属于本run的采样器、操作容器并清理临时env，不停止四个产品服务。
+
+成功删除夹具要求本轮原客户端明确完成、实际退出0且无信号/watchdog，原始结果与回执绑定，稳定ID在raw/dedup/jobs中精确对应，stored状态、当前privacy epoch及可见桶总数正确。撤key后再核对PG/Kafka逐分区边界，在privacy排他事务中清理并复核原业务。未知发送、强杀、中止、缺失回执或屏障不满足时，只撤key并隔离保留项目，冻结记录cleanup=deferred；一次lag0或等待60秒不证明永无迟到。
+
+冻结按26种固定role核对唯一角色、大小及SHA，清单按存在文件列出。秘密fixture、freeze自身及未来controller StopPost回执不进入清单。客户端原文件、DB回执和wire消息绑定同一次实际close；SSH最终close另行观察，不由freeze替代。失败原文件保留，不能覆盖、重排或改baseline补绿。Docker挂载按固定字段投影排序，数组换序不算漂移，真实变化仍拒绝。
+
+最终f2源的三次私有探针已观察：正常原SSH close0、37次新鲜回复、同一10秒采样器自然完成；EOF在preparing因bridge_stale中止，SSH close0、16次回复；MainSIGKILL得到原SSH close255及同Invocation的signal/9终态，保留failed部分冻结。后两次采样器被停止，均不算完成。三次StopPost清理中FDStore仍持锁，最后明确移除至0，独立私有flock可得；标准化runtime前后原字节相等，HTTPS ready。这仅证明私有锁/探针路径，未运行正式协调器、DB、客户端或全程deploy.lock。[CI41538313510](https://github.com/Explainfuture/ccPanel/actions/runs/41538313510) 对f6f7dc9的三项任务全部通过：527单测/9跳过、21套真实PG及Kafka联合检查，含1835条消息与1800个唯一事件。原生本地remote25项、coordinator17项与VPS私有探针分开记账，原始SHA见 `evidence/capacity-window-controls-225.json`。
+
+工作负载、资源、精确ID、原业务与四历史政策报告仍须离机分别核验，全机预算包括监督单元及Docker操作容器的开销，产品四容器指标另列。
+
+保持200MiB安全余量、CPU/Swap及正常采集/保留要求。当前没有正式30分钟通过、来源认证、连续可用、HA或恢复准入结论。用户暂无独立备份目的地，备份配置仍默认关闭；这些控制工具不将可配置方案变成已激活的同步或恢复能力。

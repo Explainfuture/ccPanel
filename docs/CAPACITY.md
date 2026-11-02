@@ -2,6 +2,8 @@
 
 本报告针对单机试验环境，不代表生产吞吐承诺。最终结果以完成的测试记录为准，运行中的快照不计为通过。
 
+步骤225的有限窗口工具、21套PG/Kafka联合测试及私有SSH/采样/锁终态探针已通过，见[控制契约](CAPACITY-CONTROL.md)与[证据](evidence/capacity-window-controls-225.json)。正式1800秒负载及全程部署锁仍待实测，原资源失败记录保持有效。以下容器内命令保留为早期试验方法；当前正式场景采用离机原生成器、同一固定采样器及逐分区对账。
+
 ## 场景与运行方式
 
 PRD 首轮基线：持续 30 分钟，每秒生成一个约 1 KiB 的事件，每 10 秒查询一次趋势，每 50 个事件额外重发原 ID。使用临时独立公司、用户、项目和写入密钥，结束后删除夹具，不污染业务数据。
@@ -15,7 +17,7 @@ docker compose exec -T api node scripts/load-check.mjs 1800
 
 同时在宿主机另行采样 `vmstat 10 181`、`docker stats --no-stream`、`df -h`，测试前后比较容器重启次数、OOM 状态。压力生成器运行在 API 容器内，报告应注明其额外开销；此测试不覆盖客户端公网延迟。
 
-API 容器内 `/tmp/ccpanel-load-progress.json` 为最近一分钟快照，`/tmp/ccpanel-load-result.json` 为最终对账。结果不含凭证。运行前删除或核对旧结果时间，避免误读此前测试。
+API 容器内 `/tmp/ccpanel-load-progress.json` 为最近一分钟快照，`/tmp/ccpanel-load-result.json` 为最终对账。结果不含凭证。历史记录按实际时间核对；当前每轮使用新私有目录并保留原始失败证据。
 
 ## 测量口径
 

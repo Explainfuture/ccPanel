@@ -1,0 +1,465 @@
+{
+  "version": 1,
+  "step": 225,
+  "purpose": "finite_capacity_window_controls_and_separate_native_private_probes",
+  "source_commit": "f6f7dc9b33e2439736710cc8df43c606b6ad1415",
+  "git_lf_source_sha256": {
+    "scripts/load-check-public.mjs": "0efd6e5fc38b378acdb3faff2d4c55b4914a1d1667d4fb62207c8fe13cf49fbf",
+    "scripts/load-evidence.mjs": "419fb2b962260ac517e8ed3aadbf21b414573492e55aead525cdf5b9a237dc97",
+    "scripts/load-control-lease.mjs": "52d986561ab9b6a56c5f7b52fb599a20f95392d543b597d81e32f5eeed1c24a1",
+    "scripts/load-stop-reader.mjs": "c1598d207f616e55e406c550b0a36e8dbbcd07b17fae85f1acdd4994dd46d892",
+    "scripts/load-first-stop.mjs": "49a56d25e3292c9f5b5d089ac2b5806a2b60b09c3fce5b6a9463820c3c511a2f",
+    "scripts/check-load-control-integration.mjs": "1d5668058cd0f8efa98daf7751fb76beef0397b60b2546935c2faa3fe3c59818",
+    "scripts/check-public-load-accounting.mjs": "f8e04ff81bc3ad2f0966303afecad924bfe02ca3ee0ec4c4679ff4db57d17300",
+    "scripts/capacity-window-db.ts": "9e93734de978d96b5efbe2c0b28d07f06892b01411c0033b321aee40b2b2b742",
+    "scripts/capacity-window-db-cli.ts": "c033f197168610e3ef50457a2956e7ece00a27a4d6857c351550d497fb0682c6",
+    "scripts/capacity-window-db-check.ts": "8a497da4b0aa157231b69f57732c9ce2fb8de1c47e7e5ac204ba4f7bbda816f2",
+    "scripts/capacity-window-remote.py": "f2fe8719f946a35f75accc361e59ad28e281daa35c95e1327b59659371769ca0",
+    "scripts/check-capacity-window-remote.py": "ef5ba71668e87a8377fa9471fe8c7006b434f555e871d019f6234c4e4fd0dc11",
+    "scripts/run-capacity-window.mjs": "0854a74ca5d8752a3f4144ee96ef9063d9c9b5d74e94142296b12c31532225de",
+    "scripts/check-capacity-window-coordinator.mjs": "4a70fbbce61b8d1aaaa31c0061fedbdf19a72b661b543f931e0b28ba52703c60",
+    "scripts/postgres-ci-check.mjs": "fcf6d5b3a0223e14cc7f7cb4504aeb57511a8179f97ad11e425b0f41886f52e3",
+    ".github/workflows/ci.yml": "00be119a606a63a30d3aac7a5166b6b284038bbb940646b3f8606e04c64f341d"
+  },
+  "ci": {
+    "run": 41538313510,
+    "url": "https://github.com/Explainfuture/ccPanel/actions/runs/41538313510",
+    "jobs": {
+      "verify": "success",
+      "sftp": "success",
+      "postgres": "success"
+    },
+    "raw_log_sha256": "8168b4ab045d7d8d70e9994697fab4db5a9905505f0a928bc93b41a343d2e6f9",
+    "real_pg_suites": 21,
+    "actual_real_kafka_and_pg": true,
+    "native_remote_local_checks": 25,
+    "native_coordinator_fixture_checks": 17,
+    "unit_test_files_passed": 91,
+    "unit_tests_passed": 527,
+    "platform_skips": 9,
+    "postgres_job_log_sha256": "3751f57f88ad80986b356fe8298ac94f4256c4ddf3b9096624bb3596e2c70286",
+    "warmup": [
+      {
+        "line": 665,
+        "value": {
+          "kind": "capacity_window_broker_readonly_warmup",
+          "attempt": 1,
+          "ready": false,
+          "diagnostic": {
+            "phase": "broker_offsets",
+            "protocol_code": null,
+            "protocol_type": "unclassified",
+            "error_class": "coordinator_not_found"
+          },
+          "observed_protocols": [
+            {
+              "phase": "broker_offsets",
+              "protocol_code": 15,
+              "protocol_type": "coordinator_unavailable",
+              "error_class": "protocol_error"
+            }
+          ]
+        }
+      },
+      {
+        "line": 666,
+        "value": {
+          "kind": "capacity_window_broker_readonly_warmup",
+          "attempt": 2,
+          "ready": true
+        }
+      }
+    ],
+    "window_database_suite": {
+      "passed": true,
+      "actual_pg_and_kafka": true,
+      "all_six_commands": true,
+      "actual_cli": true,
+      "actual_broker_records": 1835,
+      "actual_exact_unique_events": 1800,
+      "actual_producer_consumer_checkpoint": true,
+      "actual_aggregate_current_epoch": true,
+      "revoke_while_gate_closed": true,
+      "revoke_repeat_no_overwrite": true,
+      "invalid_terminal_unknown_fields_bare_boolean_and_changed_source_refused": true,
+      "checkpoint_lock_contention_deferred": true,
+      "unexpected_resources_and_failed_registration_retained": true,
+      "transaction_cleanup_owned_only": true,
+      "synthetic_controller_client_documents": true,
+      "native_client_terminal_observed": false,
+      "operator_96m_resource_limit_verified": false,
+      "vps_accessed": false,
+      "capacity_verified": false
+    },
+    "native_http": {
+      "platform": "linux",
+      "node_version": "v22.23.4",
+      "checks": [
+        "initial_stop_prevents_login",
+        "lease_ready_gate_then_native_eof",
+        "stop_while_waiting_for_first_lease",
+        "stop_during_native_delayed_login",
+        "active_lease_timeout_cannot_complete",
+        "normal_leased_native_completion",
+        "stop_preserves_native_post_12s_timeout",
+        "leased_login_failure_releases_control",
+        "existing_result_file_refused_before_manifest",
+        "existing_progress_file_refused_before_manifest",
+        "existing_result_dangling_symlink_refused_before_manifest",
+        "existing_progress_dangling_symlink_refused_before_manifest",
+        "stop_between_native_drain_pages",
+        "stop_during_native_final_settlement"
+      ],
+      "artifacts": {
+        "load-check-public.mjs": "0efd6e5fc38b378acdb3faff2d4c55b4914a1d1667d4fb62207c8fe13cf49fbf",
+        "load-evidence.mjs": "419fb2b962260ac517e8ed3aadbf21b414573492e55aead525cdf5b9a237dc97",
+        "load-control-lease.mjs": "52d986561ab9b6a56c5f7b52fb599a20f95392d543b597d81e32f5eeed1c24a1",
+        "load-stop-reader.mjs": "c1598d207f616e55e406c550b0a36e8dbbcd07b17fae85f1acdd4994dd46d892"
+      },
+      "original_native_close_observed": true,
+      "native_loopback_http": true,
+      "native_fetch_and_abort_signals": true,
+      "tls_verified": false,
+      "vps_accessed": false,
+      "full_cross_host_bridge_verified": false,
+      "capacity_verified": false
+    }
+  },
+  "local_checks": {
+    "remote": {
+      "windows_checks": 25,
+      "windows_posix_skips": 6,
+      "linux_checks": 25,
+      "linux_skips": 0,
+      "actual_ssh": false,
+      "actual_systemd": false
+    },
+    "coordinator": {
+      "windows_checks": 17,
+      "linux_checks": 17,
+      "actual_ssh": false,
+      "actual_generator": false,
+      "actual_tls": false
+    },
+    "accounting": {
+      "windows_node": "22.15.0",
+      "linux_node": "22.22.3",
+      "actual_native_early_timer_wakeup": true,
+      "one_millisecond_short_still_rejected": true,
+      "fetch_synthetic": true
+    },
+    "native_http_windows": {
+      "platform": "win32",
+      "node_version": "v22.15.0",
+      "checks": [
+        "initial_stop_prevents_login",
+        "lease_ready_gate_then_native_eof",
+        "stop_while_waiting_for_first_lease",
+        "stop_during_native_delayed_login",
+        "active_lease_timeout_cannot_complete",
+        "normal_leased_native_completion",
+        "stop_preserves_native_post_12s_timeout",
+        "leased_login_failure_releases_control",
+        "existing_result_file_refused_before_manifest",
+        "existing_progress_file_refused_before_manifest",
+        "stop_between_native_drain_pages",
+        "stop_during_native_final_settlement"
+      ],
+      "artifacts": {
+        "load-check-public.mjs": "0efd6e5fc38b378acdb3faff2d4c55b4914a1d1667d4fb62207c8fe13cf49fbf",
+        "load-evidence.mjs": "419fb2b962260ac517e8ed3aadbf21b414573492e55aead525cdf5b9a237dc97",
+        "load-control-lease.mjs": "52d986561ab9b6a56c5f7b52fb599a20f95392d543b597d81e32f5eeed1c24a1",
+        "load-stop-reader.mjs": "c1598d207f616e55e406c550b0a36e8dbbcd07b17fae85f1acdd4994dd46d892"
+      },
+      "original_native_close_observed": true,
+      "windows_symlink_permission_skip": true,
+      "tls_verified": false,
+      "vps_accessed": false,
+      "full_cross_host_bridge_verified": false,
+      "capacity_verified": false
+    }
+  },
+  "native_private_probes": [
+    {
+      "mode": "normal",
+      "run_id": "f7c9b2ea408eade1c3c640c459c102d2",
+      "source_commit": "8537d422b73f8185e1b6d3836176361e52c89ddc",
+      "controller_sha256": "f2fe8719f946a35f75accc361e59ad28e281daa35c95e1327b59659371769ca0",
+      "probe_tools_sha256": {
+        "controller": "f2fe8719f946a35f75accc361e59ad28e281daa35c95e1327b59659371769ca0",
+        "coordinator": "0854a74ca5d8752a3f4144ee96ef9063d9c9b5d74e94142296b12c31532225de",
+        "sampler": "12baf578e100d8adb135eed5766597a70b18609457050d6a8fcc1fda5df4420d",
+        "host_state": "b881cebe3de647736dc06cce64bf0a8ada3038bae46b1b3b89b51541db3212f1",
+        "capture": "82fa1ecab8bf3aa7d2edaab1a240ab5f357fa4e2e96dc95c33b2ddb64a08ba19",
+        "db_operator": "4319ddd3a80cf6c46a6257df588cd5b584c0cdf102a8ee7a42f369c6834c7829",
+        "first_stop": "49a56d25e3292c9f5b5d089ac2b5806a2b60b09c3fce5b6a9463820c3c511a2f",
+        "load_check": "0efd6e5fc38b378acdb3faff2d4c55b4914a1d1667d4fb62207c8fe13cf49fbf",
+        "load_evidence": "419fb2b962260ac517e8ed3aadbf21b414573492e55aead525cdf5b9a237dc97",
+        "load_lease": "52d986561ab9b6a56c5f7b52fb599a20f95392d543b597d81e32f5eeed1c24a1",
+        "load_stop_reader": "c1598d207f616e55e406c550b0a36e8dbbcd07b17fae85f1acdd4994dd46d892"
+      },
+      "original_native_ssh_close": {
+        "code": 0,
+        "signal": null,
+        "observed_at": "2026-11-02T22:21:30.068Z"
+      },
+      "independent_kill_ssh_close": null,
+      "fresh_replies": 37,
+      "maximum_reply_rtt_ms": 970.3973000000005,
+      "controller_outcome": "completed",
+      "native_controller_terminal": {
+        "NFileDescriptorStore": "1",
+        "Result": "success",
+        "ExecMainPID": "2744742",
+        "ExecMainCode": "1",
+        "ExecMainStatus": "0",
+        "InvocationID": "7c06d229356b47858b11441eb91095d8"
+      },
+      "sampler_frames": 2,
+      "sampler_complete_fixed_duration": true,
+      "sampler_native_terminal": {
+        "Result": "success",
+        "ExecMainStartTimestampMonotonic": "975568064177",
+        "ExecMainExitTimestampMonotonic": "975581730151",
+        "ExecMainPID": "2744928",
+        "ExecMainCode": "1",
+        "ExecMainStatus": "0",
+        "InvocationID": "3586a043d30a44e981617c3181abb7cc"
+      },
+      "same_runtime_original_bytes": true,
+      "https_ready": true,
+      "pid1_lock_held_during_cleanup": true,
+      "explicit_fdstore_remove_count": 0,
+      "independent_private_flock_available": true,
+      "cleanup_errors": [],
+      "private_bundle_sha256": "ba34c9baf9606882f82cc3b4af98d176864f6c04504918c51d9edc9c20b2d3dd",
+      "native_original_close_document_sha256": "96744eb7754c4067fcbaaf563c586a810a69ef9701dfb4e89de796338d2adf82",
+      "original_ssh_stdout_sha256": "0e2653f2255234f34e2274c4ab782aa83f8299a1161ab3bd7fe6bc4016ae8338",
+      "original_ssh_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "actual_original_native_ssh": true,
+      "actual_formal_coordinator": false,
+      "actual_db_or_client_workload": false,
+      "global_deploy_lock_used": false,
+      "capacity_verified": false
+    },
+    {
+      "mode": "stdin_eof",
+      "run_id": "8b0164669adff6e1be19baa6ca99190e",
+      "source_commit": "8537d422b73f8185e1b6d3836176361e52c89ddc",
+      "controller_sha256": "f2fe8719f946a35f75accc361e59ad28e281daa35c95e1327b59659371769ca0",
+      "probe_tools_sha256": {
+        "controller": "f2fe8719f946a35f75accc361e59ad28e281daa35c95e1327b59659371769ca0",
+        "coordinator": "0854a74ca5d8752a3f4144ee96ef9063d9c9b5d74e94142296b12c31532225de",
+        "sampler": "12baf578e100d8adb135eed5766597a70b18609457050d6a8fcc1fda5df4420d",
+        "host_state": "b881cebe3de647736dc06cce64bf0a8ada3038bae46b1b3b89b51541db3212f1",
+        "capture": "82fa1ecab8bf3aa7d2edaab1a240ab5f357fa4e2e96dc95c33b2ddb64a08ba19",
+        "db_operator": "4319ddd3a80cf6c46a6257df588cd5b584c0cdf102a8ee7a42f369c6834c7829",
+        "first_stop": "49a56d25e3292c9f5b5d089ac2b5806a2b60b09c3fce5b6a9463820c3c511a2f",
+        "load_check": "0efd6e5fc38b378acdb3faff2d4c55b4914a1d1667d4fb62207c8fe13cf49fbf",
+        "load_evidence": "419fb2b962260ac517e8ed3aadbf21b414573492e55aead525cdf5b9a237dc97",
+        "load_lease": "52d986561ab9b6a56c5f7b52fb599a20f95392d543b597d81e32f5eeed1c24a1",
+        "load_stop_reader": "c1598d207f616e55e406c550b0a36e8dbbcd07b17fae85f1acdd4994dd46d892"
+      },
+      "original_native_ssh_close": {
+        "code": 0,
+        "signal": null,
+        "observed_at": "2026-11-02T22:22:59.316Z"
+      },
+      "independent_kill_ssh_close": null,
+      "fresh_replies": 16,
+      "maximum_reply_rtt_ms": 955.0087000000003,
+      "controller_outcome": "aborted",
+      "native_controller_terminal": {
+        "NFileDescriptorStore": "1",
+        "Result": "success",
+        "ExecMainPID": "2745460",
+        "ExecMainCode": "1",
+        "ExecMainStatus": "0",
+        "InvocationID": "1066a94b8fbb476b814c43b51883c653"
+      },
+      "sampler_frames": 1,
+      "sampler_complete_fixed_duration": false,
+      "sampler_native_terminal": {
+        "Result": "success",
+        "ExecMainStartTimestampMonotonic": "975669607157",
+        "ExecMainExitTimestampMonotonic": "975672403415",
+        "ExecMainPID": "2745643",
+        "ExecMainCode": "2",
+        "ExecMainStatus": "15",
+        "InvocationID": "912e7d33ed2041b5811de1d5752e1181"
+      },
+      "same_runtime_original_bytes": true,
+      "https_ready": true,
+      "pid1_lock_held_during_cleanup": true,
+      "explicit_fdstore_remove_count": 0,
+      "independent_private_flock_available": true,
+      "cleanup_errors": [],
+      "private_bundle_sha256": "7c4b26d16c95a9c14d033d5f5c32a56738a26b7f23cda44ab159930f240e7416",
+      "native_original_close_document_sha256": "150344ae5190be3fefa84059de432667349e3b3ca73560e0891ddfa76198f62f",
+      "original_ssh_stdout_sha256": "6d59b190e8e86a8957ad8c6661d174c279be41056679a61a4a5d16c9cc8b835d",
+      "original_ssh_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "actual_original_native_ssh": true,
+      "actual_formal_coordinator": false,
+      "actual_db_or_client_workload": false,
+      "global_deploy_lock_used": false,
+      "capacity_verified": false
+    },
+    {
+      "mode": "owned_main_sigkill",
+      "run_id": "a4f016eb602dc17238272b07482fc82a",
+      "source_commit": "8537d422b73f8185e1b6d3836176361e52c89ddc",
+      "controller_sha256": "f2fe8719f946a35f75accc361e59ad28e281daa35c95e1327b59659371769ca0",
+      "probe_tools_sha256": {
+        "controller": "f2fe8719f946a35f75accc361e59ad28e281daa35c95e1327b59659371769ca0",
+        "coordinator": "0854a74ca5d8752a3f4144ee96ef9063d9c9b5d74e94142296b12c31532225de",
+        "sampler": "12baf578e100d8adb135eed5766597a70b18609457050d6a8fcc1fda5df4420d",
+        "host_state": "b881cebe3de647736dc06cce64bf0a8ada3038bae46b1b3b89b51541db3212f1",
+        "capture": "82fa1ecab8bf3aa7d2edaab1a240ab5f357fa4e2e96dc95c33b2ddb64a08ba19",
+        "db_operator": "4319ddd3a80cf6c46a6257df588cd5b584c0cdf102a8ee7a42f369c6834c7829",
+        "first_stop": "49a56d25e3292c9f5b5d089ac2b5806a2b60b09c3fce5b6a9463820c3c511a2f",
+        "load_check": "0efd6e5fc38b378acdb3faff2d4c55b4914a1d1667d4fb62207c8fe13cf49fbf",
+        "load_evidence": "419fb2b962260ac517e8ed3aadbf21b414573492e55aead525cdf5b9a237dc97",
+        "load_lease": "52d986561ab9b6a56c5f7b52fb599a20f95392d543b597d81e32f5eeed1c24a1",
+        "load_stop_reader": "c1598d207f616e55e406c550b0a36e8dbbcd07b17fae85f1acdd4994dd46d892"
+      },
+      "original_native_ssh_close": {
+        "code": 255,
+        "signal": null,
+        "observed_at": "2026-11-02T22:25:06.037Z"
+      },
+      "independent_kill_ssh_close": {
+        "code": 0,
+        "signal": null,
+        "observed_at": "2026-11-02T22:24:54.522Z",
+        "output_bytes": 0
+      },
+      "fresh_replies": 15,
+      "maximum_reply_rtt_ms": 870.0731000000014,
+      "controller_outcome": "failed",
+      "native_controller_terminal": {
+        "NFileDescriptorStore": "1",
+        "Result": "signal",
+        "ExecMainPID": "2746189",
+        "ExecMainCode": "2",
+        "ExecMainStatus": "9",
+        "InvocationID": "99495a7e06a3499ebc919cd07e31a4b2"
+      },
+      "sampler_frames": 1,
+      "sampler_complete_fixed_duration": false,
+      "sampler_native_terminal": {
+        "Result": "success",
+        "ExecMainStartTimestampMonotonic": "975795925353",
+        "ExecMainExitTimestampMonotonic": "975803918362",
+        "ExecMainPID": "2746371",
+        "ExecMainCode": "2",
+        "ExecMainStatus": "15",
+        "InvocationID": "5762ffc373284f29b6b8f941dca626b8"
+      },
+      "same_runtime_original_bytes": true,
+      "https_ready": true,
+      "pid1_lock_held_during_cleanup": true,
+      "explicit_fdstore_remove_count": 0,
+      "independent_private_flock_available": true,
+      "cleanup_errors": [],
+      "private_bundle_sha256": "389b3234c0a58108c1ec837f0933dcb6e01e80b381355eb35a540bcbb996ba62",
+      "native_original_close_document_sha256": "df2795656fd3456bc891e0e5e310477fdc1b1db9f234a070e0a5527c540910eb",
+      "original_ssh_stdout_sha256": "3db8869c28003a7fed5775740700ab64ba90f5c02021bfe11d7caf638b4c5b5e",
+      "original_ssh_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "actual_original_native_ssh": true,
+      "actual_formal_coordinator": false,
+      "actual_db_or_client_workload": false,
+      "global_deploy_lock_used": false,
+      "capacity_verified": false
+    }
+  ],
+  "eof_first_abort": {
+    "code": "bridge_stale",
+    "observed_at_us": "1793658167607667",
+    "phase": "preparing"
+  },
+  "preserved_failures": [
+    {
+      "kind": "initial_manifest_publication_test_race",
+      "ci": 41522828929,
+      "fixed_commit": "cc4520d",
+      "earlier_224_success_evidence_unchanged": true
+    },
+    {
+      "kind": "actual_normal_window_10_999_seconds",
+      "ci": 41528508509,
+      "fixed_commit": "2f1a3af",
+      "verifier_tolerance_unchanged": true
+    },
+    {
+      "kind": "ci_kafka_health_admission",
+      "ci": 41531970027,
+      "fixed_commit": "49303d4",
+      "product_configuration_changed": false
+    },
+    {
+      "kind": "bundled_library_cli_side_effect_and_idempotent_test_producer",
+      "ci": 41532761980,
+      "fixed_commit": "ed1f949"
+    },
+    {
+      "kind": "first_private_probe_mount_array_order_variance",
+      "controller_sha256": "20e0d81505b1592a4adeba5e7fe0b343ec599daee558922691b6e132a78c0f03",
+      "bundle_sha256": "bb223ee9aa0ae1435713d79536f239b9e2bd4e6ea1e7ae1d170cca4950e3270e",
+      "raw_snapshots_unchanged": true
+    },
+    {
+      "kind": "second_private_probe_sampler_handoff_false_abort",
+      "controller_sha256": "dca8ff0a0ed19c1d58b4d150f1022caea10a366e54c03ecf9aff9d75b9af434e",
+      "bundle_sha256": "fb5ce256403a71ad1a15361e3eaa4109cc3547277a4496d36dce86f4b63df075",
+      "original_outcome": "aborted",
+      "original_outcome_unchanged": true
+    },
+    {
+      "kind": "fresh_ci_coordinator_error_cause_lost_by_driver",
+      "ci": 41536370175,
+      "protocol_code_not_fabricated": true
+    }
+  ],
+  "private_raw_log_sha256": {
+    ".local/ci224-integration-failed.log": "1df93fd0ad49eb8b8518331d9cf15c54297440948fb6f8d5f7e1191d21e9ae12",
+    ".local/ci225-accounting-failed.log": "7bdf5b5476cb58be888b369a21bb88d76b060a5647b9da55756ddeaf98311273",
+    ".local/ci225-kafka-init-failed.log": "5dbaba0fb609a6f2287daf0c039127cd8f6360f5111795d3018f4f27f189ad8f",
+    ".local/ci225-pg493.log": "fd7f18242bfa33b797012550006c50fe877471f05e1bb85e1ee659ffed2ad7e0",
+    ".local/ci225-pg2f1.log": "8c853ea65f63a9f1f42738f80edbaf424f0fbbc1f5e7525347c5e67536f8f37d",
+    ".local/ci225-pg-ed1.log": "e4979550a2b61672c4779b907f55bbadbec52199d95c14b7c22fd1e4a2b81161",
+    ".local/ci225-pg-a9.log": "a1afaf5d4ef61162b3dc881c8d3a5f32103a4bdffd2a9ced0a379871e738c11b",
+    ".local/ci225-pg8537.log": "bf95bfec2020a01c4818bd18a240231c40a96239cb26ccf9fa2ecef79b8f2889",
+    ".local/accounting225-timing-fixed-windows.log": "3d1b9d896d3f65819007de23d1bb4a7cb3b913381610b5fed61ad040b57dc8eb",
+    ".local/accounting225-timing-fixed-linux.log": "d0ffd5c3adf6965c17398580ad0a031825c15e555dfdcfd3bc1fff336bcf2e7f",
+    ".local/control-integration225-final-windows.log": "a18b237f503b9decb485dd288a32b13287791a5bd85d858b2363e0088bb6d77c",
+    ".local/window225-remote-handoff-clock-windows.log": "8268de6d99ca605bf4f5d9f899036abc63c0d76d8a6cd23b5e1b465bbc95a23b",
+    ".local/window225-remote-handoff-clock-linux.log": "d3307fa0921e9b78bef978e17cb6de729cb6ffdd9c45f439529d9df5ae3eed3e",
+    ".local/window225-coordinator-rolefix-linux.log": "e599d33462d01f0390df3cf29813d2666215d38e235461267b4e22d6e12db77d",
+    ".local/ci225-final-all.log": "8168b4ab045d7d8d70e9994697fab4db5a9905505f0a928bc93b41a343d2e6f9"
+  },
+  "production": {
+    "release": "m4-polling-014",
+    "schema": 22,
+    "application_deployed_in_this_step": false,
+    "container_configuration_changed": false,
+    "business_fixture_or_event_created_on_vps": false,
+    "operational_collection_and_retention_enabled": true,
+    "backup_config_disabled": true
+  },
+  "claims": {
+    "formal_1800_second_window_verified": false,
+    "global_deploy_lock_full_window_verified": false,
+    "capacity_verified": false,
+    "source_authenticated": false,
+    "continuous_availability_verified": false,
+    "latest_state_verified": false,
+    "recovery_verified": false,
+    "ha_verified": false
+  },
+  "remaining": [
+    "Run the actual formal coordinator and original client under the final frozen tool graph.",
+    "Observe the same fixed 1980-second sampler, original client close, exact Kafka/PG barriers and owned cleanup.",
+    "Verify workload, whole-host resource, business preservation and monitor-history policy reports separately off host.",
+    "Independent backup destination and trusted source/latest-state recovery are not configured."
+  ]
+}
