@@ -55,6 +55,7 @@ jobs:
       - run: python3 scripts/check-package-release.py
       - run: python3 scripts/check-capacity-preservation.py
       - run: python3 scripts/check-monitor-preservation.py
+      - run: python3 scripts/check-capacity-window-remote.py
       - run: pnpm --dir packages/sdk-browser pack --pack-destination ../../artifacts
       - run: pnpm --dir packages/sdk-node pack --pack-destination ../../artifacts
       - run: python3 scripts/check-packed-sdks.py artifacts
