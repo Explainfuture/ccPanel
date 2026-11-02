@@ -107,6 +107,7 @@ function writePipe(pipe,bytes,timeout=1000){return new Promise((resolve,reject)=
 class Exchange{
   constructor(child,config,onFault){
     this.config=config;this.onFault=onFault;this.seq=0n;this.pending=null;this.failure=null;this.owner=null;this.ownerHash=null;this.ownerRaw=null;this.tail=Promise.resolve();this.freeze=null;
+    this.utcOffsetDiagnostics={used_for_admission:false,clock_authenticated:false,count:0,latest:null,min_lower_us:null,max_upper_us:null};
     this.ownerReady=new Promise((resolve,reject)=>{this.resolveOwner=resolve;this.rejectOwner=reject;});void this.ownerReady.catch(()=>{});
     child.stdin.on('error',()=>this.reject('remote_control_closed'));
     this.native=subject(child,line=>this.line(line),code=>this.reject(code),{stdoutLimit:4*1024*1024});
@@ -125,7 +126,15 @@ class Exchange{
     const owner=value.native_owner;
     if(!exact(owner,['unit','invocation_id','main_pid','start_ticks'])||['unit','invocation_id','main_pid','start_ticks'].some(key=>owner[key]!==this.owner[key])||!['preparing','ready','running','settling','freezing','cleaning','completed','aborted','failed'].includes(value.phase)||typeof value.may_feed_client!=='boolean'||typeof value.post_window_work_allowed!=='boolean'||!(value.ready_sha256===null||hashPattern.test(value.ready_sha256))||!(value.sampler_elapsed_ms===null||typeof value.sampler_elapsed_ms==='string'&&/^(0|[1-9][0-9]{0,9})$/.test(value.sampler_elapsed_ms)))fail('remote_owner_mismatch');
     if(!(value.freeze_sha256===null||hashPattern.test(value.freeze_sha256))||value.abort!==null&&(!exact(value.abort,['code','observed_at_us','phase'])||!tokenPattern.test(value.abort.code)||!positive(value.abort.observed_at_us)||!tokenPattern.test(value.abort.phase)))fail('invalid_remote_abort');
-    this.lastTiming={sent:waiting.sent,received:Date.now()};
+    // Cross-host UTC is diagnostic only. Freshness and lease admission use
+    // local monotonic deadlines, the matching nonce/sequence and native owner.
+    // Sort the endpoints if the local wall clock steps during this exchange;
+    // these estimates do not authenticate either clock or their offset.
+    const server=BigInt(value.server_us),a=server-BigInt(Date.now())*1000n,b=server-BigInt(waiting.sent)*1000n;
+    const lower=a<b?a:b,upper=a>b?a:b,offset=this.utcOffsetDiagnostics;
+    offset.count++;offset.latest={lower_us:String(lower),upper_us:String(upper)};
+    if(offset.min_lower_us===null||lower<BigInt(offset.min_lower_us))offset.min_lower_us=String(lower);
+    if(offset.max_upper_us===null||upper>BigInt(offset.max_upper_us))offset.max_upper_us=String(upper);
     if(value.freeze_sha256)this.freeze=value.freeze_sha256;
     clearTimeout(waiting.timer);this.pending=null;waiting.resolve(value);
   }
@@ -261,8 +270,6 @@ export async function runCapacityWindow(configuration,runDirectory,options={}){
     if(pollInFlight||!rpc?.owner||rpc.failure)return pollInFlight;
     pollInFlight=rpc.call('heartbeat',{client:clientBinding}).then(async status=>{
       lastStatus=status;
-      const clock=rpc.lastTiming,server=BigInt(status.server_us)/1000n;
-      if(server-BigInt(clock.received)<-1000n||server-BigInt(clock.sent)>1000n)fail('clock_offset_unverified');
       if(status.abort){remoteAbort??=status.abort;latch(status.abort.code);}
       if(status.sampler_elapsed_ms!==null&&BigInt(status.sampler_elapsed_ms)>=1940000n&&client&&!client.closed)latch('sampler_coverage_budget');
       if(status.freeze_sha256){clearInterval(pollTimer);return;}
@@ -376,7 +383,7 @@ export async function runCapacityWindow(configuration,runDirectory,options={}){
   }
   if(peer){await record('ssh-stdout.log',peer.stdout);await record('ssh-stderr.log',peer.stderr);}
   const productionChildStarted=!options.generatorFactory&&Number.isSafeInteger(client?.child.pid);
-  const freeze={version:1,kind:'capacity_window_coordinator_freeze',run_id:cfg.run_id,binding_sha256:bindingHash,actual_ssh:options.testOnly!==true&&transport?.actualSSH===true&&Number.isSafeInteger(peer?.child.pid),actual_generator:productionChildStarted,actual_tls:false,production_https_policy_enforced:options.testOnly!==true&&productionChildStarted,node_runtime:{version:process.version,exec_path_sha256:sha(Buffer.from(process.execPath)),exec_argv_count:process.execArgv.length,child_node_options_removed:productionChildStarted,child_tls_reject_unauthorized:productionChildStarted?'1':null},controller_completed:!failure&&!firstAbort&&sshClose?.code===0&&sshClose?.signal===null,first_abort:firstAbort,remote_abort:remoteAbort,failure,client_native_close:clientClose,client_watchdog_fired:clientWatchdog,ssh_native_close:sshClose,client_terminal:terminalRef,remote_freeze_sha256:files['freeze.json']?.sha256??null,artifacts:files,events,capacity_verified:false,source_authenticated:false,latest_state_verified:false,recovery_verified:false,windows_private_acl_verified:false};
+  const freeze={version:1,kind:'capacity_window_coordinator_freeze',run_id:cfg.run_id,binding_sha256:bindingHash,actual_ssh:options.testOnly!==true&&transport?.actualSSH===true&&Number.isSafeInteger(peer?.child.pid),actual_generator:productionChildStarted,actual_tls:false,production_https_policy_enforced:options.testOnly!==true&&productionChildStarted,node_runtime:{version:process.version,exec_path_sha256:sha(Buffer.from(process.execPath)),exec_argv_count:process.execArgv.length,child_node_options_removed:productionChildStarted,child_tls_reject_unauthorized:productionChildStarted?'1':null},utc_offset_diagnostics:rpc?.utcOffsetDiagnostics??{used_for_admission:false,clock_authenticated:false,count:0,latest:null,min_lower_us:null,max_upper_us:null},controller_completed:!failure&&!firstAbort&&sshClose?.code===0&&sshClose?.signal===null,first_abort:firstAbort,remote_abort:remoteAbort,failure,client_native_close:clientClose,client_watchdog_fired:clientWatchdog,ssh_native_close:sshClose,client_terminal:terminalRef,remote_freeze_sha256:files['freeze.json']?.sha256??null,artifacts:files,events,capacity_verified:false,source_authenticated:false,latest_state_verified:false,recovery_verified:false,windows_private_acl_verified:false};
   await exclusive(join(directory,'coordinator-freeze.json'),encoded(freeze));return freeze;
 }
 

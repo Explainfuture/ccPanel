@@ -52,10 +52,11 @@ if(process.argv[2]==='--peer'){
   },10);
   const reply=request=>{
     const active=request.client!==null;if(active)feedReplies++;
+    const utcOffsetMs=mode==='utc_ahead'?2500:mode==='utc_behind'?-2500:0;
     if(mode==='resource_abort'&&active&&feedReplies>=2)aborted??={code:'resource_memory',observed_at_us:String(BigInt(Date.now())*1000n),phase:'running'};
     const nativeOwner={unit:owner.unit,invocation_id:owner.invocation_id,main_pid:owner.main_pid,start_ticks:owner.start_ticks};
     if(mode==='owner_swap'&&active)nativeOwner.main_pid++;
-    return{v:1,kind:'status',run_id:cfg.run_id,owner_sha256:ownerHash,seq:request.seq,nonce:mode==='wrong_nonce'&&active?'0'.repeat(32):request.nonce,server_us:String(BigInt(Date.now())*1000n),phase:freezeHash?(aborted?'aborted':'completed'):aborted?'settling':active?'running':'ready',native_owner:nativeOwner,ready_sha256:readyHash,freeze_sha256:freezeHash,may_feed_client:active&&!aborted&&!freezeHash,abort:aborted,sampler_elapsed_ms:'1000',post_window_work_allowed:mode==='delayed_admission'?admission:true};
+    return{v:1,kind:'status',run_id:cfg.run_id,owner_sha256:ownerHash,seq:request.seq,nonce:mode==='wrong_nonce'&&active?'0'.repeat(32):request.nonce,server_us:String(BigInt(Date.now()+utcOffsetMs)*1000n),phase:freezeHash?(aborted?'aborted':'completed'):aborted?'settling':active?'running':'ready',native_owner:nativeOwner,ready_sha256:readyHash,freeze_sha256:freezeHash,may_feed_client:active&&!aborted&&!freezeHash,abort:aborted,sampler_elapsed_ms:'1000',post_window_work_allowed:mode==='delayed_admission'?admission:true};
   };
   input.on('line',line=>{
     const request=JSON.parse(line);
@@ -118,8 +119,15 @@ if(process.argv[2]==='--peer'){
       assert.equal(result.actual_ssh,false);assert.equal(result.actual_generator,false);assert.equal(result.actual_tls,false);assert.equal(result.node_runtime.child_node_options_removed,false);assert.equal(result.node_runtime.child_tls_reject_unauthorized,null);assert.equal(result.capacity_verified,false);assert.equal(result.source_authenticated,false);
       const raw=await readFile(join(directory,'coordinator-freeze.json'));assert.deepEqual(JSON.parse(raw),result);
       for(const [name,ref]of Object.entries(result.artifacts)){const content=await readFile(join(directory,name));assert.equal(content.length,ref.bytes,name);assert.equal(sha(content),ref.sha256,name);}
-      if(mode==='good'||mode==='delayed_admission'||mode==='complete_remote_inventory'){
+      const utc=result.utc_offset_diagnostics;
+      assert.deepEqual(Object.keys(utc).sort(),['used_for_admission','clock_authenticated','count','latest','min_lower_us','max_upper_us'].sort());
+      assert.equal(utc.used_for_admission,false);assert.equal(utc.clock_authenticated,false);assert.ok(Number.isSafeInteger(utc.count)&&utc.count>=0);assert.ok(Buffer.byteLength(JSON.stringify(utc))<512);
+      if(utc.count===0){assert.equal(utc.latest,null);assert.equal(utc.min_lower_us,null);assert.equal(utc.max_upper_us,null);}
+      else{assert.deepEqual(Object.keys(utc.latest).sort(),['lower_us','upper_us']);for(const value of [utc.latest.lower_us,utc.latest.upper_us,utc.min_lower_us,utc.max_upper_us])assert.match(value,/^(0|[1-9][0-9]{0,19}|-[1-9][0-9]{0,19})$/);assert.ok(BigInt(utc.min_lower_us)<=BigInt(utc.latest.lower_us));assert.ok(BigInt(utc.latest.lower_us)<=BigInt(utc.latest.upper_us));assert.ok(BigInt(utc.latest.upper_us)<=BigInt(utc.max_upper_us));}
+      if(['good','delayed_admission','complete_remote_inventory','utc_ahead','utc_behind'].includes(mode)){
         assert.equal(result.controller_completed,true);assert.equal(result.client_native_close.code,0);assert.equal(result.ssh_native_close.code,0);assert.equal(result.client_watchdog_fired,false);
+        const statuses=(await readFile(join(directory,'ssh-stdout.log'),'utf8')).trim().split('\n').map(JSON.parse).filter(value=>value.kind==='status');assert.equal(utc.count,statuses.length);assert.ok(utc.count>=3);
+        if(mode==='utc_ahead'||mode==='utc_behind'){const expected=mode==='utc_ahead'?2500000n:-2500000n;assert.ok(BigInt(utc.latest.lower_us)<=expected&&BigInt(utc.latest.upper_us)>=expected);assert.ok(mode==='utc_ahead'?BigInt(utc.latest.lower_us)>1000000n:BigInt(utc.latest.upper_us)<-1000000n);}
         const terminal=JSON.parse(await readFile(join(directory,'client-terminal.json')));assert.equal(terminal.pid,JSON.parse(await readFile(join(directory,'client-close.json'))).pid);assert.equal(terminal.close.code,0);assert.equal(terminal.close.signal,null);assert.equal(terminal.observed_at,result.client_native_close.observed_at);assert.deepEqual(terminal.result,result.artifacts['client-result.json']);assert.deepEqual(terminal.manifest,result.artifacts['client-result.json.manifest.json']);assert.deepEqual(terminal.artifacts,artifacts);
         await assert.rejects(runCapacityWindow(cfg,directory,{testOnly:true,transportFactory,generatorFactory}),{code:'EEXIST'});assert.deepEqual(await readFile(join(directory,'coordinator-freeze.json')),raw);assert.equal(producerCount,1);
       }else{
@@ -130,7 +138,7 @@ if(process.argv[2]==='--peer'){
       }
       checks.push(mode);
     }
-    for(const mode of ['good','wrong_nonce','owner_swap','late_reply','bad_initialized','malformed_result','missing_result','corrupt_binding','premature_exit','duplicate_reply','resource_abort','freeze_wrong_run','freeze_wrong_terminal','freeze_duplicate_role','freeze_future_terminal','delayed_admission','complete_remote_inventory'])await run(mode);
+    for(const mode of ['good','wrong_nonce','owner_swap','late_reply','bad_initialized','malformed_result','missing_result','corrupt_binding','premature_exit','duplicate_reply','resource_abort','freeze_wrong_run','freeze_wrong_terminal','freeze_duplicate_role','freeze_future_terminal','delayed_admission','complete_remote_inventory','utc_ahead','utc_behind'])await run(mode);
     assert.throws(()=>validateWindowConfig({version:1}),/invalid_window_config/);
     console.log(JSON.stringify({passed:true,checks,real_native_transport_process:true,actual_ssh:false,actual_generator:false,actual_tls:false,raw_hashes_and_original_native_closes:true,old_namespace_restart_refused:true,full_workload_verified:false,capacity_verified:false,platform:process.platform}));
   }finally{const target=resolve(root);assert.equal(dirname(target),parent);assert.ok(basename(target).startsWith('ccpanel-coordinator-'));await rm(target,{recursive:true,force:true});}
