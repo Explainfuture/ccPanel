@@ -28,7 +28,10 @@ export async function captureMonitorPreservation(options:MonitorCaptureOptions){
   if(!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\.jsonl$/.test(basename(output)))fail('monitor_capture_options_invalid');
   const initial=await lstat(parent);
   if(!initial.isDirectory()||initial.isSymbolicLink()||initial.uid!==process.geteuid?.()||(initial.mode&0o077)!==0||await realpath(parent)!==parent)fail('monitor_capture_directory_unsafe');
-  const db=new pg.Client({connectionString:options.connectionString,application_name:'ccpanel_monitor_preservation_capture',options:'-c timezone=UTC',connectionTimeoutMillis:Math.min(timeout,5000),statement_timeout:Math.min(timeout,5000)});
+  // A local socket close alone does not end a backend blocked on a relation
+  // lock. Ask this session to check for kernel-reported disconnects while a
+  // query runs; no global setting or other application session is changed.
+  const db=new pg.Client({connectionString:options.connectionString,application_name:'ccpanel_monitor_preservation_capture',options:'-c timezone=UTC -c client_connection_check_interval=100ms',connectionTimeoutMillis:Math.min(timeout,5000),statement_timeout:Math.min(timeout,5000)});
   let ending:Promise<void>|undefined,stopped:MonitorCaptureError|undefined,file:Awaited<ReturnType<typeof open>>|undefined,footerAttempted=false;
   const deadline=performance.now()+timeout;
   const stop=(code:string)=>{stopped??=new MonitorCaptureError(code);ending??=db.end();void ending.catch(()=>{});};
@@ -45,6 +48,7 @@ export async function captureMonitorPreservation(options:MonitorCaptureOptions){
       bytes+=data.length;complete.update(data);if(hash)prefix.update(data);check();
     };
     await db.connect();check();
+    if((await db.query('SHOW client_connection_check_interval')).rows[0]?.client_connection_check_interval!=='100ms')fail('monitor_capture_session_unverified');
     // Same compatible leases as source recovery-state export; acquire BEFORE
     // the snapshot to avoid waiting while retaining pre-migration catalog data.
     for(const lock of [169202610,169202617])if((await db.query('SELECT pg_try_advisory_lock_shared($1) AS held',[lock])).rows[0]?.held!==true)fail('monitor_capture_lock_busy');
