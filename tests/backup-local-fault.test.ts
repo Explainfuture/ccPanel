@@ -23,7 +23,7 @@ vi.mock('node:fs/promises',async importOriginal=>{
     return new Proxy(handle,{get(target,key){
       if(key==='write')return async(...writeArgs:unknown[])=>{
         const archive=path===join(faults.output,'database.dump.enc');
-        if(archive){await faults.beforeWrite?.(++writes);if(faults.mode==='write'&&writes===2&&!faults.fired){faults.fired=true;throw failure('ENOSPC');}}
+        if(archive){writes++;await faults.beforeWrite?.(writes);if(faults.mode==='write'&&writes===2&&!faults.fired){faults.fired=true;throw failure('ENOSPC');}}
         const result=await (target.write as (...args:unknown[])=>Promise<{bytesWritten:number}>).apply(target,writeArgs);
         if(archive)faults.nativeWritten+=result.bytesWritten;return result;
       };
@@ -78,8 +78,8 @@ posix('mid-copy abort closes native handles and preserves an unpublished partial
   }finally{release();await operation;}
 }));
 posix('simulated ENOSPC after a native chunk never publishes capture.json',async()=>fixture(async options=>{
-  faults.mode='write';await expect(copyBackupCandidateToLocal(options)).rejects.toMatchObject({code:'local_copy_failed'});
-  expect(faults.fired).toBe(true);expect(faults.nativeWritten).toBeGreaterThan(0);expect(faults.nativeWritten).toBeLessThan(cipher.length);await preservedIncomplete(options);
+  faults.mode='write';const result=await copyBackupCandidateToLocal(options).then(value=>({value,error:undefined}),error=>({value:undefined,error}));
+  expect(faults.fired).toBe(true);expect(result.error?.code).toBe('local_copy_failed');expect(faults.nativeWritten).toBeGreaterThan(0);expect(faults.nativeWritten).toBeLessThan(cipher.length);await preservedIncomplete(options);
 }));
 posix('simulated file fsync failure retains ciphertext without publishing a manifest',async()=>fixture(async options=>{
   faults.mode='sync-before';await expect(copyBackupCandidateToLocal(options)).rejects.toMatchObject({code:'local_copy_failed'});
