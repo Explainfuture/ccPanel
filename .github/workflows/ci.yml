@@ -37,6 +37,7 @@ jobs:
       - run: bash -n scripts/checkpoint-window-remote.sh && node --check scripts/checkpoint-window-check.mjs
       - run: bash -n scripts/retained-gap-window-remote.sh && node --check scripts/retained-gap-window-check.mjs
       - run: bash -n scripts/pressure-sdk-window-remote.sh && node --check scripts/pressure-sdk-window-check.mjs
+      - run: bash -n scripts/partial-produce-window-remote.sh && bash -n scripts/partial-produce-resume-remote.sh && node --check scripts/partial-produce-window-check.mjs
       - run: bash -n scripts/capture-candidate-vps-remote.sh
       - run: node --check scripts/browser-sdk-native-receiver.mjs && node --check scripts/browser-sdk-native-bfcache.cjs && node --check scripts/browser-sdk-native-bfcache-consent.cjs
       - run: python3 scripts/check-upgrade-guards.py
