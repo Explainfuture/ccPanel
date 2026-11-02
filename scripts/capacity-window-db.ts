@@ -20,7 +20,13 @@ export interface WindowDbConfig{
   durability:{replicationFactor:number;minInSyncReplicas:number};pressure:PressurePolicy;
   productRoot:string;toolsDirectory:string;operatorFile:string;configurationSha256:string;
 }
-export class WindowDbError extends Error{constructor(public code:string){super(code);this.name='WindowDbError';}}
+export interface BrokerOffsetDiagnostic{phase:'broker_offsets';protocol_code:number|null;protocol_type:'coordinator_loading'|'coordinator_unavailable'|'not_coordinator'|'other_protocol'|'unclassified'}
+export class WindowDbError extends Error{diagnostic?:BrokerOffsetDiagnostic;constructor(public code:string){super(code);this.name='WindowDbError';}}
+export function brokerOffsetDiagnostic(error:unknown):BrokerOffsetDiagnostic{
+  let value:any=error;
+  for(let depth=0;depth<4&&value;depth++,value=value.cause){if(Number.isInteger(value.code)&&value.code>=0&&value.code<=32767)return{phase:'broker_offsets',protocol_code:value.code,protocol_type:({14:'coordinator_loading',15:'coordinator_unavailable',16:'not_coordinator'} as Record<number,BrokerOffsetDiagnostic['protocol_type']>)[value.code]??'other_protocol'};}
+  return{phase:'broker_offsets',protocol_code:null,protocol_type:'unclassified'};
+}
 const fail=(code:string):never=>{throw new WindowDbError('window_db_'+code);};
 const sha=(bytes:Uint8Array|string)=>createHash('sha256').update(bytes).digest('hex');
 const digest=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
@@ -144,7 +150,8 @@ function businessUnchanged(before:Fingerprint[],after:Fingerprint[]){
   for(const name of new Set([...left.keys(),...right.keys()])){const a=left.get(name),b=right.get(name);if(!a||!b){const value=a??b!;assert(/^events_[0-9]{4}_(0[1-9]|1[0-2])$/.test(name)&&value.count==='0'&&value.hash==='0','business_changed');}else assert(equal(a,b),'business_changed');}
 }
 async function round(db:pg.Client,admin:ReturnType<InstanceType<typeof Kafka>['admin']>,config:WindowDbConfig,fixture?:Fixture,full=false,stable=true){
-  const ns=config.namespace,cluster=await admin.describeCluster(),before=await admin.fetchTopicOffsets(ns.events),commits=await admin.fetchOffsets({groupId:ns.group,topics:[ns.events],resolveOffsets:false});
+  const ns=config.namespace,cluster=await admin.describeCluster(),before=await admin.fetchTopicOffsets(ns.events);let commits;
+  try{commits=await admin.fetchOffsets({groupId:ns.group,topics:[ns.events],resolveOffsets:false});}catch(error){const failed=new WindowDbError('window_db_broker_offsets_unavailable');failed.diagnostic=brokerOffsetDiagnostic(error);throw failed;}
   await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');let state:PgState;
   try{state=await readWindowPgState(db,full,fixture);}finally{await db.query('ROLLBACK');}
   const after=await admin.fetchTopicOffsets(ns.events),dead=await admin.fetchTopicOffsets(ns.dlq);

@@ -8,7 +8,7 @@ import {randomUUID,randomBytes,createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import pg from 'pg';
 import kafkaPackage from 'kafkajs';
-import {runCapacityWindowDb,type WindowDbConfig,inspectWindowFixture,WindowDbError} from './capacity-window-db';
+import {runCapacityWindowDb,type WindowDbConfig,inspectWindowFixture,WindowDbError,brokerOffsetDiagnostic} from './capacity-window-db';
 import {pool} from '../packages/server/src/db';
 import {persist} from '../packages/server/src/consume';
 import {withConsumerProgress} from '../packages/server/src/consumer-progress';
@@ -47,6 +47,15 @@ async function retained(){assert.equal((await db.query('SELECT count(*)::int AS 
 try{
   await db.connect();await blocker.connect();await admin.connect();assert.equal((await db.query('SELECT count(*)::int AS n FROM tenants')).rows[0].n,0);
   await admin.createTopics({waitForLeaders:true,topics:[{topic:namespace.events,numPartitions:2,replicationFactor:1,configEntries:[{name:'min.insync.replicas',value:'1'},{name:'unclean.leader.election.enable',value:'false'}]},{topic:namespace.dlq,numPartitions:1,replicationFactor:1,configEntries:[{name:'min.insync.replicas',value:'1'},{name:'unclean.leader.election.enable',value:'false'}]}]});topics=true;
+  // A fresh real broker lazily initializes __consumer_offsets on the first
+  // FindCoordinator. Observe that readiness explicitly in CI setup; do not
+  // initialize/advance offsets, publish data, or retry an operator command.
+  const warmupUntil=Date.now()+30000;let warmupAttempts=0;
+  while(true){
+    warmupAttempts++;
+    try{const values=await admin.fetchOffsets({groupId:namespace.group,topics:[namespace.events],resolveOffsets:false});assert.equal(values.length,1);assert.equal(values[0]!.partitions.length,2);assert.ok(values[0]!.partitions.every(p=>p.offset==='-1'));console.log(JSON.stringify({kind:'capacity_window_broker_readonly_warmup',attempt:warmupAttempts,ready:true}));break;}
+    catch(error){const diagnostic=brokerOffsetDiagnostic(error);if(![14,15,16].includes(diagnostic.protocol_code??-1)||Date.now()>=warmupUntil)throw Object.assign(Error('actual_broker_readonly_warmup_failed'),{diagnostic});console.log(JSON.stringify({kind:'capacity_window_broker_readonly_warmup',attempt:warmupAttempts,ready:false,diagnostic}));await new Promise(done=>setTimeout(done,200));}
+  }
   await db.query('INSERT INTO consumer_streams(topic,group_id,partition_count) VALUES($1,$2,2)',[namespace.events,namespace.group]);await db.query('INSERT INTO consumer_progress(topic,group_id,partition_id,next_offset) VALUES($1,$2,0,0),($1,$2,1,0)',[namespace.events,namespace.group]);
   const products:Record<string,string>={};for(const [path,key]of [['dist/api.mjs','api_sha256'],['dist/worker.mjs','worker_sha256'],['dist/web/sdk/ccpanel.js','sdk_sha256'],['infra/compose.yaml','compose_sha256']]){const target=join(product,path!);await mkdir(dirname(target),{recursive:true,mode:0o700});const raw='synthetic-native-test-asset:'+path;await writeFile(target,raw,{mode:0o600});products[key!]=hash(raw);}
   const artifactNames=['load-check-public.mjs','load-evidence.mjs','load-control-lease.mjs','load-stop-reader.mjs'],artifactHashes:Record<string,string>={};for(const file of artifactNames){await copyFile(join('scripts',file),join(tools,file));artifactHashes[file]=hash(await readFile(join(tools,file)));}

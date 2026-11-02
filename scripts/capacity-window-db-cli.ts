@@ -7,4 +7,4 @@ try{
   const value=await runCapacityWindowDb({command:command as WindowDbCommand,directory:directory??'',...(sequence===undefined?{}:{sequence})},windowDbConfigFromEnv(process.env));
   if(!value)throw new WindowDbError('window_db_operation_failed');
   console.log(JSON.stringify(value));if(value.status==='cleanup_deferred')process.exitCode=2;
-}catch(error){console.error(JSON.stringify({code:error instanceof WindowDbError?error.code:'window_db_operation_failed'}));process.exitCode=1;}
+}catch(error){console.error(JSON.stringify({code:error instanceof WindowDbError?error.code:'window_db_operation_failed',...(error instanceof WindowDbError&&error.diagnostic?{diagnostic:error.diagnostic}:{})}));process.exitCode=1;}
