@@ -1,6 +1,6 @@
 // Real loopback OpenSSH/SFTP fixture. Never targets a configured VPS/destination.
 import assert from 'node:assert/strict';
-import {spawn,execFileSync,type ChildProcess} from 'node:child_process';
+import {spawn,spawnSync,execFileSync,type ChildProcess} from 'node:child_process';
 import {createCipheriv,createHash,randomBytes} from 'node:crypto';
 import {mkdtemp,mkdir,writeFile,readFile,readdir,stat,unlink,rmdir,lstat,chmod} from 'node:fs/promises';
 import {createServer,createConnection,type Server,type Socket} from 'node:net';
@@ -115,6 +115,29 @@ try{
   }
   stage='destination_decrypt';const decrypted=await decryptBackupCandidate({directory:downloaded,keyFile:encryptionKey,output,expectedSchema:22,maxBytes:encrypted.length,timeoutMs:15000});
   assert.equal(decrypted.authenticatedDecryption,true);assert.equal(decrypted.plaintextReadbackChecked,true);assert.equal(decrypted.recoveryVerified,false);assert.deepEqual(await readFile(output),plain);
+  stage='configured_cli';
+  const configured=JSON.parse(await readFile('infra/backup/offhost.example.json','utf8'));
+  const unusedSourceKnownHosts=join(directory,'unused-source-known-hosts'),unusedSourceIdentity=join(directory,'unused-source-identity');
+  configured.enabled=true;configured.worker={identity:'isolated-sftp-cli-fixture',independentFailureDomainConfirmed:true};
+  // This command transports an existing local candidate only. Deliberately
+  // nonexistent source credentials prove it does not execute the source flow.
+  configured.source={host:'source.invalid',port:22,user:username,knownHostsFile:unusedSourceKnownHosts,identityFile:unusedSourceIdentity,expectedRelease:'fixture-release',expectedSchema:22};
+  configured.encryption.keyFile=encryptionKey;
+  configured.destination={kind:'sftp',root:null,prefix:'remote',sftp:{host:'127.0.0.1',port,user:username,knownHostsFile,identityFile,remoteRoot:directory}};
+  configured.limits.exportMaxBytes=plain.length;configured.limits.runTimeoutSeconds=15;
+  const configFile=join(directory,'enabled-fixture.json'),cliId='candidate-cli';
+  await writeFile(configFile,JSON.stringify(configured)+'\n',{mode:0o600,flag:'wx'});
+  // sshd is a separate owned process. No in-process relay is involved here,
+  // so the child can complete actual network I/O while this caller waits.
+  const cli=spawnSync(process.execPath,['--import','tsx','scripts/copy-backup-sftp.ts',configFile,sourceDirectory,downloadRoot,cliId],{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:45000,maxBuffer:65536});
+  assert.equal(cli.error,undefined);assert.equal(cli.signal,null);assert.equal(cli.status,2);
+  const cliReceipt=JSON.parse(cli.stdout);assert.equal(cliReceipt.status,'transferred_unverified');assert.equal(cliReceipt.hostKeyVerified,true);assert.equal(cliReceipt.downloadReadbackChecked,true);assert.equal(cliReceipt.sha256,hash(encrypted));assert.equal(cliReceipt.manifestSha256,hash(Buffer.from(rawManifest)));
+  for(const field of ['recoveryVerified','offhostVerified','latestStateVerified','sourceAuthenticated'])assert.equal(cliReceipt[field],false);
+  for(const path of [join(remoteRoot,cliId),join(downloadRoot,cliId)]){
+    assert.deepEqual((await readdir(path)).sort(),['capture.json','database.dump.enc']);assert.equal(await readFile(join(path,'capture.json'),'utf8'),rawManifest);assert.deepEqual(await readFile(join(path,'database.dump.enc')),encrypted);
+  }
+  assert.ok(!(await readdir(directory)).includes('unused-source-known-hosts'));assert.ok(!(await readdir(directory)).includes('unused-source-identity'));
+  assert.equal(await readFile(join(remoteRoot,'operator-note'),'utf8'),'keep-unknown-object');assert.equal(await readFile(join(sourceDirectory,'capture.json'),'utf8'),rawManifest);assert.deepEqual(await readFile(join(sourceDirectory,'database.dump.enc')),encrypted);
   stage='repeat_id';await rejectedWithoutWrites(()=>transferBackupCandidateSftp(options),'sftp_destination_exists');
   stage='wrong_host_pin';await rejectedWithoutWrites(()=>transferBackupCandidateSftp({...options,id:'wrong-pin',connection:{...options.connection,knownHostsFile:wrongHostsFile}}));
   stage='wrong_auth_key';await rejectedWithoutWrites(()=>transferBackupCandidateSftp({...options,id:'wrong-auth',connection:{...options.connection,identityFile:wrongIdentity}}));
@@ -156,7 +179,7 @@ try{
   stage='corrupt_source';const changed=Buffer.from(encrypted);changed[100]^=1;await writeFile(join(sourceDirectory,'database.dump.enc'),changed);
   await rejectedWithoutWrites(()=>transferBackupCandidateSftp({...options,id:'corrupt-source'}),'backup_candidate_cipher_mismatch');
   assert.equal(await readFile(join(remoteRoot,'operator-note'),'utf8'),'keep-unknown-object');assert.equal(await readFile(join(sourceDirectory,'capture.json'),'utf8'),rawManifest);
-  summary={passed:true,surface:'ci_loopback_openssh',actual_ssh_sftp:true,host_pin_verified:true,wrong_pin_refused_without_writes:true,wrong_identity_refused_without_writes:true,duplicate_id_preserved:true,preabort_without_writes:true,mid_upload_tcp_barrier_observed:true,mid_upload_abort_without_manifest:true,partial_same_id_retry_preserved:true,owned_relay_closed:true,corrupt_source_without_upload:true,remote_and_download_bytes_exact:true,destination_authenticated_decryption:true,unknown_remote_object_preserved:true,source_manifest_unchanged:true,source_identity_verified:false,independent_failure_domain_verified:false,remote_directory_durability_verified:false,actual_pg_restore:false,bytes:encrypted.length};
+  summary={passed:true,surface:'ci_loopback_openssh',actual_ssh_sftp:true,actual_sftp_cli:true,configured_cli_does_not_read_source_credentials:true,host_pin_verified:true,wrong_pin_refused_without_writes:true,wrong_identity_refused_without_writes:true,duplicate_id_preserved:true,preabort_without_writes:true,mid_upload_tcp_barrier_observed:true,mid_upload_abort_without_manifest:true,partial_same_id_retry_preserved:true,owned_relay_closed:true,corrupt_source_without_upload:true,remote_and_download_bytes_exact:true,destination_authenticated_decryption:true,unknown_remote_object_preserved:true,source_manifest_unchanged:true,source_identity_verified:false,independent_failure_domain_verified:false,remote_directory_durability_verified:false,actual_pg_restore:false,bytes:encrypted.length};
 }catch(error){
   const code=(error as {code?:unknown})?.code;failureCode=typeof code==='string'&&/^[a-z0-9_]{1,96}$/.test(code)?code:'fixture_assertion_failed';
 }finally{
