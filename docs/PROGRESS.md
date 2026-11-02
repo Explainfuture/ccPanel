@@ -1709,3 +1709,9 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - CI helper持有生成的key/私有目录/daemon，恢复回调完成后关闭daemon并核对端口、删私有夹具，关闭失败保留证据并报错；只允许Linux/GITHUB_ACTIONS/显式SFTP PG标志且拒绝VPS模式。额外SSH helper为CI动态加载，原VPS路径不新增ssh2运行依赖/不启动SSHD；PG job安装OpenSSH只发生在隔离CI运行器。
 - 本机typecheck及PG helper构建通过；新PG/SFTP同份链路待CI，既有213协议/取消夹具仍独立执行。没有实际用户目的地、VPS变更、独立故障域、远端目录耐久性或整机RPO/RTO结论。
 - Actions41382291624对7239a83的verify/postgres/sftp全部success：356通过/8平台跳过、17套真实PG完成。第17套同份122317字节真实PG密文，SFTP/清单hash一致，下载副本认证解密及独立明文hash后实际恢复43关系/公司夹具一致；same_candidate_sftp_pg_restore和正常夹具清理均true，源身份/异机/远端目录耐久性仍false，候选未提升。另一个213合成协议job仍单独通过，不混入本归档证明。静态bundle复核无ssh2额外VPS依赖；强制SIGKILL时finally/进程树回收未验收。
+
+### 步骤215：同快照PG恢复状态导出
+
+- 核对发现原v2只含删除/保留策略，未含当前完整性gate/消费进度；修正方案范围文字，新增恢复状态version1包装、只读源导出及显式backup:export-state。抽取原deletion-ledger读取器复用同一UTC RR事务，原v1/v2/apply协议不变。
+- 包装含完整v2、当前完整性gate、全部PG流/位置及审计最大ID文本，受管DDL/离线恢复共享租约、source recovery gate/schema/大小/新鲜度/完整分区检查、超时关闭连接。仅敏感stdout手动输出；状态未认证/非可信最新/Kafka未观察，退出2；不存储/上传/加锚点、不导入或快进旧备份位点、不开放门禁。
+- 本机typecheck和11项格式测试通过。新增第18套实际PG：真实relation lock屏障后并发修改删除/保留/gate/audit/大offset，前后导出分别对同一快照，另验真实锁等待超时与租约/连接清理、源不变、拒绝关闭门禁/独占恢复/schema不符和实际CLI；待CI。未改VPS、目的地或调度。

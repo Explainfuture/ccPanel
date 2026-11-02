@@ -95,7 +95,17 @@ CI专用loopback OpenSSH夹具使用临时主机/用户key、临时高端口和�
 
 当前backup-remote.sh要求安静窗口的前后指纹相同，监控采集开启时不适合直接挂定时器。步骤202新增withBackupSnapshot共享PG快照原语，协调只读REPEATABLE READ事务的指纹与回调中的pg_dump --snapshot；步骤203增加captureBackupArchive流式有界落盘原语，输出仍为captured_unverified。步骤204让快照在BEGIN前非阻塞取得现有迁移/分区DDL锁的共享会话租约；已有受管DDL在执行则拒绝备份，备份期间分区维护退后，结束释放。尚未接入实际远程备份执行器或替换旧脚本。后续执行器仍须外层发布锁/版本绑定、manifest与加密传输/验真，不能直接移除原脚本对账条件。固定schema/release及工具hash写入manifest。恢复控制表按既有规则不靠旧dump重开；备份指纹覆盖关系沿明确SQL清单，不能称所有public表全覆盖。
 
-最新状态流：从原源导出完整v2清单，包含删除屏障、事故与项目保留策略/版本，持续加密保存；这条流与full snapshot独立更新。每份记录source标识、生成时间、清单版本、文件hash、前一份hash、所有项目覆盖范围和备份关联ID。不能从恢复目标自导出充当可信最新源；发现缺项目、策略回退、序列缺口或新鲜度不足，则恢复门禁保持关闭。原源损毁且最新状态无法可信取得时，必须报告无法证明可恢复，不能拿旧dump中的状态替代。
+最新状态流目标：从原源导出删除屏障、项目保留策略/版本、完整性暂停与消费进度，持续加密保存；这条流与full snapshot独立更新。现有deletion-ledger v2仅含删除和保留策略，不含完整性事故/消费进度，不能据此声称状态流完整。每份记录source标识、生成时间、清单版本、文件hash、前一份hash、所有项目覆盖范围和备份关联ID。不能从恢复目标自导出充当可信最新源；发现缺项目、策略回退、序列缺口或新鲜度不足，则恢复门禁保持关闭。原源损毁且最新状态无法可信取得时，必须报告无法证明可恢复，不能拿旧dump中的状态替代。
+
+### PG源恢复状态导出（步骤215）
+
+`pnpm --silent backup:export-state source-id 22 > /private/state.json`使用显式CCPANEL_BACKUP_DATABASE_URL；先用umask 077和私有目录保护重定向输出，随后必须加密。stdout是敏感恢复元数据，不应直接打印到共享日志。该命令为手动只读导出，不读取/启用offhost模板、不自行存储/上传或调度；缺显式源URI即拒绝，不回退到应用DATABASE_URL。
+
+导出前以共享会话租约排除受管DDL和离线恢复，要求source recovery_gate已开放、schema22；在同一UTC REPEATABLE READ READ ONLY快照中读取完整v2删除/保留清单、当前完整性gate、consumer_streams及其全部PG分区进度、consumer_progress_audit最大ID。导出不修改数据、不打开门禁、不快进消费位点。暂停的ingest integrity gate允许导出，以保留事故；源recovery gate关闭则拒绝。全程有界超时会关闭自己的连接，释放锁；旧deletion-ledger export复用同一读取器，v1/v2/apply协议保持。
+
+新包装格式version1、status=exported_unverified，原v2嵌入deletion；嵌套时间与顶层一致，消费offset和audit最大ID保持int64文本。严格检查流/分区完整性（相对PG现有表），最多10000流/10000位置、details64KiB、v2清单8MiB、总体16MiB；默认新鲜度600秒且小于1小时，允许源时钟最多超前300秒。缺项、重复分区、非法/提升验证标记、schema或时间不符均拒绝。
+
+成功退出2、source.authenticated/latest_state_verified/kafka_observation_verified均false。source-id是操作员提供的标签，不是密码学身份；audit_high_water只是审计表最大ID，不是可信链首、连续状态序号或Kafka高水位。此格式包含当前gate及PG进度，不是全历史事故审计归档；Kafka实际保留范围/提交位点仍需独立验证。尤其不能把最新源next_offset写到旧备份以跳过缺失事件。来源认证、状态连续加密投递、跨记录防回退及独立锚点、恢复导入与门禁验收仍待实现。
 
 加密认证只证明密文完整和持钥者身份，不单独证明它是最新、完整或未被回滚的原源状态。源授权导出协议、可信高水位以及独立存储的链首锚点须在执行器实现/演练阶段验证。恢复既要原始事件备份，也要可信最新状态；Kafka已确认但尚未入PG的消息仍须单独的多副本/灾备方案。
 
