@@ -48,6 +48,8 @@ jobs:
       - run: python3 scripts/check-schema22-postmigration.py
       - run: python3 scripts/check-operational-collection-env.py
       - run: bash -n scripts/prepare-release-dependencies.sh && python3 scripts/check-release-dependencies-installer.py
+      - run: bash -n scripts/build-release-dependencies.sh && python3 scripts/check-build-release-dependencies.py
+      - run: bash -n scripts/import-release-dependencies.sh && python3 scripts/check-import-release-dependencies.py
       - run: python3 scripts/check-release-dependencies.py
       - run: python3 scripts/check-package-release.py
       - run: python3 scripts/check-capacity-preservation.py
