@@ -21,3 +21,11 @@ capacity-report现在返回cpuBreakdownPercent及containerPressureDeltas；可�
 窗口外UTC04:45:53只读快照：可用307636KiB、Swap占226552KiB；cgroup Swap API4.16MiB/Worker0/PG7.42/Kafka132.14。Java进程VmSwap118784KiB，其RSS含共享页；不能与cgroup数强行相等或将全部宿主机Swap归因Kafka。该快照晚于正式窗口，且发生在集合验证/清理之后，不定位窗口内Swap I/O来源，也不证明减heap或改内存限制有效。服务器配置、内存/heap/确认/副本和安全服务均未改，未重跑同配置追求绿色。快照保存在服务器/opt/ccpanel/shared/memory-diagnostic143.json和本机.local/memory-diagnostic143.json。
 
 第二次快照143b距首次261.718秒，后台采集/维护仍运行，称低业务活动观察而非严格空闲对照。宿主机pswpin增28页、pswpout0、pgmajfault29；cgroup major fault API4、Worker0、PG0、Kafka17。相关字段存在且非递减，容器id/startedAt/restartCount重新核对与冻结边界一致。major fault可能含文件页故障，采集本身和宿主机其他进程也有开销，不能将这些数直接等同Swap I/O或外推正式30分钟归因。143b同名文件保存双方，增强diagnostic-report已另存原容量证据目录，原冻结文件和资源结论未改。
+
+## 步骤220：当前013连接与JVM复核
+
+2026-11-02 UTC16:00只读快照（本地已为11月3日）：可用317152KiB，PG memory.current113086464字节，其中file97202176/anon8867840、swap8163328；Kafka current215937024、swap191565824。这些是不同维度的瞬时值，不能把PG后端共享RSS或JVM堆数字直接相加，也不把Swap占用当当前活动。受限原始文件位于服务器memory220.BOLInH和工作站.local，不发布查询文本、连接串或进程环境。
+
+按实际容器地址关联pg_stat_activity，再以PG命名空间PID读取smaps_rollup：修正host(client_addr)前的首次标注未匹配IPv4的/32后缀，只用修正后的第二份作角色判断。该次API3个连接、Worker3个；其中API两个业务后端Private_Dirty分别1652/1668KiB。代码的每进程max4池中还须保留恢复租约；Worker存在嵌套持连接的消费路径，不随意缩池。错开三个API轮询可能只减少数MiB私有页，不能解释全部Kafka换出量或证明容量通过，收益须再以实际运行器对照测量。
+
+固定PerfData字段另外读到Serial young/full collection pauses，确认实际收集器为Serial；没有读取VM参数/环境、附加JVM或触发GC。数字计数为young2605/full95，nmethodSize35423456/code23416056、老年代used105945536字节；used不是完整GC后的存活量，不能据此确定可削减的堆。官方4.1.2 [Docker launch](https://raw.githubusercontent.com/apache/kafka/4.1.2/docker/jvm/launch)先加入CDS参数，因而[run-class的空选项默认G1分支](https://raw.githubusercontent.com/apache/kafka/4.1.2/bin/kafka-run-class.sh)可能不应用；这解释了不能仅看通用脚本默认值判断运行时GC，但不声称已核查全部启动环境。未修改JVM/容器限额、Swap或安全服务，也未启动新的容量负载。

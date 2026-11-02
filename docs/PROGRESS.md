@@ -1749,3 +1749,8 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 顺手修正里程碑顶部已过时的“管理型DLQ未完成”，引用既有真实API/Worker/Kafka/页面证据但不扩大为全A16/A19通过。完整容量、设备矩阵、独立备份/可信状态及生产HA缺口保留。
 - eb47a1d第二轮Bhwg5K通过：真实Produce大小拒收1、HTTP[503,202]、故障期Kafka high[1,0]/PG0/outbox2；同API producer/SDK自动原批重试后high[1,1]、确认文件清空，显式原批重复后high[2,2]。两个原ID的raw/dedup/jobs/processed/聚合贡献各2、duplicates2、DLQ0、门禁不变。冻结证据docs/evidence/partial-produce-node-sdk-219.json（Git规范LF字节SHAaedbe40d59103aec81222522348ffb45dd1bf51221a06b4f79508610e1d2d0b0），客户端清单与check日志hash在两端匹配；未以Kafka物理条数替代客户端事件集合。
 - unit ccpanel-partialproduce-5564e0b838e422ac正常结束/已收集，ExecStopPost ready；主库暂停44关系指纹同，SHA4839f6a5036d9a488e47f2254439d89a9af291a9bb05a4277bb567594887e6f8。另核对topics/group/临时DB0、013 ready、raw2/dedup3/DLQ0/位点总15618与运行束hash未变。Actions41475233210的verify/postgres/sftp全部success：508通过/9平台跳过、18套真实PG；CI并未执行此远程broker故障。仅A14指定窗口得到当前版本真实证据，未运行新容量窗口或覆盖掉电/磁盘故障/浏览器IDB/分析HTTP/完整设备矩阵。
+
+### 步骤220：API独立轮询错峰与资源核对
+
+- 容量复核先取当前013只读内存/JVM/PG后端数据，PG多数字节为file统计、业务后端私有页仅数MiB；实际GC为Serial，不用官方通用脚本的默认G1推断运行时。未改堆/GC/Swap/容器预算或安全服务，未无条件重跑旧容量窗口；详细证据/字段边界见MEMORY-DIAGNOSTIC。
+- 5791609将API查询/删除/重放三个runner启动相位设0/667/1333ms，随后仍各2秒，任务体/独立busy与错误处理不变。共同小型计时辅助只处理启动/停止，保留未传参数时原2秒首轮；不将长查询与隐私删除/重放串成一条执行链、不缩PG池。19项错峰/停止/真实进程unref测试及typecheck通过；真实PG连接对照与CI待记录，线上仍013。

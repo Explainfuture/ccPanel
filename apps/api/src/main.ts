@@ -62,6 +62,8 @@ const app=createApp({maxIntakeInFlight:Number(process.env.INGEST_MAX_INFLIGHT??1
 })});
 const server=serve({fetch:app.fetch,port:Number(process.env.PORT||3000),hostname:process.env.HOST||'127.0.0.1'});
 console.log(JSON.stringify({code:'api_ready'}));
+// Spread empty-queue checkouts across the shared pool; each runner keeps its
+// own two-second cadence and can finish independently of slower task types.
 const stopJobs=startQueryJobs(0);
 const stopDeletions=startDeletions(667);
 const stopReplay=startReplayJobs((raw,key)=>publishWithAdmission(admission,1,async()=>{
