@@ -382,3 +382,11 @@ POSIX支持SIGINT/SIGTERM；Windows外部Stop-Process/信号API可能直接强�
 5844aaf/e089bb5分别实现原子首次停止发布和可选专用stdin单调租约，native竞争/文件故障及真实子进程/pipe回归已执行。[CI41517281466](https://github.com/Explainfuture/ccPanel/actions/runs/41517281466)三job成功：527单测/9跳过、20真实PG、14 Linux首次发布及30租约检查；Windows首次发布12项、租约30项也通过。孤儿只证明实际自写fsync abort/exit-handler回执，独立native terminal明确未证；普通直接子进程由真实close判定。契约、Windows原生失败修复及限界见CAPACITY-CONTROL与evidence/capacity-controls-223.json。
 
 现有负载生成器尚未接这两个组件，不能以本项宣称已有完整失联保护、跨机bridge或容量通过。下一步接独立stop轮询/租约，再实现完整部署锁、同一client/sampler终态和冻结/对账/隔离清理。没有修改VPS/014资源或启动新负载，原失败与200MiB、CPU/Swap及1800秒门槛保持；备份仍默认关闭。
+
+## 步骤224：生成器控制已接入（完整远端窗口仍待实现）
+
+实际公网生成器现在支持固定5秒专用stdin租约和独立1秒stop轮询，ready后才登录；无env旧用法显式unleased。安全reader只把初次文件不存在视为无请求，其他类型/字节/元数据不确定性保守停止；原子发布收尾可能因ctime变化合法误拒，不放宽身份检查。首次中止锁存一条诊断，manifest fsync后/新dispatch前再检查，原12/15秒在途预算不改，finally等待原请求/进度及控制清理。
+
+最终源f054ffd的[CI41521270593](https://github.com/Explainfuture/ccPanel/actions/runs/41521270593)三job成功，527单测/9跳过、20PG，Linux47 reader/14真实HTTP原进程场景及旧accounting/Posix矩阵都执行。手动Windows41 reader/12 HTTP场景通过，Linux47/14；Windows文件symlink权限明确未覆盖。正常租约父pipe保持打开仍exit0，EOF/TTL/慢login/POST/分页drain/最终settlement/401均自然退出，发起顺序与实际fsync核对。输出/进度静态存在及Linux悬空链接在请求前拒绝。四源hash覆盖真实导入图，源码切换时已发生的SHA拒绝不算通过；最终LF重测通过。完整限界和证据见CAPACITY-CONTROL及evidence/generator-controls-224.json。
+
+这些是本机HTTP/子进程控制证据，不是TLS/SSH/VPS/完整bridge或30分钟容量证据。完整远端全程部署锁、原sampler终态/边界、跨机心跳、不可覆盖冻结、PG/Kafka逐分区屏障/原数据保留与条件清理尚待接入。不得直接运行旧start/finalizer绕过这些缺口；原资源标准、正常采集/保留和此前未通过结论保持，本步骤未更改VPS或开始新流量。
