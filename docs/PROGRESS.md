@@ -1708,3 +1708,4 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 第17套PG验收加入独立临时loopback OpenSSH：实际capture CLI生成的同一份dump/清单，经本地复制→SFTP上传→下载核对→新解密CLI→独立明文hash→真实pg_restore及全范围指纹/公司夹具对账。断言每次交接bytes/hash/清单一致，远端只有密文/清单、无加密密钥或明文；候选仍未验证，不导入最新状态/放行门禁。
 - CI helper持有生成的key/私有目录/daemon，恢复回调完成后关闭daemon并核对端口、删私有夹具，关闭失败保留证据并报错；只允许Linux/GITHUB_ACTIONS/显式SFTP PG标志且拒绝VPS模式。额外SSH helper为CI动态加载，原VPS路径不新增ssh2运行依赖/不启动SSHD；PG job安装OpenSSH只发生在隔离CI运行器。
 - 本机typecheck及PG helper构建通过；新PG/SFTP同份链路待CI，既有213协议/取消夹具仍独立执行。没有实际用户目的地、VPS变更、独立故障域、远端目录耐久性或整机RPO/RTO结论。
+- Actions41382291624对7239a83的verify/postgres/sftp全部success：356通过/8平台跳过、17套真实PG完成。第17套同份122317字节真实PG密文，SFTP/清单hash一致，下载副本认证解密及独立明文hash后实际恢复43关系/公司夹具一致；same_candidate_sftp_pg_restore和正常夹具清理均true，源身份/异机/远端目录耐久性仍false，候选未提升。另一个213合成协议job仍单独通过，不混入本归档证明。静态bundle复核无ssh2额外VPS依赖；强制SIGKILL时finally/进程树回收未验收。

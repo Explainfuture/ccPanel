@@ -61,6 +61,8 @@ CI专用loopback OpenSSH夹具使用临时主机/用户key、临时高端口和�
 
 步骤214另将真实PG候选套件贯通SFTP：同一份capture CLI生成的加密dump/清单，经本地候选复制、固定主机key上传和下载，再从下载目录走认证解密CLI、独立明文hash、真实隔离pg_restore及范围指纹/公司夹具对账；不从传输前副本恢复，也不将213合成载荷的字节证据拼接成PG证明。远端与下载集合只含密文/清单，原始候选标记不提升。新增loopback夹具限显式CI标志、等待恢复回调结束及daemon/端口/私有目录清理后才返回；VPS分支不加载额外SSH helper。实际结果见PROGRESS步骤214，不代表独立故障域/远端目录断电耐久性/可信最新状态或切流验收。
 
+214夹具仅验证正常回调或捕获异常后的清理；CI父进程强制SIGKILL不保证执行finally，未验收强制中止后的进程树/工作目录回收。正式执行器仍须宿主监督与外部回收，不应直接把CI夹具当生产作业控制器。
+
 ### 候选认证解密入口（步骤212）
 
 `pnpm backup:decrypt-candidate /private/destination/id /private/key /private/work/authenticated.dump 22`显式验证已有候选并生成受限工作明文。现有32字节密钥必须为自有私有普通文件，拒绝最终路径符号链接、不自动创建密钥；输出父目录须已存在、私有且canonical，已有输出绝不覆盖。CLI沿用明文预算CCPANEL_BACKUP_MAX_BYTES，核心maxBytes为密文预算。
