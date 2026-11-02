@@ -1,12 +1,17 @@
 // Actual CI PostgreSQL source snapshot, not a restored or production database.
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,generateKeyPairSync,createHash} from 'node:crypto';
 import {isAbsolute} from 'node:path';
 import pg from 'pg';
 import {exportRecoverySourceState} from '../packages/server/src/recovery-state-export';
 import {readBackupFingerprints} from '../packages/server/src/backup-snapshot';
 import {recoveryLock} from '../packages/server/src/recovery-gate';
+import {signRecoveryStateRecord,verifyRecoveryStateRecord} from '../packages/server/src/recovery-state-record';
+import {verifyRecoveryStateChain} from '../packages/server/src/recovery-state-chain';
+import {parseRecoverySourceState} from '../packages/server/src/recovery-state-format';
+import {RecoveryStateContinuityError} from '../packages/server/src/recovery-state-continuity';
+import {retentionCutoff} from '../packages/server/src/retention-policy';
 
 assert.equal(process.env.GITHUB_ACTIONS,'true');
 const source=new URL(process.env.DATABASE_URL!);
@@ -91,6 +96,36 @@ try{
   assert.equal(fresh.integrity.blocked,true);assert.equal(fresh.integrity.reason,'retained_offset_gap');assert.equal(fresh.integrity.details.kind,'state_snapshot_fixture');
   assert.ok(BigInt(fresh.integrity.audit_high_water)>0n);assert.equal(fresh.integrity.streams[0].positions[0].next_offset,'9007199254740994');
   assert.equal(fresh.deletion.exported_at,fresh.exported_at);assert.equal(fresh.latest_state_verified,false);assert.equal(fresh.source.authenticated,false);
+  // Bind the actual old/fresh PG exports to an ephemeral signer and an anchor
+  // held outside the records. This association hash is a fixture label, NOT an
+  // actual backup-manifest proof; the archive roundtrip is a different suite.
+  const signer=generateKeyPairSync('ed25519'),signingNow=Math.max(Date.now(),Date.parse(fresh.exported_at)+1);
+  const backup={id:'pg-state-binding-fixture',manifest_sha256:createHash('sha256').update('PG STATE SIGNATURE FIXTURE ONLY').digest('hex')};
+  const signedOld=signRecoveryStateRecord({state:old,backup,previous:null,privateKey:signer.privateKey,now:signingNow});
+  const signedFresh=signRecoveryStateRecord({state:fresh,backup,previous:signedOld.anchor,privateKey:signer.privateKey,now:signingNow});
+  const externallyHeldTip=structuredClone(signedFresh.anchor);
+  const chainOptions={publicKey:signer.publicKey,expectedSourceId:'ci-source',trustedTip:externallyHeldTip,now:signingNow};
+  const verified=verifyRecoveryStateChain({...chainOptions,records:[signedOld.record,signedFresh.record]});
+  assert.equal(verified.recordsVerified,2);assert.equal(verified.signaturesVerified,true);assert.equal(verified.anchorMatched,true);assert.equal(verified.semanticContinuityChecked,true);
+  assert.equal(verified.state.deletion.barriers.length,1);assert.equal(verified.state.integrity.blocked,true);assert.equal(verified.state.integrity.streams[0].positions[0].next_offset,'9007199254740994');
+  assert.equal(verified.sourceEndpointVerified,false);assert.equal(verified.anchorCustodyVerified,false);assert.equal(verified.latestStateVerified,false);assert.equal(verified.state.latest_state_verified,false);
+  assert.throws(()=>verifyRecoveryStateChain({...chainOptions,records:[signedOld.record]}));
+  assert.throws(()=>verifyRecoveryStateChain({...chainOptions,records:[signedFresh.record,signedOld.record]}));
+  assert.throws(()=>verifyRecoveryStateChain({...chainOptions,records:[signedFresh.record]}));
+  const tamperedPayload=Buffer.from(signedFresh.record.payload,'base64');tamperedPayload[tamperedPayload.length-1]^=1;
+  assert.throws(()=>verifyRecoveryStateChain({...chainOptions,records:[signedOld.record,{...signedFresh.record,payload:tamperedPayload.toString('base64')}]}));
+  assert.throws(()=>verifyRecoveryStateChain({...chainOptions,records:[signedOld.record,signedFresh.record],publicKey:generateKeyPairSync('ed25519').publicKey}));
+  // A newly signed and correctly chained record can still regress source data.
+  // Keep it structurally valid/fresh so the semantic continuity check must act.
+  const regressed=structuredClone(old),regressedAt=Date.parse(fresh.exported_at)+1;
+  regressed.exported_at=new Date(regressedAt).toISOString();regressed.deletion.exported_at=regressed.exported_at;
+  regressed.deletion.retention=regressed.deletion.retention.map(row=>({...row,effective_from:retentionCutoff(row,regressedAt)}));
+  parseRecoverySourceState(regressed,{now:signingNow});
+  const signedRegression=signRecoveryStateRecord({state:regressed,backup,previous:signedFresh.anchor,privateKey:signer.privateKey,now:signingNow});
+  assert.equal(verifyRecoveryStateRecord({record:signedRegression.record,publicKey:signer.publicKey,expectedSourceId:'ci-source',now:signingNow}).signatureVerified,true);
+  assert.throws(()=>verifyRecoveryStateChain({...chainOptions,records:[signedOld.record,signedFresh.record,signedRegression.record],trustedTip:signedRegression.anchor}),error=>error instanceof RecoveryStateContinuityError&&error.code!=='state_continuity_invalid');
+  assert.deepEqual(await readBackupFingerprints(writer),before,'signing/verification must not mutate source rows');
+  assert.deepEqual((await writer.query('SELECT blocked,updated_at::text FROM recovery_gate WHERE id=true')).rows,gateBefore,'chain verification must not open or change the recovery gate');
   let actualCli=false;
   if(process.env.CCPANEL_STATE_EXPORT_CLI){
     const result=await cli();assert.equal(result.code,2,'exported state does not become trusted latest state');
@@ -129,7 +164,7 @@ try{
     await controller.query('SELECT pg_advisory_unlock($1)',[key]);
   }
   assert.equal((await observer.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname=$1 AND application_name='ccpanel_backup_state_export'",[sourceDatabase])).rows[0].n,0);
-  console.log(JSON.stringify({passed:true,actual_pg_source_snapshot:true,relation_lock_barrier_observed:true,concurrent_policy_deletion_incident_progress_committed:true,first_export_consistent_old_snapshot:true,fresh_export_contains_complete_v2_and_integrity:true,offset_beyond_js_safe_integer_preserved:true,source_rows_unchanged_by_export:true,closed_source_gate_rejected:true,offline_recovery_lock_rejected:true,schema_mismatch_rejected:true,deadline_interrupted_actual_locked_query:true,local_return_does_not_imply_backend_gone:true,server_cleanup_observed_separately:true,backend_cleanup_after_local_return_ms:backendCleanupAfterLocalReturnMs,deadline_source_rows_unchanged:true,leases_released:true,exporter_sessions_remaining:0,actual_state_cli:actualCli,source_authenticated:false,latest_state_verified:false,project_policies:2,deletion_barriers:1,streams:1}));
+  console.log(JSON.stringify({passed:true,actual_pg_source_snapshot:true,relation_lock_barrier_observed:true,concurrent_policy_deletion_incident_progress_committed:true,first_export_consistent_old_snapshot:true,fresh_export_contains_complete_v2_and_integrity:true,offset_beyond_js_safe_integer_preserved:true,source_rows_unchanged_by_export:true,actual_pg_states_signed:true,externally_supplied_tip_matched:true,replay_reorder_missing_genesis_rejected:true,tampered_record_and_wrong_signer_rejected:true,correct_signature_with_regressed_state_rejected:true,chain_does_not_change_source_or_recovery_gate:true,ephemeral_signer_key_in_memory_only:true,backup_manifest_binding_is_fixture:true,source_endpoint_verified:false,anchor_custody_verified:false,closed_source_gate_rejected:true,offline_recovery_lock_rejected:true,schema_mismatch_rejected:true,deadline_interrupted_actual_locked_query:true,local_return_does_not_imply_backend_gone:true,server_cleanup_observed_separately:true,backend_cleanup_after_local_return_ms:backendCleanupAfterLocalReturnMs,deadline_source_rows_unchanged:true,leases_released:true,exporter_sessions_remaining:0,actual_state_cli:actualCli,source_authenticated:false,latest_state_verified:false,project_policies:2,deletion_barriers:1,streams:1}));
 }finally{
   if(tableLocked)await controller.query('ROLLBACK');
   if(pending)await pending.catch(()=>{});
