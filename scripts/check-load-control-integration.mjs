@@ -59,7 +59,7 @@ fs.open=async(...args)=>{
   if(key==='close')return async()=>{
    let succeeded=false;
    try{const value=await target.close();succeeded=true;return value;}
-   finally{if(!closed){closed=true;handles--;if(initial&&fileSynced&&succeeded)emit({kind:'native_manifest_file_synced_closed',pathKind:'initial'});}}
+   finally{if(!closed){closed=true;handles--;if(initial&&fileSynced&&succeeded)emit({kind:'native_manifest_file_synced_closed',pathKind:'initial',sha256:hash(await fs.readFile(path))});}}
   };
   const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
  }});
@@ -172,8 +172,14 @@ async function common(value,{reason,controlCode,passed=false,zero=false,loginFai
   assert.equal(value.state.serverErrors.length,0,value.state.serverErrors.map(error=>error.message).join(','));
   const exit=value.records.find(record=>record.value.kind==='native_test_exit');assert.ok(exit,'real child exit handler must run before original native close');assert.equal(exit.value.manifest_handles,0);
   const manifest=await optionalJson(value.output+'.manifest.json');assert.ok(manifest);assert.deepEqual(manifest.control,expectedControl(value.runId));
+  const initialized=value.records.filter(record=>record.value.kind==='workload_initialized');assert.equal(initialized.length,1,'one formal initial publication receipt');
+  const initialFile=value.records.find(record=>record.value.kind==='native_manifest_file_synced_closed');assert.ok(initialFile);
+  assert.deepEqual(Object.keys(initialized[0].value).sort(),['kind','run_id','writer_pid','manifest_sha256'].sort());
+  assert.equal(initialized[0].value.writer_pid,value.child.pid);assert.equal(initialized[0].value.run_id,value.runId);assert.equal(initialized[0].value.manifest_sha256,initialFile.value.sha256);
+  assert.ok(value.records.indexOf(initialized[0])>value.records.indexOf(initialFile),'formal publication receipt follows observed actual file fsync and close');
   assert.deepEqual(manifest.artifacts,artifactHashes,'bind all four actual source files');
   const started=value.records.filter(record=>record.value.kind==='native_fetch_started');
+  if(started.length)assert.ok(value.records.indexOf(initialized[0])<value.records.indexOf(started[0]),'no native request precedes formal initialization');
   if(loginFailure){
     assert.ok(value.stderr.includes('fixture_login_failed'));assert.equal(await optionalJson(value.output),null);assert.equal(value.observed(),undefined);assert.equal(started.length,1);assert.equal(started[0].value.path,'/api/auth/login');assert.ok(value.closedAt-value.started<4000,'login failure must close before lease expiry with writer still open');
   }else{
@@ -212,6 +218,7 @@ async function namespaceScenario(target,type){
     await value.done;assert.equal(value.watchdogFired,false);assert.equal(value.signal,null);assert.equal(value.code,1);assert.ok(value.stderr.includes('workload_output_exists'));
     assert.equal(value.state.requests.length,0,'namespace refusal must precede real login/server activity');assert.equal(value.state.serverErrors.length,0);
     assert.equal(value.records.some(record=>record.value.kind==='native_fetch_started'),false,'namespace refusal must precede every native fetch dispatch');assert.equal(value.observed(),undefined,'startup refusal is not an aborted workload result');
+    assert.equal(value.records.some(record=>record.value.kind==='workload_initialized'),false,'a refused namespace must not claim initial publication');
     await assert.rejects(lstat(value.output+'.manifest.json'),{code:'ENOENT'});
     await assert.rejects(lstat(target==='result'?value.output+'.progress':value.output),{code:'ENOENT'});
     const before=value.existing,after=await lstat(before.path,{bigint:true});assert.equal(after.dev,before.identity.dev);assert.equal(after.ino,before.identity.ino);

@@ -95,7 +95,11 @@ try{
   // Own the output namespace before making any requests. A previous run is
   // never resumed or overwritten, including its write-ahead ID manifest.
   for(const path of [output,output+'.progress']){try{await lstat(path);throw new Error('workload_output_exists');}catch(e){if(e.code!=='ENOENT')throw e;}}
-  await publishEvidence(output+'.manifest.json',{...manifest(),status:'initializing'},{exclusive:true});
+  const initialManifest={...manifest(),status:'initializing'};
+  await publishEvidence(output+'.manifest.json',initialManifest,{exclusive:true});
+  // A coordinator binds this original child's published initial file before
+  // its first lease frame. Existence alone can expose a partial wx write.
+  console.log(JSON.stringify({kind:'workload_initialized',run_id:runId,writer_pid:process.pid,manifest_sha256:createHash('sha256').update(JSON.stringify(initialManifest)).digest('hex')}));
   for(const [signal,handler]of signalHandlers)process.once(signal,handler);
   stopTimer=setInterval(()=>void checkStop(),1000);
   await checkStop();
