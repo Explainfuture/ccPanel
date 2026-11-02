@@ -109,12 +109,13 @@ jobs:
           KAFKA_SOCKET_SEND_BUFFER_BYTES: 65536
           KAFKA_SOCKET_RECEIVE_BUFFER_BYTES: 65536
           KAFKA_HEAP_OPTS: -Xms64m -Xmx192m -XX:+UseSerialGC
+          KAFKA_JVM_PERFORMANCE_OPTS: -server -Djava.awt.headless=true
           CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
         ports:
           - 9092:9092
         options: >-
           --memory 512m
-          --health-cmd "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server 127.0.0.1:9092 >/dev/null 2>&1"
+          --health-cmd "KAFKA_HEAP_OPTS='-Xms16m -Xmx64m -XX:+UseSerialGC' /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server 127.0.0.1:9092 >/dev/null"
           --health-interval 10s
           --health-timeout 10s
           --health-start-period 20s
