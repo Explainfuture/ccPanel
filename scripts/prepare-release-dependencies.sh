@@ -6,12 +6,15 @@ umask 077
 stage='';active_container='';watcher='';owner='';phase=preflight
 finished=false
 owned_container(){
-  local found status=0
-  found=$(timeout 5s docker inspect --format '{{index .Config.Labels "ccpanel.runtime-deps.owner"}}' "$1" 2>&1) || status=$?
-  if [ "$status" = 0 ]; then [[ "$found" = "$owner" ]];return;fi
-  if [ "$status" = 1 ] && [[ "$found" = "Error: No such object: $1" || "$found" = "Error: No such container: $1" || "$found" = "Error response from daemon: No such container: $1" ]]; then return 3;fi
-  # Timeout, daemon errors and another owner's label are never absence proof.
-  return 1
+  local names found
+  [[ "$1" =~ ^ccpanel-deps(-smoke)?-[A-Za-z0-9_-]{1,64}$ ]] || return 1
+  # Docker's human error wording/casing is not an absence protocol. Only a
+  # successful exact-name machine listing can establish that nothing exists.
+  names=$(timeout 5s docker container ls --all --filter "name=^/$1$" --format '{{.Names}}' 2>/dev/null) || return 1
+  test -n "$names" || return 3
+  test "$names" = "$1" || return 1
+  found=$(timeout 5s docker inspect --format '{{index .Config.Labels "ccpanel.runtime-deps.owner"}}' "$1" 2>/dev/null) || return 1
+  [[ "$found" = "$owner" ]]
 }
 remove_owned(){
   local name=$1 status=0

@@ -68,10 +68,17 @@ import json,os,pathlib,sys,time
 root=pathlib.Path(os.environ['FAKE_ROOT']);state=root/'running.json';events=root/'events.jsonl';args=sys.argv[1:]
 def log(value):
     with events.open('a') as f:f.write(json.dumps(value)+'\\n')
+if args[:2]==['container','ls']:
+    if os.environ.get('FAKE_LIST_DAEMON_ERROR')=='1':print('daemon unavailable',file=sys.stderr);raise SystemExit(1)
+    if os.environ.get('FAKE_LIST_TIMEOUT')=='1':raise SystemExit(124)
+    if not state.exists():raise SystemExit(0)
+    value=json.loads(state.read_text());assert args[args.index('--filter')+1]=='name=^/'+value['name']+'$'
+    print(value['name']+('-unexpected' if os.environ.get('FAKE_LIST_MISMATCH')=='1' else ''));raise SystemExit(0)
 if args[0]=='inspect':
     name=args[-1]
-    if not state.exists():print('Error: No such object: '+name,file=sys.stderr);raise SystemExit(1)
+    if not state.exists():print('');print('error: no such object: '+name,file=sys.stderr);raise SystemExit(1)
     if os.environ.get('FAKE_INSPECT_UNCERTAIN')=='1':raise SystemExit(124)
+    if os.environ.get('FAKE_INSPECT_DAEMON_ERROR')=='1':print('daemon unavailable',file=sys.stderr);raise SystemExit(1)
     value=json.loads(state.read_text());assert value['name']==name;print(value['owner']);raise SystemExit(0)
 if args[0]=='run':
     name=args[args.index('--name')+1];label=args[args.index('--label')+1].split('=',1)[1]
@@ -95,6 +102,28 @@ raise SystemExit(9)
         assert (run.returncode==0)==allowed,name
         assert (run.stdout=='PREFLIGHT_ACCEPTED\n')==allowed,name
         cases+=1
+    # Reproduce the real VPS error shape, including its leading stdout blank and
+    # lowercase stderr. The controller must ignore this human-error convention
+    # and establish absence using a separate successful exact-name listing.
+    absent=root/'actual-missing-inspect';absent.mkdir(mode=0o700)
+    absent_env={**os.environ,'PATH':str(binary)+os.pathsep+os.environ['PATH'],'FAKE_ROOT':str(absent)}
+    protocol=subprocess.run([str(docker),'inspect','--format','owner','ccpanel-deps-test'],env=absent_env,text=True,capture_output=True,timeout=3)
+    assert protocol.returncode==1 and protocol.stdout=='\n' and protocol.stderr=='error: no such object: ccpanel-deps-test\n'
+    check=subprocess.run(['bash','-c','set -u\n'+functions+'\nowner=owned-test-controller\nowned_container ccpanel-deps-test\nstatus=$?\ntest "$status" = 3\n'],env=absent_env,text=True,capture_output=True,timeout=8)
+    assert check.returncode==0 and not (absent/'events.jsonl').exists();cases+=1
+    for name,extra,exists in [
+        ('listing_daemon_error',{'FAKE_LIST_DAEMON_ERROR':'1'},False),
+        ('listing_timeout',{'FAKE_LIST_TIMEOUT':'1'},False),
+        ('listing_extra_name',{'FAKE_LIST_MISMATCH':'1'},True),
+        ('inspect_daemon_error',{'FAKE_INSPECT_DAEMON_ERROR':'1'},True),
+        ('inspect_timeout',{'FAKE_INSPECT_UNCERTAIN':'1'},True),
+    ]:
+        sandbox=root/name;sandbox.mkdir(mode=0o700)
+        if exists:(sandbox/'running.json').write_text(json.dumps({'name':'ccpanel-deps-test','owner':'owned-test-controller'}))
+        env={**os.environ,'PATH':str(binary)+os.pathsep+os.environ['PATH'],'FAKE_ROOT':str(sandbox),**extra}
+        check=subprocess.run(['bash','-c','set -u\n'+functions+'\nowner=owned-test-controller\nowned_container ccpanel-deps-test\nstatus=$?\ntest "$status" = 1\n'],env=env,text=True,capture_output=True,timeout=8)
+        assert check.returncode==0 and not (sandbox/'events.jsonl').exists(),name
+        assert (sandbox/'running.json').exists()==exists;cases+=1
     # These run the actual shell functions, native timeout and background watcher.
     # Fake CLI outcomes are explicit; no production pressure or Docker behavior
     # is inferred from this controller-only proof.
