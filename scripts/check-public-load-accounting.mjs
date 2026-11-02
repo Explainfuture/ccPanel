@@ -1,12 +1,17 @@
 // Runs the real CLI with synthetic fetch responses; no VPS/account access.
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
+import {createHash} from 'node:crypto';
 import {mkdir,mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {build} from 'esbuild';
 await mkdir('.local',{recursive:true});const root=path.resolve('.local'),dir=await mkdtemp(path.join(root,'load-accounting-'));
 const preload=path.join(dir,'fake-fetch.mjs');
+const legacyEnv={...process.env};delete legacyEnv.CCPANEL_LOAD_RUN_ID;
+const unleased={mode:'unleased',run_id:null,lease_ms:null};
+const artifactNames=['load-check-public.mjs','load-evidence.mjs','load-control-lease.mjs','load-stop-reader.mjs'];
+const expectedArtifacts=Object.fromEntries(await Promise.all(artifactNames.map(async name=>[name,createHash('sha256').update(await readFile(path.join('scripts',name))).digest('hex')])));
 try{
   const verifier=path.join(dir,'workload-report.mjs');
   await build({entryPoints:['scripts/capacity-workload-report.ts'],outfile:verifier,bundle:true,platform:'node',target:'node22',format:'esm',packages:'external'});
@@ -36,13 +41,13 @@ globalThis.fetch=async(input,options={})=>{
   const config=path.join(dir,'config.json');await writeFile(config,JSON.stringify({origin:'https://load.invalid',tenant:'synthetic',project:'synthetic',email:'fake@integration.invalid',password:'synthetic',key:'非ASCII合成密钥'}));
   const run=mode=>new Promise((resolve,reject)=>{
     const output=path.join(dir,mode+'.json'),capture=path.join(dir,mode+'-capture.json');
-    const child=spawn(process.execPath,['--import',pathToFileURL(preload).href,'scripts/load-check-public.mjs',config,output,'11'],{env:{...process.env,CCPANEL_ACCOUNTING_CASE:mode,CCPANEL_ACCOUNTING_CAPTURE:capture},stdio:['ignore','pipe','pipe']});
+    const child=spawn(process.execPath,['--import',pathToFileURL(preload).href,'scripts/load-check-public.mjs',config,output,'11'],{env:{...legacyEnv,CCPANEL_ACCOUNTING_CASE:mode,CCPANEL_ACCOUNTING_CAPTURE:capture},stdio:['ignore','pipe','pipe']});
     let error='',log='';child.stdout.on('data',chunk=>{log+=chunk;});child.stderr.on('data',chunk=>{error+=chunk;});
     const timer=setTimeout(()=>child.kill(),55000);
     child.on('error',reject);child.on('close',async code=>{clearTimeout(timer);try{
       assert.equal(code,mode==='negative'?1:0,error+log);
       const result=JSON.parse(await readFile(output,'utf8')),captured=JSON.parse(await readFile(capture,'utf8')),w=result.workload;
-      const manifest=JSON.parse(await readFile(output+'.manifest.json','utf8'));assert.equal(manifest.status,'completed');assert.deepEqual(manifest.event_ids,result.event_ids);assert.equal(result.termination.state,'completed');assert.deepEqual(result.artifacts,manifest.artifacts);assert.equal(Object.keys(manifest.artifacts).length,2);assert.ok(Object.values(manifest.artifacts).every(v=>/^[a-f0-9]{64}$/.test(v)));assert.equal(result.confirmed_event_ids.length,result.acknowledged);
+      const manifest=JSON.parse(await readFile(output+'.manifest.json','utf8'));assert.equal(manifest.status,'completed');assert.deepEqual(manifest.event_ids,result.event_ids);assert.equal(result.termination.state,'completed');assert.deepEqual(result.artifacts,manifest.artifacts);assert.deepEqual(result.artifacts,expectedArtifacts);assert.equal(Object.keys(manifest.artifacts).length,4);assert.ok(Object.values(manifest.artifacts).every(v=>/^[a-f0-9]{64}$/.test(v)));assert.equal(result.confirmed_event_ids.length,result.acknowledged);assert.deepEqual(manifest.control,unleased);assert.deepEqual(result.control,unleased);
       assert.equal(result.generated,11);assert.equal(result.acknowledged,11);assert.deepEqual([...result.event_ids].sort(),captured.ids.sort());
       assert.equal(w.ingest_attempts,captured.bytes.length);assert.equal(w.ingest_attempts,w.ingest_accepted_requests+w.ingest_failed_requests);
       assert.equal(w.ingest_body_bytes_total,captured.bytes.reduce((a,b)=>a+b,0));assert.equal(w.ingest_body_bytes_min,Math.min(...captured.bytes));assert.equal(w.ingest_body_bytes_max,Math.max(...captured.bytes));assert.equal(w.ingest_body_bytes_mean,w.ingest_body_bytes_total/w.ingest_attempts);
@@ -55,8 +60,8 @@ globalThis.fetch=async(input,options={})=>{
   });
   async function runAbort(mode){
     const output=path.join(dir,mode+'.json'),capture=path.join(dir,mode+'-capture.json');
-    const child=spawn(process.execPath,['--import',pathToFileURL(preload).href,'scripts/load-check-public.mjs',config,output,'11'],{env:{...process.env,CCPANEL_ACCOUNTING_CASE:mode,CCPANEL_ACCOUNTING_CAPTURE:capture},stdio:['ignore','pipe','pipe']});
-    let stderr='',exitCode;child.stdout.on('data',()=>{});child.stderr.on('data',b=>{stderr=(stderr+b).slice(-12000);});
+    const child=spawn(process.execPath,['--import',pathToFileURL(preload).href,'scripts/load-check-public.mjs',config,output,'11'],{env:{...legacyEnv,CCPANEL_ACCOUNTING_CASE:mode,CCPANEL_ACCOUNTING_CAPTURE:capture},stdio:['ignore','pipe','pipe']});
+    let stderr='',stdout='',exitCode;child.stdout.on('data',b=>{stdout+=b;});child.stderr.on('data',b=>{stderr=(stderr+b).slice(-12000);});
     const ended=new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',code=>{exitCode=code;resolve();});});
     const timer=setTimeout(()=>child.kill('SIGKILL'),25000);
     try{
@@ -66,17 +71,19 @@ globalThis.fetch=async(input,options={})=>{
       if(mode==='kill')child.kill('SIGKILL');else if(mode==='signal'||mode==='sigint')child.kill(mode==='signal'?'SIGTERM':'SIGINT');else await writeFile(output+'.stop',mode==='invalid_stop'?'x'.repeat(2048):JSON.stringify({reason:'resource_safety'}),{mode:0o600});
       await ended;
       const bytes=await readFile(output+'.manifest.json'),manifest=JSON.parse(bytes);
+      assert.deepEqual(manifest.control,unleased);assert.deepEqual(manifest.artifacts,expectedArtifacts);
       captured=JSON.parse(await readFile(capture,'utf8'));assert.ok(captured.ids.every(id=>manifest.event_ids.includes(id)));assert.equal(new Set(manifest.event_ids).size,manifest.event_ids.length);
       if(mode==='kill'){
         assert.notEqual(exitCode,0);await assert.rejects(readFile(output),{code:'ENOENT'});assert.equal(manifest.status,'running');
       }else{
         assert.equal(exitCode,1,stderr);const result=JSON.parse(await readFile(output,'utf8'));assert.equal(result.passed,false);assert.equal(result.termination.state,'aborted');assert.equal(result.termination.reason,mode==='signal'?'signal_sigterm':mode==='sigint'?'signal_sigint':mode==='invalid_stop'?'invalid_stop_request':'resource_safety');assert.ok(result.generated>=2&&result.generated<11);assert.deepEqual(result.event_ids,manifest.event_ids);assert.equal(result.confirmed_event_ids.length,result.acknowledged);assert.deepEqual([...result.confirmed_event_ids].sort(),captured.ids.sort());
+        assert.deepEqual(result.control,unleased);assert.deepEqual(result.artifacts,expectedArtifacts);const observed=stdout.trim().split('\n').map(line=>JSON.parse(line)).filter(v=>v.kind==='workload_abort_observed');assert.equal(observed.length,1);assert.equal(observed[0].reason,result.termination.reason);assert.equal(observed[0].run_id,null);assert.equal(observed[0].pid,child.pid);assert.ok(Number.isFinite(observed[0].monotonic_ms));
         const report=capacityWorkloadReport(result,11);assert.equal(report.dataLoadPass,false);assert.ok(report.reasons.includes('aborted_workload'));
       }
-      const restart=spawn(process.execPath,['--import',pathToFileURL(preload).href,'scripts/load-check-public.mjs',config,output,'11'],{env:{...process.env,CCPANEL_ACCOUNTING_CASE:mode,CCPANEL_ACCOUNTING_CAPTURE:capture},stdio:'ignore'});
+      const restart=spawn(process.execPath,['--import',pathToFileURL(preload).href,'scripts/load-check-public.mjs',config,output,'11'],{env:{...legacyEnv,CCPANEL_ACCOUNTING_CASE:mode,CCPANEL_ACCOUNTING_CAPTURE:capture},stdio:'ignore'});
       assert.equal(await new Promise((resolve,reject)=>{restart.once('error',reject);restart.once('close',resolve);}),1,'an old evidence namespace cannot restart');assert.deepEqual(await readFile(output+'.manifest.json'),bytes);
     }finally{clearTimeout(timer);if(child.exitCode===null&&child.signalCode===null){child.kill('SIGKILL');await ended;}}
   }
   const results=await Promise.allSettled([run('positive'),run('negative'),...['stop','invalid_stop','kill',...(process.platform==='win32'?[]:['signal','sigint'])].map(runAbort)]);for(const result of results)if(result.status==='rejected')throw result.reason;
-  console.log(JSON.stringify({passed:true,real_cli:true,synthetic_fetch:true,exact_utf8_bytes:true,retries_counted:true,busy_queries_counted:true,missed_query_schedule_fails:true,write_ahead_ids:true,cooperative_abort:true,hard_kill_manifest:true,restart_refused:true,posix_sigint_sigterm_checked:process.platform!=='win32'}));
+  console.log(JSON.stringify({passed:true,real_cli:true,synthetic_fetch:true,exact_utf8_bytes:true,retries_counted:true,busy_queries_counted:true,missed_query_schedule_fails:true,write_ahead_ids:true,cooperative_abort:true,hard_kill_manifest:true,restart_refused:true,explicit_unleased_control:true,exact_four_artifact_hashes:true,first_abort_observed_once:true,posix_sigint_sigterm_checked:process.platform!=='win32'}));
 }finally{assert.equal(path.dirname(dir),root);assert.ok(path.basename(dir).startsWith('load-accounting-'));await rm(dir,{recursive:true,force:true});}
