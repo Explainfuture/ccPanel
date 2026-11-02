@@ -40,10 +40,27 @@ const emit=value=>console.log(JSON.stringify(value));
 fs.open=async(...args)=>{
  const handle=await nativeOpen(...args),path=String(args[0]);
  if(!path.startsWith(manifestPrefix))return handle;
- handles++;let closed=false;
+ handles++;let closed=false,fileSynced=false;
+ const initial=path===manifestPrefix,release=process.env.CCPANEL_NATIVE_INITIAL_MANIFEST_RELEASE;
  return new Proxy(handle,{get(target,key){
-  if(key==='sync')return async()=>{await target.sync();synced.add(hash(await fs.readFile(path)));syncs++;};
-  if(key==='close')return async()=>{try{return await target.close();}finally{if(!closed){closed=true;handles--;}}};
+  if(key==='writeFile'&&initial&&release)return async(...writeArgs)=>{
+   // A real wx open already exposed this empty file. Hold the real write so
+   // the parent can observe the exact startup race without mocking I/O success.
+   emit({kind:'native_initial_manifest_write_held'});
+   const end=performance.now()+5000;
+   while(true){
+    try{await fs.lstat(release);break;}catch(error){if(error.code!=='ENOENT')throw error;}
+    if(performance.now()>=end)throw Error('native_initial_manifest_gate_timeout');
+    await new Promise(done=>setTimeout(done,10));
+   }
+   return target.writeFile(...writeArgs);
+  };
+  if(key==='sync')return async()=>{await target.sync();synced.add(hash(await fs.readFile(path)));syncs++;fileSynced=true;};
+  if(key==='close')return async()=>{
+   let succeeded=false;
+   try{const value=await target.close();succeeded=true;return value;}
+   finally{if(!closed){closed=true;handles--;if(initial&&fileSynced&&succeeded)emit({kind:'native_manifest_file_synced_closed',pathKind:'initial'});}}
+  };
   const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
  }});
 };
@@ -72,7 +89,7 @@ globalThis.fetch=(input,options={})=>{
 process.once('exit',()=>emit({kind:'native_test_exit',manifest_handles:handles,manifest_syncs:syncs}));
 `,{mode:0o600,flag:'wx'});
 
-async function launch(name,{leased=false,preStop=false,loginStatus=200,holdLogin=false,holdPost=false,holdTrend=false,drainPages=false,namespace}={}){
+async function launch(name,{leased=false,preStop=false,loginStatus=200,holdLogin=false,holdPost=false,holdTrend=false,drainPages=false,holdInitialManifestWrite=false,namespace}={}){
   const path=join(directory,name);await mkdir(path,{mode:0o700});
   const output=join(path,'result.json'),config=join(path,'config.json'),runId=leased?'NATIVE_CONTROL_'+randomUUID().replaceAll('-',''):null;
   await writeFile(config,JSON.stringify({origin:'https://load.invalid',tenant:'synthetic',project:'synthetic',email:'native@integration.invalid',password:'synthetic-only',key:'synthetic-only'}),{mode:0o600,flag:'wx'});
@@ -119,9 +136,10 @@ async function launch(name,{leased=false,preStop=false,loginStatus=200,holdLogin
     throw Error('unexpected_native_fixture_route');
   })().catch(error=>{state.serverErrors.push(error);if(!response.headersSent)reply(response,{error:'native_fixture_failed'},500);else response.destroy();}));
   await new Promise((accept,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',accept);});
-  const env={...process.env,CCPANEL_NATIVE_HTTP_ORIGIN:'http://127.0.0.1:'+server.address().port};delete env.CCPANEL_LOAD_RUN_ID;if(runId)env.CCPANEL_LOAD_RUN_ID=runId;
+  const initialManifestRelease=holdInitialManifestWrite?join(path,'initial-manifest-release'):null;
+  const env={...process.env,CCPANEL_NATIVE_HTTP_ORIGIN:'http://127.0.0.1:'+server.address().port};delete env.CCPANEL_LOAD_RUN_ID;delete env.CCPANEL_NATIVE_INITIAL_MANIFEST_RELEASE;if(runId)env.CCPANEL_LOAD_RUN_ID=runId;if(initialManifestRelease)env.CCPANEL_NATIVE_INITIAL_MANIFEST_RELEASE=initialManifestRelease;
   const child=spawn(process.execPath,['--import',pathToFileURL(preload).href,resolve('scripts/load-check-public.mjs'),config,output,'10'],{env,stdio:['pipe','pipe','pipe']});
-  const value={name,path,output,child,server,state,runId,existing,records:[],stderr:'',closed:false,watchdogFired:false,stdinEndedByParent:false,heartbeat:null,sequence:0,started:performance.now(),reply};
+  const value={name,path,output,child,server,state,runId,existing,initialManifestRelease,records:[],stderr:'',closed:false,watchdogFired:false,stdinEndedByParent:false,heartbeat:null,sequence:0,started:performance.now(),reply};
   active.add(value);let partial='',size=0;
   child.stdout.on('data',chunk=>{
     size+=chunk.length;if(size>512*1024){child.kill('SIGKILL');return;}
@@ -139,6 +157,13 @@ async function launch(name,{leased=false,preStop=false,loginStatus=200,holdLogin
   value.stop=async()=>{value.stopAt=performance.now();assert.deepEqual(await publishFirstStop(output+'.stop','resource_safety'),{status:'published'});};
   value.eof=()=>{value.eofAt=performance.now();value.stdinEndedByParent=true;clearInterval(value.heartbeat);child.stdin.end();};
   value.observed=()=>value.records.find(record=>record.value.kind==='workload_abort_observed');
+  value.initialManifest=async()=>{
+    // This observes only actual file fsync+close, not completion of the entire
+    // publisher/directory fsync, nor admission by the real control lease.
+    await until(()=>value.records.some(record=>record.value.kind==='native_manifest_file_synced_closed'&&record.value.pathKind==='initial'),'initial manifest file sync and close');
+    const manifest=JSON.parse(await readFile(output+'.manifest.json','utf8'));
+    assert.equal(manifest.status,'initializing');return manifest;
+  };
   return value;
 }
 
@@ -206,10 +231,14 @@ try{
   const scenarios=[
     ()=>scenario('initial_stop_prevents_login',{preStop:true,leased:true},async value=>{await value.done;assert.equal(value.state.requests.length,0);},{reason:'resource_safety',zero:true}),
     ()=>scenario('stop_while_waiting_for_first_lease',{leased:true},async value=>{
-      await until(()=>optionalJson(value.output+'.manifest.json'),'pre-ready manifest');await sleep(250);assert.equal(value.state.requests.length,0);await value.stop();await until(()=>value.observed(),'pre-ready independent stop');assert.equal(value.state.requests.length,0);
+      await value.initialManifest();await sleep(250);assert.equal(value.state.requests.length,0);await value.stop();await until(()=>value.observed(),'pre-ready independent stop');assert.equal(value.state.requests.length,0);
     },{reason:'resource_safety',zero:true}),
-    ()=>scenario('lease_ready_gate_then_native_eof',{leased:true},async value=>{
-      await until(()=>optionalJson(value.output+'.manifest.json'),'initial leased manifest');await sleep(350);assert.equal(value.state.requests.length,0,'no login before an actual valid lease frame');value.frame();
+    ()=>scenario('lease_ready_gate_then_native_eof',{leased:true,holdInitialManifestWrite:true},async value=>{
+      await until(()=>value.records.some(record=>record.value.kind==='native_initial_manifest_write_held'),'actual initial wx open before native write');
+      const empty=await readFile(value.output+'.manifest.json');assert.equal(empty.length,0,'real initial exclusive path can exist before its write');assert.throws(()=>JSON.parse(empty.toString('utf8')),SyntaxError);
+      assert.equal(value.state.requests.length,0);assert.equal(value.records.some(record=>record.value.kind==='native_fetch_started'||record.value.kind==='native_manifest_file_synced_closed'),false,'empty initial manifest is neither a file-completion nor request-admission barrier');
+      await writeFile(value.initialManifestRelease,'release-real-write',{mode:0o600,flag:'wx'});
+      await value.initialManifest();await sleep(350);assert.equal(value.state.requests.length,0,'no login before an actual valid lease frame');value.frame();
       await until(()=>value.state.rows.size>=1,'leased native POST');value.eof();
     },{reason:'control_lost',controlCode:'control_eof'}),
     ()=>scenario('normal_leased_native_completion',{leased:true},async value=>{value.renew();},{passed:true}),
@@ -245,7 +274,7 @@ try{
   // Keep the local check small while still exercising independent real clients.
   let next=0;const workers=Array.from({length:3},async()=>{while(next<scenarios.length){const index=next++;await scenarios[index]();}});
   const results=await Promise.allSettled(workers);for(const result of results)if(result.status==='rejected')throw result.reason;
-  console.log(JSON.stringify({passed:true,platform:process.platform,node_version:process.version,checks,observations,artifacts:artifactHashes,regular_output_and_progress_refusal_checked:true,dangling_output_checked:danglingSupported,dangling_progress_checked:danglingSupported,windows_symlink_permission_skip:process.platform==='win32'&&!danglingSupported,real_original_generator_children:true,original_native_close_observed:true,native_loopback_http:true,native_fetch_and_abort_signals:true,actual_manifest_fsync_before_post:true,all_four_artifact_hashes_verified:true,healthy_local_stop_observation_bound_ms:5000,request_timeouts_ms:[12000,15000],parent_ended_normal_lease_pipe:false,coordinator_hard_kill_exercised:false,orphan_native_terminal_claimed:false,tls_verified:false,vps_accessed:false,full_cross_host_bridge_verified:false,capacity_verified:false}));
+  console.log(JSON.stringify({passed:true,platform:process.platform,node_version:process.version,checks,observations,artifacts:artifactHashes,initial_empty_manifest_observed_before_real_write:true,initial_manifest_barrier_requires_actual_file_sync_and_close:true,initial_manifest_barrier_proves_publisher_complete:false,final_artifact_json_parsing_strict:true,regular_output_and_progress_refusal_checked:true,dangling_output_checked:danglingSupported,dangling_progress_checked:danglingSupported,windows_symlink_permission_skip:process.platform==='win32'&&!danglingSupported,real_original_generator_children:true,original_native_close_observed:true,native_loopback_http:true,native_fetch_and_abort_signals:true,actual_manifest_fsync_before_post:true,all_four_artifact_hashes_verified:true,healthy_local_stop_observation_bound_ms:5000,request_timeouts_ms:[12000,15000],parent_ended_normal_lease_pipe:false,coordinator_hard_kill_exercised:false,orphan_native_terminal_claimed:false,tls_verified:false,vps_accessed:false,full_cross_host_bridge_verified:false,capacity_verified:false}));
 }finally{
   await Promise.allSettled([...active].map(dispose));assert.equal(dirname(resolve(directory)),resolve(tmpdir()));assert.ok(basename(directory).startsWith('ccpanel-native-control-'));await rm(directory,{recursive:true,force:true});
 }
