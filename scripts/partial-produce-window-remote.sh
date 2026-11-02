@@ -74,7 +74,7 @@ fingerprint(){
 helper(){
   local name=$1 limit=$2;shift 2
   timeout --signal=TERM --kill-after=10s "$limit" docker compose run --rm -T --no-deps --name "$name" --env-from-file "$root/test.env" \
-    -v "$operator_script:/app/scripts/fault-check.mjs:ro" -v "$root/evidence:/drill-evidence" -v "$root/sdk:/drill-sdk:ro" \
+    -v "$root/sdk/fault-check.mjs:/app/scripts/fault-check.mjs:ro" -v "$root/evidence:/drill-evidence" -v "$root/sdk:/drill-sdk:ro" \
     api node --max-old-space-size=40 scripts/fault-check.mjs "$@"
 }
 wait_ready(){
@@ -149,7 +149,9 @@ trap 'exit 130' INT
 
 install -d -m 700 -o 1000 -g 1000 "$root/evidence" "$root/sdk"
 install -m 400 -o 1000 -g 1000 "$CCPANEL_PARTIAL_SDK_FILE" "$root/sdk/index.mjs"
+install -m 400 -o 1000 -g 1000 "$operator_script" "$root/sdk/fault-check.mjs"
 test "$(sha256sum "$root/sdk/index.mjs" | cut -d' ' -f1)" = "$CCPANEL_PARTIAL_SDK_SHA256"
+test "$(sha256sum "$root/sdk/fault-check.mjs" | cut -d' ' -f1)" = "$(sha256sum "$operator_script" | cut -d' ' -f1)"
 printf 'DATABASE_URL=%s/%s\nRETENTION_ENABLED=false\nOPERATIONAL_COLLECTION_ENABLED=false\nKAFKA_EVENTS_TOPIC=%s.events\nKAFKA_DLQ_TOPIC=%s.dlq\nKAFKA_GROUP_ID=%s.writer\nCCPANEL_ISOLATED_PARTIAL_PRODUCE_CHECK=true\nCCPANEL_PARTIAL_SDK_SHA256=%s\n' \
   "${DATABASE_URL%/*}" "$db" "$prefix" "$prefix" "$prefix" "$CCPANEL_PARTIAL_SDK_SHA256" >"$root/test.env"
 paused=true;timeout --signal=TERM --kill-after=10s 45s docker compose stop api worker >"$root/pause.log" 2>&1
