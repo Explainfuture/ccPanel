@@ -111,6 +111,18 @@ CI专用loopback OpenSSH夹具使用临时主机/用户key、临时高端口和�
 
 ## 调度、轮转与恢复
 
+### 私有加密状态日志与本地链首CAS（步骤217）
+
+新增appendRecoveryStateJournal与verifyRecoveryStateJournal文件组件，尚无自动作业或CLI。调用方提供已有的两处私有canonical目录、固定公钥、预期source-id和目录外已有32字节AES密钥；签名私钥不交给存储组件。Windows ACL未验证则拒绝，不能用两处本机目录冒充独立故障域或受保护锚点。
+
+已签名记录经CCPBK001 AES256-GCM加密后，以`序号-record_hash.state.enc`排他发布、fsync及回读；磁盘不写签名payload明文。anchorRoot的head.json只存锚点元数据，是本地CAS游标，不是独立可信tip。追加前独占创建.append.lock，不自动偷取过期/PID锁；比较调用方expectedHead与实际head，核验完整文件名序列及前一已签名head/状态，再检查新记录链接与语义连续性。追加并不重新解密所有历史，historicalRecordsReverified明确false；完整消费者验证必须逐条解密/验签整链。
+
+密文持久后才原子替换head并同步目录；成功stored_unverified，previousHeadVerified/encryptedAtRest为true，但sourceEndpointVerified/anchorCustodyVerified/latestStateVerified仍false。旧expectedHead、已有锁、缺失/重复/多出的正式对象或无head而有对象均拒绝；不从文件反推链首或重置genesis。未知文件保留，不自动删除残片。首次发布请求后的异常为journal_publish_uncertain，保留已发布对象/游标；正常路径清理仅本次拥有的临时文件和同inode锁，再同步目录。断电/强杀可留锁或残片，需要未来受控审计恢复流程，不按PID/mtime自动解锁或回滚。
+
+完整读取要求另外传入trustedTip，不能用本地head自行建立信任；异步逐条解密/核对文件名、签名与连续性，不把全历史载入数组。完成时再检查实际时钟新鲜度（显式测试时钟除外）和head未变。单记录默认24MiB/最多32MiB、最多10000记录，目录枚举也有上限；内存按单记录而非全链增长，最大记录实际内存/吞吐仍待容量测量。存储API保护目录、密钥和读取前后元数据，有协作式截止/取消；不强制中断内核I/O。
+
+读取成功journal_verified_unadmitted也不提升恢复准入。公开密钥和独立tip的来源/保管、正式key配置、持久化远端投递/CAS、检查点裁剪/轮换和调度仍待实现；本机head及密文一起回退仍须外部新tip才可检测。当前PG测试使用临时key/目录和外部变量模拟tip，备份关联仍为夹具，没有启用用户存储或修改VPS。
+
 ### 签名状态记录与外部锚点校验（步骤216）
 
 新增纯TypeScript/Node crypto原语signRecoveryStateRecord、verifyRecoveryStateRecord、verifyRecoveryStateChain与状态连续性检查；当前没有签名密钥文件加载、持久化链首更新、调度或恢复放行命令，不生成正式密钥。调用方必须从独立信任控制面提供固定Ed25519公钥、预期source-id和最新链首锚点，不能使用记录自带公钥或由待验证记录自行推导的锚点作为信任根。

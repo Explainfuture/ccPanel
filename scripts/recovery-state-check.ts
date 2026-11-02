@@ -1,8 +1,10 @@
 // Actual CI PostgreSQL source snapshot, not a restored or production database.
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {randomUUID,generateKeyPairSync,createHash} from 'node:crypto';
-import {isAbsolute} from 'node:path';
+import {randomUUID,randomBytes,generateKeyPairSync,createHash} from 'node:crypto';
+import {mkdtemp,mkdir,writeFile,readFile,readdir,lstat,chmod,unlink,rmdir} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {isAbsolute,join,resolve,sep} from 'node:path';
 import pg from 'pg';
 import {exportRecoverySourceState} from '../packages/server/src/recovery-state-export';
 import {readBackupFingerprints} from '../packages/server/src/backup-snapshot';
@@ -12,6 +14,7 @@ import {verifyRecoveryStateChain} from '../packages/server/src/recovery-state-ch
 import {parseRecoverySourceState} from '../packages/server/src/recovery-state-format';
 import {RecoveryStateContinuityError} from '../packages/server/src/recovery-state-continuity';
 import {retentionCutoff} from '../packages/server/src/retention-policy';
+import {appendRecoveryStateJournal,verifyRecoveryStateJournal} from '../packages/server/src/recovery-state-journal';
 
 assert.equal(process.env.GITHUB_ACTIONS,'true');
 const source=new URL(process.env.DATABASE_URL!);
@@ -126,6 +129,46 @@ try{
   assert.throws(()=>verifyRecoveryStateChain({...chainOptions,records:[signedOld.record,signedFresh.record,signedRegression.record],trustedTip:signedRegression.anchor}),error=>error instanceof RecoveryStateContinuityError&&error.code!=='state_continuity_invalid');
   assert.deepEqual(await readBackupFingerprints(writer),before,'signing/verification must not mutate source rows');
   assert.deepEqual((await writer.query('SELECT blocked,updated_at::text FROM recovery_gate WHERE id=true')).rows,gateBefore,'chain verification must not open or change the recovery gate');
+  // The same actual PG exports now survive encrypted local persistence. These
+  // two private directories share this CI host; they are not independent
+  // anchor custody, and the association hash above remains a fixture label.
+  const journalParent=await mkdtemp(join(tmpdir(),'ccpanel-pg-state-journal-'));
+  let journalKeyBefore:Buffer|undefined;
+  const cleanupJournal=async(path:string):Promise<void>=>{
+    const absolute=resolve(path);assert.ok(absolute===journalParent||absolute.startsWith(journalParent+sep),'journal fixture cleanup outside owned root');
+    const info=await lstat(absolute);
+    if(!info.isDirectory()||info.isSymbolicLink()){await unlink(absolute);return;}
+    await chmod(absolute,0o700);
+    for(const name of await readdir(absolute))await cleanupJournal(join(absolute,name));await rmdir(absolute);
+  };
+  try{
+    const journalRoot=join(journalParent,'records'),anchorRoot=join(journalParent,'anchors'),encryptionKeyFile=join(journalParent,'encryption-key');
+    await mkdir(journalRoot,{mode:0o700});await mkdir(anchorRoot,{mode:0o700});
+    const encryptionKey=randomBytes(32);try{await writeFile(encryptionKeyFile,encryptionKey,{mode:0o600,flag:'wx'});}finally{encryptionKey.fill(0);}
+    journalKeyBefore=await readFile(encryptionKeyFile);
+    const storage={journalRoot,anchorRoot,encryptionKeyFile,publicKey:signer.publicKey,expectedSourceId:'ci-source',timeoutMs:15000};
+    const storedOld=await appendRecoveryStateJournal({...storage,expectedHead:null,record:signedOld.record});
+    assert.equal(storedOld.status,'stored_unverified');assert.deepEqual(storedOld.anchor,signedOld.anchor);
+    const storedFresh=await appendRecoveryStateJournal({...storage,expectedHead:signedOld.anchor,record:signedFresh.record});
+    assert.equal(storedFresh.status,'stored_unverified');assert.deepEqual(storedFresh.anchor,externallyHeldTip);
+    for(const receipt of [storedOld,storedFresh]){
+      assert.equal(receipt.encryptedAtRest,true);assert.equal(receipt.previousHeadVerified,true);assert.equal(receipt.historicalRecordsReverified,false);
+      assert.equal(receipt.sourceEndpointVerified,false);assert.equal(receipt.anchorCustodyVerified,false);assert.equal(receipt.latestStateVerified,false);
+    }
+    const persisted=await verifyRecoveryStateJournal({...storage,trustedTip:externallyHeldTip});
+    assert.equal(persisted.status,'journal_verified_unadmitted');assert.equal(persisted.recordsVerified,2);assert.equal(persisted.signaturesVerified,true);assert.equal(persisted.anchorMatched,true);assert.equal(persisted.semanticContinuityChecked,true);assert.equal(persisted.encryptedAtRest,true);
+    assert.deepEqual(persisted.state,fresh);assert.equal(persisted.state.deletion.barriers.length,1);assert.equal(persisted.state.integrity.blocked,true);assert.equal(persisted.state.integrity.streams[0].positions[0].next_offset,'9007199254740994');
+    assert.equal(persisted.sourceEndpointVerified,false);assert.equal(persisted.anchorCustodyVerified,false);assert.equal(persisted.latestStateVerified,false);
+    await assert.rejects(appendRecoveryStateJournal({...storage,expectedHead:signedOld.anchor,record:signedFresh.record}),/journal_head_conflict/);
+    await assert.rejects(verifyRecoveryStateJournal({...storage,trustedTip:signedOld.anchor}),/journal_head_conflict/);
+    const names=(await readdir(journalRoot)).sort();
+    assert.deepEqual(names,[`1-${signedOld.anchor.record_hash}.state.enc`,`2-${signedFresh.anchor.record_hash}.state.enc`].sort());
+    for(const name of names){const encrypted=await readFile(join(journalRoot,name));assert.ok(encrypted.length>36);assert.equal(encrypted.subarray(0,8).toString('ascii'),'CCPBK001');}
+    assert.deepEqual(await readdir(anchorRoot),['head.json']);assert.deepEqual(JSON.parse(await readFile(join(anchorRoot,'head.json'),'utf8')),externallyHeldTip);
+    assert.deepEqual(await readFile(encryptionKeyFile),journalKeyBefore);
+    assert.deepEqual(await readBackupFingerprints(writer),before,'journal persistence/verification must not mutate source rows');
+    assert.deepEqual((await writer.query('SELECT blocked,updated_at::text FROM recovery_gate WHERE id=true')).rows,gateBefore,'journal operations must not change the recovery gate');
+  }finally{journalKeyBefore?.fill(0);await cleanupJournal(journalParent);}
   let actualCli=false;
   if(process.env.CCPANEL_STATE_EXPORT_CLI){
     const result=await cli();assert.equal(result.code,2,'exported state does not become trusted latest state');
@@ -164,7 +207,7 @@ try{
     await controller.query('SELECT pg_advisory_unlock($1)',[key]);
   }
   assert.equal((await observer.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname=$1 AND application_name='ccpanel_backup_state_export'",[sourceDatabase])).rows[0].n,0);
-  console.log(JSON.stringify({passed:true,actual_pg_source_snapshot:true,relation_lock_barrier_observed:true,concurrent_policy_deletion_incident_progress_committed:true,first_export_consistent_old_snapshot:true,fresh_export_contains_complete_v2_and_integrity:true,offset_beyond_js_safe_integer_preserved:true,source_rows_unchanged_by_export:true,actual_pg_states_signed:true,externally_supplied_tip_matched:true,replay_reorder_missing_genesis_rejected:true,tampered_record_and_wrong_signer_rejected:true,correct_signature_with_regressed_state_rejected:true,chain_does_not_change_source_or_recovery_gate:true,ephemeral_signer_key_in_memory_only:true,backup_manifest_binding_is_fixture:true,source_endpoint_verified:false,anchor_custody_verified:false,closed_source_gate_rejected:true,offline_recovery_lock_rejected:true,schema_mismatch_rejected:true,deadline_interrupted_actual_locked_query:true,local_return_does_not_imply_backend_gone:true,server_cleanup_observed_separately:true,backend_cleanup_after_local_return_ms:backendCleanupAfterLocalReturnMs,deadline_source_rows_unchanged:true,leases_released:true,exporter_sessions_remaining:0,actual_state_cli:actualCli,source_authenticated:false,latest_state_verified:false,project_policies:2,deletion_barriers:1,streams:1}));
+  console.log(JSON.stringify({passed:true,actual_pg_source_snapshot:true,relation_lock_barrier_observed:true,concurrent_policy_deletion_incident_progress_committed:true,first_export_consistent_old_snapshot:true,fresh_export_contains_complete_v2_and_integrity:true,offset_beyond_js_safe_integer_preserved:true,source_rows_unchanged_by_export:true,actual_pg_states_signed:true,externally_supplied_tip_matched:true,replay_reorder_missing_genesis_rejected:true,tampered_record_and_wrong_signer_rejected:true,correct_signature_with_regressed_state_rejected:true,chain_does_not_change_source_or_recovery_gate:true,ephemeral_signer_key_in_memory_only:true,backup_manifest_binding_is_fixture:true,real_pg_signed_records_encrypted_at_rest:true,local_journal_cas:true,full_stored_chain_verified:true,journal_private_fixture_removed:true,journal_anchors_are_local_not_independent:true,source_endpoint_verified:false,anchor_custody_verified:false,closed_source_gate_rejected:true,offline_recovery_lock_rejected:true,schema_mismatch_rejected:true,deadline_interrupted_actual_locked_query:true,local_return_does_not_imply_backend_gone:true,server_cleanup_observed_separately:true,backend_cleanup_after_local_return_ms:backendCleanupAfterLocalReturnMs,deadline_source_rows_unchanged:true,leases_released:true,exporter_sessions_remaining:0,actual_state_cli:actualCli,source_authenticated:false,latest_state_verified:false,project_policies:2,deletion_barriers:1,streams:1}));
 }finally{
   if(tableLocked)await controller.query('ROLLBACK');
   if(pending)await pending.catch(()=>{});
