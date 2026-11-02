@@ -64,6 +64,7 @@ jobs:
       - run: node scripts/check-load-first-stop.mjs
       - run: node scripts/check-load-control-lease.mjs
       - run: node scripts/check-load-stop-reader.mjs
+      - run: node scripts/check-load-control-integration.mjs
       - run: python3 scripts/check-web-asset-retention.py
   postgres:
     runs-on: ubuntu-latest
