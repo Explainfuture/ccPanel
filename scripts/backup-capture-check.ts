@@ -2,13 +2,14 @@
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
-import {mkdtemp,writeFile,readFile,readdir,stat,unlink,rmdir} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,readFile,readdir,stat,unlink,rmdir} from 'node:fs/promises';
 import {createReadStream} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,dirname,isAbsolute} from 'node:path';
 import pg from 'pg';
 import {readBackupFingerprints} from '../packages/server/src/backup-snapshot';
 import {inspectBackupCandidate} from '../packages/server/src/backup-candidate';
+import {copyBackupCandidateToLocal} from '../packages/server/src/backup-local';
 const vps=process.env.CCPANEL_ISOLATED_CAPTURE_VPS==='true';
 const source=new URL(process.env.DATABASE_URL!);assert.match(source.pathname,/^\/ccpanel_restore_[0-9]{14}_[a-f0-9]{8}$/);
 const container=process.env.CCPANEL_PG_CONTAINER!;
@@ -25,7 +26,8 @@ assert.match(targetName,/^ccpanel_restore_[0-9]{14}_[a-f0-9]{8}$/);
 assert.notEqual('/'+targetName,source.pathname);
 const targetUrl=new URL(source);targetUrl.pathname='/'+targetName;const adminUrl=new URL(source);adminUrl.pathname='/postgres';
 const admin=new pg.Client({connectionString:adminUrl.href}),db=new pg.Client({connectionString:source.href,options:'-c timezone=UTC'}),restored=new pg.Client({connectionString:targetUrl.href,options:'-c timezone=UTC'});
-let targetCreated=false,restoredConnected=false,authenticated=false,captured=false;
+let targetCreated=false,restoredConnected=false,authenticated=false,captured=false,localCopied=false;
+const localRoot=join(directory,'destination'),localSet=join(localRoot,'candidate-copy');
 function run(file:string,args:string[],env=process.env,inputPath?:string):Promise<{code:number|null;stdout:string}>{
   return new Promise((resolve,reject)=>{
     const child=spawn(file,args,{env,stdio:['pipe','pipe','pipe']});let stdout='',size=0,failed=false;const input=inputPath?createReadStream(inputPath):undefined;
@@ -62,7 +64,19 @@ try{
   }
   const again=await capture();assert.equal(again.code,1);assert.equal(await readFile(join(candidate,'capture.json'),'utf8'),rawManifest);
   const badOutput=join(directory,'schema-mismatch');const mismatch=await capture(badOutput,'999');assert.equal(mismatch.code,1);assert.deepEqual(await readdir(badOutput),[]);await rmdir(badOutput);
-  const decrypted=await run(process.execPath,[cryptoScript,'decrypt',cipher,plain,key]);assert.equal(decrypted.code,0);authenticated=true;
+  await mkdir(localRoot,{mode:0o700});
+  if(!vps){
+    const args=[join(dirname(process.env.CCPANEL_CAPTURE_CLI!),'copy-backup-local.mjs'),candidate,localRoot,'candidate-copy','22'];
+    const copied=await run(process.execPath,args,{...process.env,CCPANEL_BACKUP_MAX_BYTES:String(manifest.archive.plaintextBytes)});
+    assert.equal(copied.code,2);const copyReceipt=JSON.parse(copied.stdout);assert.equal(copyReceipt.status,'copied_unverified');assert.equal(copyReceipt.destinationReadbackChecked,true);assert.equal(copyReceipt.sha256,inspected.sha256);assert.equal(copyReceipt.manifestSha256,inspected.manifestSha256);localCopied=true;
+    const repeated=await run(process.execPath,args);assert.equal(repeated.code,1);
+  }else{
+    const copied=await copyBackupCandidateToLocal({sourceDirectory:candidate,destinationRoot:localRoot,id:'candidate-copy',expectedSchema:22,maxBytes:8388644,timeoutMs:30000});assert.equal(copied.status,'copied_unverified');localCopied=true;
+  }
+  assert.equal(await readFile(join(localSet,'capture.json'),'utf8'),rawManifest);
+  assert.deepEqual((await readdir(localSet)).sort(),['capture.json','database.dump.enc']);
+  // Authenticate and restore the read-back destination, not the original.
+  const decrypted=await run(process.execPath,[cryptoScript,'decrypt',join(localSet,'database.dump.enc'),plain,key]);assert.equal(decrypted.code,0);authenticated=true;
   const plainHash=createHash('sha256');for await(const chunk of createReadStream(plain))plainHash.update(chunk);assert.equal(plainHash.digest('hex'),manifest.archive.plaintextSha256);
   if(vps){await restored.connect();restoredConnected=true;assert.equal((await restored.query("SELECT count(*)::int AS n FROM pg_tables WHERE schemaname='public'")).rows[0].n,0,'controller-owned restore database must be empty');}
   else{await admin.query(`CREATE DATABASE ${targetName}`);targetCreated=true;}
@@ -70,8 +84,10 @@ try{
   if(!restoredConnected){await restored.connect();restoredConnected=true;}assert.deepEqual(await readBackupFingerprints(restored),manifest.fingerprints);assert.deepEqual((await restored.query('SELECT id::text,name FROM tenants')).rows,[{id:tenant,name:'CANDIDATE CLI FIXTURE'}]);assert.equal((await restored.query('SELECT count(*)::int AS n FROM recovery_gate')).rows[0].n,0);
   // Independent CI verification does not silently edit candidate state flags.
   assert.equal(await readFile(join(candidate,'capture.json'),'utf8'),rawManifest);
-  console.log(JSON.stringify({passed:true,surface:vps?'isolated_vps':'ci',actual_candidate_cli:true,cli_exit:2,status:'captured_unverified',read_only_candidate_inspection:true,exclusive_output_preserved:true,schema_mismatch_has_no_manifest:true,plaintext_removed_after_capture:true,cipher_hash_matches:true,authenticated_plaintext_hash_matches:true,actual_pg_restore:true,fingerprints_match:true,candidate_flags_remain_unverified:true,bytes:manifest.archive.bytes,relations:manifest.fingerprints.length}));
+  assert.equal(await readFile(join(localSet,'capture.json'),'utf8'),rawManifest);
+  console.log(JSON.stringify({passed:true,surface:vps?'isolated_vps':'ci',actual_candidate_cli:true,cli_exit:2,status:'captured_unverified',read_only_candidate_inspection:true,local_destination_copy:true,restored_from_destination:true,exclusive_output_preserved:true,schema_mismatch_has_no_manifest:true,plaintext_removed_after_capture:true,cipher_hash_matches:true,authenticated_plaintext_hash_matches:true,actual_pg_restore:true,fingerprints_match:true,candidate_flags_remain_unverified:true,bytes:manifest.archive.bytes,relations:manifest.fingerprints.length}));
 }finally{
   if(restoredConnected)await restored.end();await db.end();if(targetCreated)await admin.query(`DROP DATABASE ${targetName} WITH (FORCE)`);await admin.end();
+  if(localCopied){await unlink(join(localSet,'capture.json'));await unlink(join(localSet,'database.dump.enc'));await rmdir(localSet);await rmdir(localRoot);}
   if(authenticated)await unlink(plain);if(captured){await unlink(join(candidate,'capture.json'));await unlink(join(candidate,'database.dump.enc'));await rmdir(candidate);}await unlink(key);await rmdir(directory);
 }

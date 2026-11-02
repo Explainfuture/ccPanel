@@ -47,6 +47,16 @@ pnpm backup:check infra/backup/offhost.example.json
 
 ## 两条数据流
 
+### 本地目的地复制组件（步骤211）
+
+`pnpm backup:copy-local /private/work/candidate /private/destination backup-id 22`显式复制一份已有候选；目的地根目录须预先存在、POSIX私有且归当前用户持有。它不读取/启用offhost模板，不连接VPS/SFTP、不创建目的地或定时器。CLI的CCPANEL_BACKUP_MAX_BYTES沿用明文预算，核心API的maxBytes为密文预算。
+
+先检查源候选，排除源/目的地重叠、符号链接和不安全权限，检查目的地空间余量（并非预留）。安全ID下独占mkdir，受限文件wx创建，64KiB有界复制并fsync；源和目的地的密文/清单均重新读取比较hash。步骤210检查回执增加manifestSha256，以绑定复制前后的同一份清单。源复核一致后才以排他hardlink发布capture.json，随后同步目录并再检查目的地。复制不产生明文、不读取密钥。
+
+成功回执为copied_unverified/destinationReadbackChecked=true，退出2；原始capture.json逐字节不变，所有可信来源/恢复/异机/最新状态标记仍false，没有verified manifest或最近成功索引。同名已存在集合（包括残缺集合）永不覆盖；I/O失败、取消或超限保留本次私有残缺集合供调查，需新ID重试，不自动递归删除。清单发布后的任何异常报告local_copy_publish_uncertain，不能按成功处理。普通进程仍可修改其自有文件，此处是接口不覆盖保证，不是WORM存储。
+
+组件有共享总时限/取消检查和读取前后元数据检查；不能强制中断阻塞内核I/O，调用方仍须持有可信目录及任务锁。空间余量不足、权限问题或Windows ACL未验证均拒绝。CI使用同一运行器临时目录验证复制/回读，并从目的地副本认证解密、实际恢复；这不是独立故障域或离机传输验收。SFTP适配器、完整远程执行器、可信最新状态链/锚点、验证发布与轮转调度仍待实现。
+
 ### 候选集合只读检查（步骤210）
 
 `pnpm backup:inspect /absolute/private/candidate 22`检查单份候选，不读取加密密钥、不写文件、不联网。要求POSIX受限自有目录和普通文件，拒绝符号链接、额外文件（包括残留工作明文）、缺文件、过大清单、非法/提升状态字段、错误schema和指纹结构错误（包括重复关系或恢复控制表）。这里只检查关系名及计数/hash的结构，不证明清单包含该schema的完整关系范围；完整范围须由可信schema清单和实际恢复对账验证。指纹中的PG bigint保持文本，不经JavaScript浮点数。

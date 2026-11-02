@@ -17,6 +17,7 @@
     "backup:check": "tsx scripts/backup-config-check.ts",
     "backup:capture": "tsx scripts/capture-backup.ts",
     "backup:inspect": "tsx scripts/inspect-backup.ts",
+    "backup:copy-local": "tsx scripts/copy-backup-local.ts",
     "worker": "tsx apps/worker/src/main.ts"
   },
   "devDependencies": {
