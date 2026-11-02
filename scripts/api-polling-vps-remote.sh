@@ -21,7 +21,7 @@ cleanup_script="$operator/api-polling-vps-cleanup.sh"
 for file in "$operator/api-polling-vps-remote.sh" "$cleanup_script" "$operator/api-polling-check.mjs" "$operator/api-polling-child.mjs";do
   test -f "$file";test -s "$file";test ! -L "$file";test "$(readlink -f "$file")" = "$file";test "$(stat -c '%u:%a' "$file")" = 0:600
 done
-unit_object=$(timeout --signal=TERM --kill-after=2s 5s busctl call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop/systemd1.Manager GetUnit s "$CCPANEL_POLLING_CONTROLLER_UNIT")
+unit_object=$(timeout --signal=TERM --kill-after=2s 5s busctl call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager GetUnit s "$CCPANEL_POLLING_CONTROLLER_UNIT")
 [[ "$unit_object" =~ ^o\ \"(/org/freedesktop/systemd1/unit/[A-Za-z0-9_]+)\"$ ]];unit_object=${BASH_REMATCH[1]}
 unit_property(){ timeout --signal=TERM --kill-after=2s 5s busctl get-property org.freedesktop.systemd1 "$unit_object" org.freedesktop.systemd1.Service "$1"; }
 test "$(unit_property User)" = 's "root"';test "$(unit_property MainPID)" = "u $$"
