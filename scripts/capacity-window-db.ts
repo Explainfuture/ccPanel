@@ -20,12 +20,12 @@ export interface WindowDbConfig{
   durability:{replicationFactor:number;minInSyncReplicas:number};pressure:PressurePolicy;
   productRoot:string;toolsDirectory:string;operatorFile:string;configurationSha256:string;
 }
-export interface BrokerOffsetDiagnostic{phase:'broker_offsets';protocol_code:number|null;protocol_type:'coordinator_loading'|'coordinator_unavailable'|'not_coordinator'|'other_protocol'|'unclassified'}
+export interface BrokerOffsetDiagnostic{phase:'broker_offsets';protocol_code:number|null;protocol_type:'coordinator_loading'|'coordinator_unavailable'|'not_coordinator'|'other_protocol'|'unclassified';error_class:'coordinator_not_found'|'retries_exhausted'|'protocol_error'|'other'}
 export class WindowDbError extends Error{diagnostic?:BrokerOffsetDiagnostic;constructor(public code:string){super(code);this.name='WindowDbError';}}
 export function brokerOffsetDiagnostic(error:unknown):BrokerOffsetDiagnostic{
-  let value:any=error;
-  for(let depth=0;depth<4&&value;depth++,value=value.cause){if(Number.isInteger(value.code)&&value.code>=0&&value.code<=32767)return{phase:'broker_offsets',protocol_code:value.code,protocol_type:({14:'coordinator_loading',15:'coordinator_unavailable',16:'not_coordinator'} as Record<number,BrokerOffsetDiagnostic['protocol_type']>)[value.code]??'other_protocol'};}
-  return{phase:'broker_offsets',protocol_code:null,protocol_type:'unclassified'};
+  let value:any=error;const error_class:BrokerOffsetDiagnostic['error_class']=({KafkaJSGroupCoordinatorNotFound:'coordinator_not_found',KafkaJSNumberOfRetriesExceeded:'retries_exhausted',KafkaJSProtocolError:'protocol_error'} as Record<string,BrokerOffsetDiagnostic['error_class']>)[value?.name]??'other';
+  for(let depth=0;depth<4&&value;depth++,value=value.cause){if(Number.isInteger(value.code)&&value.code>=0&&value.code<=32767)return{phase:'broker_offsets',protocol_code:value.code,protocol_type:({14:'coordinator_loading',15:'coordinator_unavailable',16:'not_coordinator'} as Record<number,BrokerOffsetDiagnostic['protocol_type']>)[value.code]??'other_protocol',error_class};}
+  return{phase:'broker_offsets',protocol_code:null,protocol_type:'unclassified',error_class};
 }
 const fail=(code:string):never=>{throw new WindowDbError('window_db_'+code);};
 const sha=(bytes:Uint8Array|string)=>createHash('sha256').update(bytes).digest('hex');

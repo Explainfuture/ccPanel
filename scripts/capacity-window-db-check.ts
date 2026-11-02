@@ -8,7 +8,7 @@ import {randomUUID,randomBytes,createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import pg from 'pg';
 import kafkaPackage from 'kafkajs';
-import {runCapacityWindowDb,type WindowDbConfig,inspectWindowFixture,WindowDbError,brokerOffsetDiagnostic} from './capacity-window-db';
+import {runCapacityWindowDb,type WindowDbConfig,type BrokerOffsetDiagnostic,inspectWindowFixture,WindowDbError,brokerOffsetDiagnostic} from './capacity-window-db';
 import {pool} from '../packages/server/src/db';
 import {persist} from '../packages/server/src/consume';
 import {withConsumerProgress} from '../packages/server/src/consumer-progress';
@@ -22,6 +22,23 @@ import {storePressureObservation} from '../packages/server/src/pressure-history-
 import {evaluatePressureAlerts} from '../packages/server/src/pressure-alerts';
 import {defaultPressurePolicy} from '../packages/server/src/ingest-pressure';
 
+// Exercise the public logger with native KafkaJS errors without connecting.
+// These only validate redacted diagnostics, not actual broker readiness.
+{
+  const {Kafka,logLevel,KafkaJSProtocolError,KafkaJSNumberOfRetriesExceeded,KafkaJSGroupCoordinatorNotFound}=kafkaPackage;
+  const protocol=new KafkaJSProtocolError(Object.assign(Error('private-diagnostic-text'),{code:15,type:'COORDINATOR_NOT_AVAILABLE',retriable:true}));
+  const wrapped=new KafkaJSNumberOfRetriesExceeded(protocol,{retryCount:0,retryTime:1});
+  let observed:unknown;
+  const logger=new Kafka({clientId:'diagnostic-only',brokers:['127.0.0.1:1'],logLevel:logLevel.DEBUG,logCreator:()=>({log})=>{observed=log.error;}}).logger();
+  logger.debug('diagnostic-only',{error:wrapped});assert.equal(observed,wrapped);
+  assert.deepEqual(brokerOffsetDiagnostic(observed),{phase:'broker_offsets',protocol_code:15,protocol_type:'coordinator_unavailable',error_class:'retries_exhausted'});
+  // KafkaJS 2.2.4's declaration omits the runtime constructor's message arg.
+  assert.deepEqual(brokerOffsetDiagnostic(Reflect.construct(KafkaJSGroupCoordinatorNotFound,['private-diagnostic-text'])),{phase:'broker_offsets',protocol_code:null,protocol_type:'unclassified',error_class:'coordinator_not_found'});
+  assert.equal(brokerOffsetDiagnostic(Error('private-diagnostic-text')).error_class,'other');
+  assert.equal(brokerOffsetDiagnostic({code:'15'}).protocol_code,null);
+  assert.equal(JSON.stringify(brokerOffsetDiagnostic(observed)).includes('private-diagnostic-text'),false);
+}
+
 assert.equal(process.env.GITHUB_ACTIONS,'true');
 const url=new URL(process.env.DATABASE_URL!);assert.equal(url.username,'ccpanel_ci');assert.ok(['127.0.0.1','localhost'].includes(url.hostname));assert.match(url.pathname,/^\/ccpanel_restore_[0-9]{14}_[a-f0-9]{8}$/);
 const brokers=process.env.CCPANEL_WINDOW_KAFKA_BROKERS!.split(',');assert.ok(brokers.length>0&&brokers.every(value=>/^(127\.0\.0\.1|localhost):[0-9]{1,5}$/.test(value)));
@@ -30,7 +47,8 @@ const invalidCli=spawnSync(process.execPath,[executable],{encoding:'utf8',timeou
 const hash=(raw:Uint8Array|string)=>createHash('sha256').update(raw).digest('hex'),json=async(path:string,value:unknown)=>writeFile(path,JSON.stringify(value)+'\n',{mode:0o600,flag:'wx'});
 const root=await mkdtemp(join(tmpdir(),'ccpanel-window225-')),state=join(root,'evidence'),product=join(root,'product'),tools=join(root,'client');await mkdir(state,{mode:0o700});await mkdir(tools,{mode:0o700});
 const nonce=randomBytes(8).toString('hex'),namespace={events:`ccpanel.drill.window225.${nonce}.events`,dlq:`ccpanel.drill.window225.${nonce}.dlq`,group:`ccpanel.drill.window225.${nonce}.writer`};
-const {Kafka,logLevel}=kafkaPackage,kafka=new Kafka({clientId:'ccpanel-window225-ci',brokers,logLevel:logLevel.NOTHING,retry:{retries:0},connectionTimeout:3000,requestTimeout:5000}),admin=kafka.admin(),producer=kafka.producer({idempotent:true,maxInFlightRequests:1,retry:{retries:3}}),consumer=kafka.consumer({groupId:namespace.group,sessionTimeout:10000});
+let observeWarmup=true,warmupErrors:BrokerOffsetDiagnostic[]=[];
+const {Kafka,logLevel}=kafkaPackage,kafka=new Kafka({clientId:'ccpanel-window225-ci',brokers,logLevel:logLevel.DEBUG,logCreator:()=>({log})=>{if(observeWarmup&&warmupErrors.length<16){const diagnostic=brokerOffsetDiagnostic(log.error);if(diagnostic.protocol_code!==null)warmupErrors.push(diagnostic);}},retry:{retries:0},connectionTimeout:3000,requestTimeout:5000}),admin=kafka.admin(),producer=kafka.producer({idempotent:true,maxInFlightRequests:1,retry:{retries:3}}),consumer=kafka.consumer({groupId:namespace.group,sessionTimeout:10000});
 const db=new pg.Client({connectionString:url.href,statement_timeout:10000,options:'-c timezone=UTC'}),blocker=new pg.Client({connectionString:url.href,statement_timeout:10000,options:'-c timezone=UTC'});
 let topics=false,producerConnected=false,consumerConnected=false,consumerFailure=false,fixture:any;
 const configurationSha256=hash('isolated-synthetic-source-configuration'),config:WindowDbConfig={connectionString:url.href,brokers,namespace,origin:'https://ci.ccpanel.invalid',expectedSchema:22,durability:{replicationFactor:1,minInSyncReplicas:1},pressure:{...defaultPressurePolicy},productRoot:product,toolsDirectory:tools,operatorFile:executable,configurationSha256};
@@ -52,9 +70,17 @@ try{
   // initialize/advance offsets, publish data, or retry an operator command.
   const warmupUntil=Date.now()+30000;let warmupAttempts=0;
   while(true){
-    warmupAttempts++;
-    try{const values=await admin.fetchOffsets({groupId:namespace.group,topics:[namespace.events],resolveOffsets:false});assert.equal(values.length,1);assert.equal(values[0]!.partitions.length,2);assert.ok(values[0]!.partitions.every(p=>p.offset==='-1'));console.log(JSON.stringify({kind:'capacity_window_broker_readonly_warmup',attempt:warmupAttempts,ready:true}));break;}
-    catch(error){const diagnostic=brokerOffsetDiagnostic(error);if(![14,15,16].includes(diagnostic.protocol_code??-1)||Date.now()>=warmupUntil)throw Object.assign(Error('actual_broker_readonly_warmup_failed'),{diagnostic});console.log(JSON.stringify({kind:'capacity_window_broker_readonly_warmup',attempt:warmupAttempts,ready:false,diagnostic}));await new Promise(done=>setTimeout(done,200));}
+    warmupAttempts++;warmupErrors=[];
+    let values;
+    try{values=await admin.fetchOffsets({groupId:namespace.group,topics:[namespace.events],resolveOffsets:false});}
+    catch(error){const diagnostic=brokerOffsetDiagnostic(error),observed=[...warmupErrors];
+      // KafkaJS 2.2.4 withBroker discards a failed coordinator lookup's cause.
+      // Its public logger still exposes the actual protocol Error. Never infer
+      // code15 merely from the replacement GroupCoordinatorNotFound class.
+      const effective=diagnostic.protocol_code!==null?diagnostic:observed.find(row=>![14,15,16].includes(row.protocol_code??-1))??observed[0]??diagnostic;
+      if((diagnostic.protocol_code===null&&diagnostic.error_class!=='coordinator_not_found')||![14,15,16].includes(effective.protocol_code??-1)||observed.some(row=>![14,15,16].includes(row.protocol_code??-1))||Date.now()>=warmupUntil)throw Object.assign(Error('actual_broker_readonly_warmup_failed'),{diagnostic,observed_protocols:observed});
+      console.log(JSON.stringify({kind:'capacity_window_broker_readonly_warmup',attempt:warmupAttempts,ready:false,diagnostic,observed_protocols:observed}));await new Promise(done=>setTimeout(done,200));continue;}
+    assert.equal(values.length,1);assert.equal(values[0]!.partitions.length,2);assert.ok(values[0]!.partitions.every(p=>p.offset==='-1'));observeWarmup=false;kafka.logger().setLogLevel(logLevel.NOTHING);console.log(JSON.stringify({kind:'capacity_window_broker_readonly_warmup',attempt:warmupAttempts,ready:true}));break;
   }
   await db.query('INSERT INTO consumer_streams(topic,group_id,partition_count) VALUES($1,$2,2)',[namespace.events,namespace.group]);await db.query('INSERT INTO consumer_progress(topic,group_id,partition_id,next_offset) VALUES($1,$2,0,0),($1,$2,1,0)',[namespace.events,namespace.group]);
   const products:Record<string,string>={};for(const [path,key]of [['dist/api.mjs','api_sha256'],['dist/worker.mjs','worker_sha256'],['dist/web/sdk/ccpanel.js','sdk_sha256'],['infra/compose.yaml','compose_sha256']]){const target=join(product,path!);await mkdir(dirname(target),{recursive:true,mode:0o700});const raw='synthetic-native-test-asset:'+path;await writeFile(target,raw,{mode:0o600});products[key!]=hash(raw);}
