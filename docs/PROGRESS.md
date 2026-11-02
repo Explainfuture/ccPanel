@@ -1701,3 +1701,4 @@ m4-trends-012/schema22已上线。22→22升级原字段完整对账通过；API
 - 源/清单hash固定、远端私有UID/canonical路径、独占ID/wx文件、有界文件fsync上传、私有下载回验、清单最后hardlink及回读；返回transferred_unverified/退出2，远端目录耐久性false，其余恢复/异机/最新状态不提升。取消/超时断开SSH并等待本地清理，残片保留，不覆盖同名集合；发布请求后错误uncertain。
 - 新CI job使用临时loopback OpenSSH，真实上传/下载/认证解密，错误pin/身份/源拒绝，实际中继流量达阈值才取消并检查残片无清单、重复ID不覆盖。不是独立故障域/真实PG恢复/断电验收；既有17套PG另行回归，VPS和正式目的地未变。本机typecheck、23项聚焦测试通过，3项POSIX跳过；Linux协议路径待CI。
 - 首轮Actions41380621663对83613e1的verify/postgres/sftp全部success；真实loopback OpenSSH字节262216、固定主机key/错误身份拒绝、下载认证解密、中继达到128KiB后取消/无清单/残片重复拒绝、daemon及中继清理均通过；PG证据仍另行记录。再补实际CLI使用启用私有配置/prefix驱动完整传输，保持source引用不存在、不连接原源；此增强待新CI。
+- 增强后Actions41381026074对8250978的verify/postgres/sftp全部success：356测试通过/8平台跳过、17套PG回归；SFTP摘要actual_sftp_cli=true、262216字节、配置驱动精确预算/prefix和原源引用未读取，中继取消/残片拒绝/未知对象保留及daemon/relay/私有夹具清理均通过。该SFTP摘要actual_pg_restore=false；另一个PG job验证同机本地目的地恢复43关系，不能把两套不同夹具拼为SFTP PG/异机恢复验收。正式模板仍禁用，VPS未变。

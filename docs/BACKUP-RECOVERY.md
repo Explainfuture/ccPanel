@@ -2,9 +2,11 @@
 
 ## 当前范围
 
-2026-10-24用户确认暂时没有独立目的地，先完成可配置方案。设计、只读预检命令与默认禁用模板见 [BACKUP-CONFIG.md](BACKUP-CONFIG.md) 和 [offhost.example.json](../infra/backup/offhost.example.json)；尚无执行该模板的传输/调度程序，没有启用自动离机备份。历史手动实测与下述未通过门槛继续保留。
+2026-10-24用户确认暂时没有独立目的地，先完成可配置方案。设计、只读预检命令与默认禁用模板见 [BACKUP-CONFIG.md](BACKUP-CONFIG.md) 和 [offhost.example.json](../infra/backup/offhost.example.json)。已有显式copy-sftp读取启用配置仅传输已有候选，尚无完整源捕获/可信验证发布/调度流程，没有启用自动离机备份。历史手动实测与下述未通过门槛继续保留。
 
 步骤206–212已有显式候选命令：backup:capture → backup:inspect → backup:copy-local → backup:decrypt-candidate。它们仅生成、检查、复制和认证解密候选，成功操作均退出2，不能作为已验证备份成功退出码；不读取/启用offhost模板，不执行恢复切流。解密使用已有私有密钥、有界明文工作文件及实际落盘回读，成功明文须由后续控制器在恢复验证后清除。当前CI已从本地目的地经新解密CLI实际恢复并核对43关系；这不是自动异机同步、可信最新状态或门禁放行证明。使用条件、错误/清理边界见BACKUP-CONFIG对应组件说明。
+
+步骤213增加可选backup:copy-sftp（替代上述本地复制一步），专用known_hosts固定目的地主机key、公钥认证、独占集合、文件同步、下载回验。禁用配置退出0且不读引用凭证/联网；启用时复制回执仍transferred_unverified/退出2，远端目录耐久性与独立故障域未验证，不能将上传成功当恢复验收。loopback OpenSSH及实际配置CLI的协议/认证解密证据单独记录，不冒充同机PG用例之外的真实PG或离机恢复。
 
 PG 自定义格式备份包含原始事件、去重、身份、报表、任务、配置和权限；恢复门禁与导入scope的操作数据按设计排除，不能让旧备份重开门禁。传输通过已校验主机指纹的 SSH；离机副本用 AES-256-GCM 加密，密钥独立保存，不能丢失或随备份公开。临时明文文件在验证后删除。
 
